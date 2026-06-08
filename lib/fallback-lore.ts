@@ -41,18 +41,25 @@ export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
         `${anchor} The story follows an original Runeterran figure and does not alter the deeds of known champions.`,
       runeterraLoreAnchor: anchor,
     },
-    pages: chapters.map((chapter, index) => ({
-      pageNumber: index + 1,
-      chapter,
-      title: titles(input, index, region),
-      text: pageText(input, index, legendaryTitle, region),
-      imagePrompt: [
-        `Full-page illustration for ${chapter}: ${titles(input, index, region)}.`,
-        `Visual story phase: ${visualPhase(input, index, region)}.`,
-        `${identity}, ${faceAndBody}, wearing ${clothing}, aura: ${aura}, symbolic object: ${symbolicObject}, color palette: ${palette}, region: ${region}, Runeterra lore anchor: ${anchor}.`,
-        "cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark",
-      ].join(" "),
-    })),
+    pages: chapters.map((chapter, index) => {
+      const visualDirection = visualDirectionForPage(input, index, region);
+      const title = titles(input, index, region);
+
+      return {
+        pageNumber: index + 1,
+        chapter,
+        title,
+        text: pageText(input, index, legendaryTitle, region),
+        visualDirection,
+        imagePrompt: [
+          `Full-page illustration for ${chapter}: ${title}.`,
+          `Visual story phase: ${visualPhase(input, index, region)}.`,
+          `Scene type: ${visualDirection.sceneType}. Camera: ${visualDirection.cameraShot}. Action: ${visualDirection.characterAction}. Environment: ${visualDirection.environment}.`,
+          `${identity}, ${faceAndBody}, wearing ${clothing}, aura: ${aura}, symbolic object: ${symbolicObject}, color palette: ${palette}, region: ${region}, Runeterra lore anchor: ${anchor}.`,
+          "cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium storybook art, dramatic lighting, coherent character design, no repeated portrait composition, no generic standing pose, no text, no logos, no watermark",
+        ].join(" "),
+      };
+    }),
   };
 
   return book;
@@ -271,4 +278,83 @@ function visualPhase(input: BookFormInput, index: number, region: string) {
   ];
 
   return phases[index];
+}
+
+function visualDirectionForPage(input: BookFormInput, index: number, region: string) {
+  const directions = [
+    {
+      sceneType: "iconic cover image",
+      cameraShot: "low-angle full-body silhouette with the protagonist not in close-up",
+      characterAction: `${input.name} stands as a strong silhouette before a symbolic ${region} backdrop`,
+      environment: `${region} landmark with culture, architecture, or landscape visible behind the protagonist`,
+      keyObjects: ["symbolic relic", "regional landmark", "ominous sky"],
+      mood: "legendary, mysterious, introductory",
+      lighting: "dramatic rim light and deep atmospheric contrast",
+    },
+    {
+      sceneType: "wide establishing shot",
+      cameraShot: "wide cinematic shot with the protagonist small in the scene",
+      characterAction: `young ${input.name} moves through the origin environment, observing the world that shaped them`,
+      environment: `${region} birthplace with architecture, landscape, culture, and daily life details`,
+      keyObjects: ["childhood path", "regional buildings", "distant landmark"],
+      mood: "formative, grounded, atmospheric",
+      lighting: "soft dawn light or misty regional ambience",
+    },
+    {
+      sceneType: "intimate emotional scene",
+      cameraShot: "medium environmental shot focused on body language, not a face portrait",
+      characterAction: `${input.name} reacts to loss, exile, shame, curse, or the weight of ${input.weakness}`,
+      environment: `abandoned or damaged place in ${region} that visually explains the wound`,
+      keyObjects: ["broken object", "empty threshold", "long shadow"],
+      mood: "wounded, quiet, emotionally heavy",
+      lighting: "low side light with heavy shadows",
+    },
+    {
+      sceneType: "supernatural discovery scene",
+      cameraShot: "over-the-shoulder or medium-wide shot focused on the omen",
+      characterAction: `${input.name} discovers a sign, relic, spirit, rune, vision, or forbidden symbol`,
+      environment: `hidden regional site in ${region} where lore-compatible power manifests`,
+      keyObjects: ["glowing sign", "ancient relic", "reacting environment"],
+      mood: "mysterious, dangerous, awestruck",
+      lighting: "unnatural glow cutting through darkness",
+    },
+    {
+      sceneType: "dynamic action scene",
+      cameraShot: "dramatic medium-wide action shot with motion blur and strong perspective",
+      characterAction: `${input.name} survives a trial by moving, fighting, climbing, escaping, or crossing danger`,
+      environment: `hazardous trial ground in ${region} with regional danger and movement`,
+      keyObjects: ["weapon or relic", "debris", "non-canon creature or hazard"],
+      mood: "urgent, kinetic, perilous",
+      lighting: "high-contrast action lighting with sparks, storm, or magical flare",
+    },
+    {
+      sceneType: "confrontation scene",
+      cameraShot: "wide confrontation shot with protagonist and original enemy both in frame",
+      characterAction: `${input.name} faces an original lore-compatible threat across tense distance`,
+      environment: `dramatic confrontation site in ${region} with scale, distance, and opposing silhouettes`,
+      keyObjects: ["enemy silhouette", "dividing light", "regional threat symbol"],
+      mood: "tense, threatening, monumental",
+      lighting: "opposing light sources separating hero and enemy",
+    },
+    {
+      sceneType: "visual transformation scene",
+      cameraShot: "medium-wide shot showing the whole transformation context",
+      characterAction: `${input.name}'s power awakens as armor, aura, curse, or symbolic object transforms`,
+      environment: `${region} setting reacting to the protagonist's power and destiny`,
+      keyObjects: ["activating relic", "aura", "environmental reaction"],
+      mood: "revelatory, unstable, powerful",
+      lighting: "radiant power bloom with atmospheric depth",
+    },
+    {
+      sceneType: "cinematic final scene",
+      cameraShot: "epic wide shot from behind or distant side angle",
+      characterAction: `${input.name} walks toward or stands before an unresolved legendary threshold`,
+      environment: `prophetic horizon, portal, temple, sea, mountain, ruins, celestial gate, or shadowed place in ${region}`,
+      keyObjects: ["open threshold", "distant destination", "prophetic sky"],
+      mood: "mysterious, open-ended, cinematic",
+      lighting: "vast twilight, celestial beam, or horizon glow",
+    },
+  ];
+
+  return directions[index];
 }

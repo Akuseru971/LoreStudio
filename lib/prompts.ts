@@ -91,6 +91,15 @@ Return a JSON object matching this exact schema:
       "chapter": "The Name",
       "title": "string",
       "text": "string, 45 to 75 words",
+      "visualDirection": {
+        "sceneType": "string",
+        "cameraShot": "string",
+        "characterAction": "string",
+        "environment": "string",
+        "keyObjects": ["string"],
+        "mood": "string",
+        "lighting": "string"
+      },
       "imagePrompt": "string"
     }
   ]
@@ -130,40 +139,88 @@ Rules:
 - The imagePrompt must visually represent that page's exact life phase and event: birth, childhood, wound, omen, power awakening, enemy, transformation, or prophecy.
 - Every imagePrompt must include the same characterBible details to keep visual consistency.
 - Every imagePrompt must include: cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark.
-- The imagePrompt must avoid asking for written text inside the image.`;
+- The imagePrompt must avoid asking for written text inside the image.
+
+IMAGE STORYTELLING RULES:
+- The 8 images must work together as a sequential visual narrative.
+- Each page must show a different moment of the story.
+- Each page must have a different environment or visual focus.
+- Each page must use a different camera shot.
+- Avoid repeating close-up portraits.
+- Use cover shot, wide shot, intimate scene, discovery scene, action scene, confrontation scene, transformation scene, and final cinematic scene.
+- The protagonist must remain visually consistent, but the scene must change dramatically from page to page.
+- Illustrations should show events, not only character poses.
+- Every image prompt must clearly describe what is happening in the scene.
+- Every image prompt must mention the chosen Runeterra region and include region-specific environmental details.
+- The visual progression must match the chapter order.
+- Only one or two pages maximum may be portrait-like.
+- Most pages should show the character interacting with the world.
+- Add a unique visualDirection object for every page.
+- Page 1 visualDirection: iconic cover image; full-body or three-quarter figure; strong silhouette; symbolic background linked to the chosen Runeterra region; no simple face portrait.
+- Page 2 visualDirection: wide establishing shot; birthplace or origin environment; character small or medium; architecture, landscape, culture, or region-specific details.
+- Page 3 visualDirection: intimate emotional scene; show weakness, loss, exile, shame, curse, or conflict through action/environment; use body language and symbolic objects.
+- Page 4 visualDirection: supernatural discovery scene; sign, relic, omen, spirit, rune, vision, prophecy, strange light, or forbidden symbol; focus on event.
+- Page 5 visualDirection: dynamic action scene; protagonist facing danger, escaping, climbing, fighting a non-canon creature, surviving a storm, or confronting a trial.
+- Page 6 visualDirection: confrontation scene; original lore-compatible enemy/threat visible; protagonist and enemy both in frame when possible; no existing champions as enemies.
+- Page 7 visualDirection: transformation scene; power awakening, armor changing, aura emerging, symbolic object activating, curse spreading, or destiny revealing itself.
+- Page 8 visualDirection: cinematic final scene; mysterious open ending; protagonist moving toward or standing before a legendary place, portal, battlefield, temple, sea, mountain, ruins, celestial gate, or shadowed horizon.
+- Explicit anti-repetition for every imagePrompt: no repeated portrait composition, no repeated background, no repeated camera angle, no generic character standing pose, no simple bust shot unless page specifically requires intimacy, no text, no logo, no watermark.`;
 
   return { system, user };
 }
 
 export function buildFinalImagePrompt(book: LoreBook, page: BookPage) {
   const bible = book.characterBible;
-  const phase = pagePhase(page.pageNumber);
-  const styleLock = `Consistent protagonist across all images:
-${bible.visualIdentity}, ${bible.faceAndBody}, wearing ${bible.clothing}, aura: ${bible.aura}, symbolic object: ${bible.symbolicObject}, color palette: ${bible.colorPalette}, region: ${bible.region}, Runeterra lore anchor: ${bible.runeterraLoreAnchor}.
+  const direction = page.visualDirection;
+  const summary = summarizeForImage(page.text);
 
-Cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium illustrated storybook art, dramatic lighting, painterly realism, elegant fantasy composition, high detail, atmospheric depth, no text, no logo, no watermark.`;
+  return `Create a full-page illustrated storybook scene for Page ${page.pageNumber}: ${page.chapter} — ${page.title}.
 
-  return [
-    `Full-page book illustration for chapter ${page.pageNumber}: ${page.chapter} - ${page.title}.`,
-    `Narrative phase to show visually: ${phase}.`,
-    `Scene: ${page.imagePrompt}`,
-    `World rules: ${bible.worldRules}`,
-    styleLock,
-    "The image must tell this exact story moment, not a generic portrait. Portrait composition suitable for a luxury parchment book page. Avoid typography, captions, signatures, brands, and interface elements.",
-  ].join("\n");
+Narrative moment:
+${summary}
+
+Scene type:
+${direction.sceneType}
+
+Camera shot:
+${direction.cameraShot}
+
+Character action:
+${direction.characterAction}
+
+Environment:
+${direction.environment}
+
+Key objects:
+${direction.keyObjects.join(", ")}
+
+Mood:
+${direction.mood}
+
+Lighting:
+${direction.lighting}
+
+Character consistency:
+The protagonist must remain consistent across the book: ${bible.visualIdentity}, ${bible.faceAndBody}, wearing ${bible.clothing}, aura: ${bible.aura}, symbolic object: ${bible.symbolicObject}, color palette: ${bible.colorPalette}.
+
+Runeterra anchor:
+The scene is set in ${bible.region}. Use lore-compatible Runeterra atmosphere and regional visual details: ${bible.runeterraLoreAnchor}.
+
+Composition rules:
+This image must be a story scene, not a generic portrait.
+Show action, environment, and narrative progression.
+Do not repeat a previous page composition.
+Avoid close-up face portraits unless emotionally necessary.
+Use a distinct camera angle and setting for this page.
+No written text inside the image.
+No logo.
+No watermark.
+
+Art style:
+Cinematic League of Legends-inspired fantasy illustration, premium illustrated storybook art, painterly realism, dramatic lighting, atmospheric depth, elegant composition, high detail.`;
 }
 
-function pagePhase(pageNumber: number) {
-  const phases: Record<number, string> = {
-    1: "birth, naming, first omen, and the first mark of destiny",
-    2: "childhood, origin place, early hardship, and first traits of the chosen archetype",
-    3: "the defining wound, fear, curse, or weakness that changes the protagonist",
-    4: "the first supernatural sign proving destiny has noticed the protagonist",
-    5: "awakening or obtaining powers, relic, weapon, forbidden gift, or magical authority",
-    6: "meeting the enemy or central conflict tied to the protagonist's weakness",
-    7: "evolution into a transformed legendary figure who begins mastering the power",
-    8: "mysterious final prophecy and open-ended destiny beyond the last page",
-  };
-
-  return phases[pageNumber] || "chronological dark fantasy life phase";
+function summarizeForImage(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > 420 ? `${normalized.slice(0, 417)}...` : normalized;
 }

@@ -53,12 +53,29 @@ const loreBookJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["pageNumber", "chapter", "title", "text", "imagePrompt"],
+        required: ["pageNumber", "chapter", "title", "text", "visualDirection", "imagePrompt"],
         properties: {
           pageNumber: { type: "integer", minimum: 1, maximum: 8 },
           chapter: { type: "string" },
           title: { type: "string" },
           text: { type: "string" },
+          visualDirection: {
+            type: "object",
+            additionalProperties: false,
+            required: ["sceneType", "cameraShot", "characterAction", "environment", "keyObjects", "mood", "lighting"],
+            properties: {
+              sceneType: { type: "string" },
+              cameraShot: { type: "string" },
+              characterAction: { type: "string" },
+              environment: { type: "string" },
+              keyObjects: {
+                type: "array",
+                items: { type: "string" },
+              },
+              mood: { type: "string" },
+              lighting: { type: "string" },
+            },
+          },
           imagePrompt: { type: "string" },
         },
       },

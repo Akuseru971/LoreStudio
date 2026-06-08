@@ -28,6 +28,15 @@ export type BookPage = {
   chapter: string;
   title: string;
   text: string;
+  visualDirection: {
+    sceneType: string;
+    cameraShot: string;
+    characterAction: string;
+    environment: string;
+    keyObjects: string[];
+    mood: string;
+    lighting: string;
+  };
   imagePrompt: string;
   imageUrl?: string;
   audioUrl?: string;
