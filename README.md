@@ -43,6 +43,7 @@ Optional defaults:
 ```bash
 OPENAI_TEXT_MODEL=gpt-5
 OPENAI_IMAGE_MODEL=gpt-image-2
+OPENAI_IMAGE_SIZE=1024x1536
 ELEVENLABS_MODEL_ID=eleven_v3
 ```
 
@@ -51,6 +52,8 @@ If your OpenAI account does not have access to `gpt-image-2`, set:
 ```bash
 OPENAI_IMAGE_MODEL=gpt-image-1
 ```
+
+Image generation automatically falls back to `gpt-image-1` if the configured image model fails. GPT Image models return base64 image data, so images are generated page-by-page after the book opens instead of being bundled into the initial book response.
 
 ## Development
 

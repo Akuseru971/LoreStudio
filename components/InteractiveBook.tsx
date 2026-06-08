@@ -13,6 +13,7 @@ type PageFlipHandle = {
   pageFlip: () => {
     flipPrev: () => void;
     flipNext: () => void;
+    flip: (page: number, corner?: "top" | "bottom") => void;
   };
 };
 
@@ -65,6 +66,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const [musicAvailable, setMusicAvailable] = useState(false);
   const [audioCache, setAudioCache] = useState<Record<number, string | null>>({});
   const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
+  const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [settings, setSettings] = useState<AudioSettings>({
     musicEnabled: true,
@@ -74,6 +76,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const flipRef = useRef<PageFlipHandle | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
+  const requestedImagesRef = useRef<Set<number>>(new Set());
   const pagesWithImages = book.pages.map((page) => ({
     ...page,
     imageUrl: imageCache[page.pageNumber] || page.imageUrl,
@@ -149,9 +152,13 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
 
   const fetchImageForPage = useCallback(
     async (pageNumber: number) => {
-      if (imageCache[pageNumber] !== undefined) {
+      const page = book.pages.find((item) => item.pageNumber === pageNumber);
+      if (!page || page.imageUrl || requestedImagesRef.current.has(pageNumber)) {
         return;
       }
+
+      requestedImagesRef.current.add(pageNumber);
+      setLoadingImages((current) => ({ ...current, [pageNumber]: true }));
 
       try {
         const response = await fetch("/api/generate-image", {
@@ -163,9 +170,11 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
         setImageCache((current) => ({ ...current, [pageNumber]: data.imageUrl || null }));
       } catch {
         setImageCache((current) => ({ ...current, [pageNumber]: null }));
+      } finally {
+        setLoadingImages((current) => ({ ...current, [pageNumber]: false }));
       }
     },
-    [book, imageCache],
+    [book],
   );
 
   const playNarration = useCallback(
@@ -254,6 +263,33 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     };
   }, [activePageIndex, book.pages, fetchImageForPage, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let cancelled = false;
+    const orderedPages = [
+      ...book.pages.slice(activePageIndex),
+      ...book.pages.slice(0, activePageIndex),
+    ];
+
+    async function prefetchImages() {
+      for (const page of orderedPages) {
+        if (cancelled) {
+          return;
+        }
+        await fetchImageForPage(page.pageNumber);
+      }
+    }
+
+    void prefetchImages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePageIndex, book.pages, fetchImageForPage, isOpen]);
+
   function handleOpen() {
     setIsOpen(true);
     setActivePageIndex(0);
@@ -262,16 +298,19 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   }
 
   function handleFlip(event: { data?: number }) {
-    const nextIndex = typeof event.data === "number" ? event.data : 0;
-    setActivePageIndex(Math.min(Math.max(nextIndex, 0), book.pages.length - 1));
+    const physicalPage = typeof event.data === "number" ? event.data : 0;
+    const nextIndex = Math.floor(Math.max(physicalPage, 0) / 2);
+    setActivePageIndex(Math.min(nextIndex, book.pages.length - 1));
   }
 
   function flipPrevious() {
-    flipRef.current?.pageFlip()?.flipPrev();
+    const previousSpread = Math.max(activePageIndex - 1, 0);
+    flipRef.current?.pageFlip()?.flip(previousSpread * 2, "top");
   }
 
   function flipNext() {
-    flipRef.current?.pageFlip()?.flipNext();
+    const nextSpread = Math.min(activePageIndex + 1, book.pages.length - 1);
+    flipRef.current?.pageFlip()?.flip(nextSpread * 2, "top");
   }
 
   function toggleMusic() {
@@ -388,11 +427,19 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                   disableFlipByClick={false}
                   onFlip={handleFlip}
                 >
-                  {pagesWithImages.map((page, index) => (
-                    <div key={page.pageNumber} className="page">
-                      <BookPage page={page} isActive={index === activePageIndex} />
-                    </div>
-                  ))}
+                  {pagesWithImages.flatMap((page, index) => [
+                    <div key={`${page.pageNumber}-image`} className="page">
+                      <BookPage
+                        page={page}
+                        side="image"
+                        isActive={index === activePageIndex}
+                        isImageLoading={Boolean(loadingImages[page.pageNumber])}
+                      />
+                    </div>,
+                    <div key={`${page.pageNumber}-text`} className="page">
+                      <BookPage page={page} side="text" isActive={index === activePageIndex} />
+                    </div>,
+                  ])}
                 </HTMLFlipBook>
               </div>
 

@@ -7,43 +7,39 @@ import { cn } from "@/lib/utils";
 type BookPageProps = {
   page: BookPageType;
   isActive: boolean;
+  side?: "image" | "text";
+  isImageLoading?: boolean;
 };
 
-export default function BookPage({ page, isActive }: BookPageProps) {
+export default function BookPage({ page, isActive, side = "text", isImageLoading = false }: BookPageProps) {
+  if (side === "image") {
+    return <ImageLeaf page={page} isImageLoading={isImageLoading} />;
+  }
+
   return (
-    <article className="page parchment-surface page-shadow relative flex h-full w-full flex-col overflow-hidden p-4 text-[#20170d] sm:p-5">
+    <article className="page parchment-surface page-shadow relative flex h-full w-full flex-col overflow-hidden p-5 text-[#20170d] sm:p-7">
       <div className="pointer-events-none absolute inset-0 opacity-35 mix-blend-multiply [background:radial-gradient(circle_at_20%_20%,rgba(255,255,255,.55),transparent_10rem),repeating-linear-gradient(90deg,rgba(72,45,19,.08)_0_1px,transparent_1px_5px)]" />
       <div className="relative z-10 flex h-full flex-col">
-        <header className="mb-3 flex items-center justify-between gap-3 border-b border-[#6b4a24]/25 pb-3">
+        <header className="mb-5 flex items-center justify-between gap-3 border-b border-[#6b4a24]/25 pb-4">
           <div>
             <p className="font-title text-[0.62rem] uppercase tracking-[0.28em] text-[#6b4a24]/80">Chapter {page.pageNumber}</p>
-            <h2 className="font-title mt-1 text-xl leading-tight text-[#24170b] sm:text-2xl">{page.chapter}</h2>
+            <h2 className="font-title mt-2 text-2xl leading-tight text-[#24170b] sm:text-3xl">{page.chapter}</h2>
           </div>
           <span className="rounded-full border border-[#6b4a24]/25 bg-[#fff3c5]/35 px-3 py-1 text-xs font-semibold text-[#6b4a24]">
             {String(page.pageNumber).padStart(2, "0")}
           </span>
         </header>
 
-        <div className="grid flex-1 gap-4 md:grid-rows-[minmax(0,1fr)_auto]">
-          <div className="relative min-h-56 overflow-hidden rounded-[1.35rem] border border-[#6b4a24]/25 bg-[#32200f] shadow-inner">
-            {page.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={page.imageUrl} alt={page.title} className="h-full w-full object-cover" />
-            ) : (
-              <IllustratedPlaceholder title={page.title} chapter={page.chapter} />
-            )}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-white/10" />
-          </div>
-
+        <div className="flex flex-1 items-center">
           <motion.div
             key={`${page.pageNumber}-${isActive}`}
             initial={{ opacity: 0, y: 18 }}
             animate={isActive ? { opacity: 1, y: 0 } : { opacity: 0.72, y: 8 }}
             transition={{ duration: 0.75, ease: "easeOut" }}
-            className="rounded-[1.15rem] border border-[#6b4a24]/20 bg-[#fff3c5]/30 p-4 shadow-inner"
+            className="w-full rounded-[1.4rem] border border-[#6b4a24]/20 bg-[#fff3c5]/30 p-5 shadow-inner sm:p-7"
           >
-            <p className="font-title text-lg leading-tight text-[#2d1b0d]">{page.title}</p>
-            <p className="mt-3 text-sm leading-6 text-[#3e2b18] sm:text-[0.95rem]">{page.text}</p>
+            <p className="font-title text-2xl leading-tight text-[#2d1b0d] sm:text-3xl">{page.title}</p>
+            <p className="mt-5 text-base leading-8 text-[#3e2b18]">{page.text}</p>
           </motion.div>
         </div>
 
@@ -56,7 +52,41 @@ export default function BookPage({ page, isActive }: BookPageProps) {
   );
 }
 
-function IllustratedPlaceholder({ title, chapter }: { title: string; chapter: string }) {
+function ImageLeaf({ page, isImageLoading }: { page: BookPageType; isImageLoading: boolean }) {
+  return (
+    <article className="page parchment-surface page-shadow relative flex h-full w-full flex-col overflow-hidden p-4 text-[#20170d] sm:p-5">
+      <div className="pointer-events-none absolute inset-0 opacity-30 mix-blend-multiply [background:radial-gradient(circle_at_20%_20%,rgba(255,255,255,.55),transparent_10rem),repeating-linear-gradient(90deg,rgba(72,45,19,.08)_0_1px,transparent_1px_5px)]" />
+      <div className="relative z-10 flex h-full flex-col">
+        <header className="mb-3 flex items-center justify-between border-b border-[#6b4a24]/20 pb-3">
+          <p className="font-title text-[0.62rem] uppercase tracking-[0.28em] text-[#6b4a24]/80">Illustration</p>
+          <p className="font-title text-[0.62rem] uppercase tracking-[0.28em] text-[#6b4a24]/80">
+            {String(page.pageNumber).padStart(2, "0")} / 8
+          </p>
+        </header>
+
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-[1.5rem] border border-[#6b4a24]/25 bg-[#32200f] shadow-inner">
+          {page.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={page.imageUrl} alt={page.title} className="h-full w-full object-cover" />
+          ) : (
+            <IllustratedPlaceholder title={page.title} chapter={page.chapter} isImageLoading={isImageLoading} />
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-white/10" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function IllustratedPlaceholder({
+  title,
+  chapter,
+  isImageLoading,
+}: {
+  title: string;
+  chapter: string;
+  isImageLoading: boolean;
+}) {
   return (
     <div
       className={cn(
@@ -67,7 +97,9 @@ function IllustratedPlaceholder({ title, chapter }: { title: string; chapter: st
       <div>
         <p className="font-title text-xs uppercase tracking-[0.32em] text-[#d9bd78]/80">{chapter}</p>
         <p className="font-title mt-4 text-2xl leading-tight text-[#f4e2b5]">{title}</p>
-        <p className="mt-4 text-xs uppercase tracking-[0.24em] text-[#9fb8d8]/70">Vision obscured by fog</p>
+        <p className="mt-4 text-xs uppercase tracking-[0.24em] text-[#9fb8d8]/70">
+          {isImageLoading ? "Illustration being painted..." : "Illustration waiting in the mist"}
+        </p>
       </div>
     </div>
   );
