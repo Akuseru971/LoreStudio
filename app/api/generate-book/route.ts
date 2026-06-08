@@ -170,6 +170,8 @@ async function requestLoreBook(input: BookFormInput, useSchema: boolean) {
       verbosity: "medium",
     },
     max_output_tokens: 6500,
+  }, {
+    timeout: 45000,
   });
 
   return parseLoreBook(getResponseText(response));
@@ -203,7 +205,13 @@ async function attachInitialImages(book: LoreBook) {
   const initialPages = pages.slice(0, Math.min(INITIAL_IMAGE_COUNT, ILLUSTRATED_PAGE_COUNT));
 
   const imageResults = await Promise.allSettled(
-    initialPages.map((page) => generateBookPageImage(book, page, { fallbackOnFailure: true })),
+    initialPages.map((page) =>
+      generateBookPageImage(book, page, {
+        fallbackOnFailure: true,
+        maxAttempts: 2,
+        perAttemptTimeoutMs: 30000,
+      }),
+    ),
   );
 
   imageResults.forEach((result, index) => {

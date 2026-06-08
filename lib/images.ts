@@ -5,17 +5,32 @@ import { dataUrlFromBase64 } from "@/lib/utils";
 
 type GenerateImageOptions = {
   fallbackOnFailure?: boolean;
+  maxAttempts?: number;
+  perAttemptTimeoutMs?: number;
 };
 
 export async function generateBookPageImage(book: LoreBook, page: BookPage, options: GenerateImageOptions = {}) {
+  if (!process.env.OPENAI_API_KEY) {
+    return options.fallbackOnFailure ? buildFallbackIllustration(book, page) : undefined;
+  }
+
   const requestedModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
   const models = Array.from(new Set([requestedModel, "gpt-image-1"]));
   const requestedSize = process.env.OPENAI_IMAGE_SIZE || "1024x1536";
   const sizes = Array.from(new Set([requestedSize, "1024x1024"]));
   const prompt = buildFinalImagePrompt(book, page);
+  const maxAttempts = options.maxAttempts ?? 2;
+  const perAttemptTimeoutMs = options.perAttemptTimeoutMs ?? 35000;
+  let attemptCount = 0;
 
   for (const model of models) {
     for (const size of sizes) {
+      if (attemptCount >= maxAttempts) {
+        break;
+      }
+
+      attemptCount += 1;
+
       try {
         const isGptImageModel = model.startsWith("gpt-image");
         const response = await openai.images.generate(
@@ -26,7 +41,7 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
             ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
           },
           {
-            timeout: 120000,
+            timeout: perAttemptTimeoutMs,
           },
         );
 
