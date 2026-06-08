@@ -68,10 +68,21 @@ npm run build
 ## Deploy on Vercel
 
 1. Import the GitHub repository in Vercel.
-2. Add the environment variables from `.env.example` in Vercel Project Settings.
-3. Deploy with the default Next.js settings.
+2. Make sure Vercel deploys the branch that contains this app, or merge this branch into `main` before deploying production.
+3. Add the environment variables from `.env.example` in Vercel Project Settings.
+4. Deploy with the default Next.js settings.
 
 All OpenAI and ElevenLabs calls happen in server routes under `app/api`, so API keys are not exposed client-side.
+
+### Vercel 404 on first deploy
+
+If Vercel shows `404: NOT_FOUND` on `/`, the project is usually deploying the wrong branch or an older commit. The initial `main` branch only contained a placeholder README before this MVP was added.
+
+Fix it by doing one of the following:
+
+- Merge the MVP branch into `main`, then redeploy production.
+- Or in Vercel, deploy the preview branch that contains `package.json`, `app/page.tsx`, and the `app/api` routes.
+- Confirm the Vercel project root directory is the repository root, not a nested folder.
 
 ## Background music and textures
 
