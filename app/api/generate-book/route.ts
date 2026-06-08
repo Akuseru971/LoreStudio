@@ -10,10 +10,11 @@ export const runtime = "nodejs";
 const loreBookJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "subtitle", "narratorIntro", "characterBible", "pages"],
+  required: ["title", "subtitle", "mainRegion", "narratorIntro", "characterBible", "pages"],
   properties: {
     title: { type: "string" },
     subtitle: { type: "string" },
+    mainRegion: { type: "string" },
     narratorIntro: { type: "string" },
     characterBible: {
       type: "object",
@@ -21,6 +22,7 @@ const loreBookJsonSchema = {
       required: [
         "name",
         "legendaryTitle",
+        "region",
         "visualIdentity",
         "clothing",
         "faceAndBody",
@@ -28,10 +30,12 @@ const loreBookJsonSchema = {
         "symbolicObject",
         "colorPalette",
         "worldRules",
+        "runeterraLoreAnchor",
       ],
       properties: {
         name: { type: "string" },
         legendaryTitle: { type: "string" },
+        region: { type: "string" },
         visualIdentity: { type: "string" },
         clothing: { type: "string" },
         faceAndBody: { type: "string" },
@@ -39,6 +43,7 @@ const loreBookJsonSchema = {
         symbolicObject: { type: "string" },
         colorPalette: { type: "string" },
         worldRules: { type: "string" },
+        runeterraLoreAnchor: { type: "string" },
       },
     },
     pages: {

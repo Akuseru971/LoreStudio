@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import type { BookFormInput } from "@/lib/types";
-import { archetypes, genders, tones, universeStyles } from "@/lib/utils";
+import { archetypes, genders, runeterraRegions, tones, universeStyles } from "@/lib/utils";
 
 type HeroFormProps = {
   onSubmit: (input: BookFormInput) => void;
@@ -15,6 +15,7 @@ const defaultInput: BookFormInput = {
   archetype: "wanderer",
   tone: "mysterious",
   universeStyle: "dark fantasy",
+  runeterraRegion: "Auto",
   strength: "",
   weakness: "",
 };
@@ -31,6 +32,7 @@ export default function HeroForm({ onSubmit, disabled = false }: HeroFormProps) 
       archetype: String(formData.get("archetype") || "wanderer"),
       tone: String(formData.get("tone") || "mysterious"),
       universeStyle: String(formData.get("universeStyle") || "dark fantasy"),
+      runeterraRegion: String(formData.get("runeterraRegion") || "Auto") as BookFormInput["runeterraRegion"],
       strength: String(formData.get("strength") || "").trim().slice(0, 80),
       weakness: String(formData.get("weakness") || "").trim().slice(0, 80),
     });
@@ -100,6 +102,12 @@ export default function HeroForm({ onSubmit, disabled = false }: HeroFormProps) 
               label="Universe style"
               values={universeStyles}
               defaultValue={defaultInput.universeStyle}
+            />
+            <SelectField
+              name="runeterraRegion"
+              label="Runeterra Region"
+              values={runeterraRegions}
+              defaultValue={defaultInput.runeterraRegion}
             />
 
             <label>

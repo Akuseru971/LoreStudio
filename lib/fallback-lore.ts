@@ -12,21 +12,25 @@ const chapters = [
 ];
 
 export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
+  const region = chooseRuneterraRegion(input);
   const legendaryTitle = `${input.name}, the ${titleCase(input.tone)} ${titleCase(input.archetype)}`;
-  const palette = paletteForStyle(input.universeStyle);
-  const identity = `${input.gender === "unknown" ? "enigmatic figure" : input.gender} with a ${input.archetype}'s bearing`;
-  const clothing = `weathered ceremonial armor and layered travelling cloth marked by ${input.universeStyle} sigils`;
+  const palette = paletteForRegion(region);
+  const anchor = loreAnchorForRegion(region);
+  const identity = `${input.gender === "unknown" ? "enigmatic figure" : input.gender} shaped by ${region}, carrying a ${input.archetype}'s bearing`;
+  const clothing = clothingForRegion(region, input.archetype);
   const faceAndBody = `alert eyes, solemn expression, resilient posture, carrying the visible weight of ${input.weakness}`;
-  const aura = `${input.tone} radiance like cold fire around old stone`;
+  const aura = auraForRegion(region, input.tone);
   const symbolicObject = objectForArchetype(input.archetype);
 
   const book: LoreBook = {
-    title: `The Chronicle of ${input.name}`,
-    subtitle: `A ${input.tone} legend from the hidden borders of ${input.universeStyle}.`,
-    narratorIntro: `When the archive could not find ink old enough, it carved ${input.name}'s name into shadow and gold.`,
+    title: `The Runeterran Chronicle of ${input.name}`,
+    subtitle: `A ${input.tone} legend from ${region}, written in shadow, oath, and consequence.`,
+    mainRegion: region,
+    narratorIntro: `In ${region}, every name carries a debt to history. ${input.name}'s was whispered beside a power no village elder dared to claim.`,
     characterBible: {
       name: input.name,
       legendaryTitle,
+      region,
       visualIdentity: identity,
       clothing,
       faceAndBody,
@@ -34,18 +38,19 @@ export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
       symbolicObject,
       colorPalette: palette,
       worldRules:
-        "Power answers memory, oaths leave visible marks, and every victory demands a secret price from the soul.",
+        `${anchor} The story follows an original Runeterran figure and does not alter the deeds of known champions.`,
+      runeterraLoreAnchor: anchor,
     },
     pages: chapters.map((chapter, index) => ({
       pageNumber: index + 1,
       chapter,
-      title: titles(input, index),
-      text: pageText(input, index, legendaryTitle),
+      title: titles(input, index, region),
+      text: pageText(input, index, legendaryTitle, region),
       imagePrompt: [
-        `Full-page illustration for ${chapter}: ${titles(input, index)}.`,
-        `Visual story phase: ${visualPhase(input, index)}.`,
-        `${identity}, ${faceAndBody}, wearing ${clothing}, aura: ${aura}, symbolic object: ${symbolicObject}, color palette: ${palette}.`,
-        "cinematic dark fantasy illustration, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark",
+        `Full-page illustration for ${chapter}: ${titles(input, index, region)}.`,
+        `Visual story phase: ${visualPhase(input, index, region)}.`,
+        `${identity}, ${faceAndBody}, wearing ${clothing}, aura: ${aura}, symbolic object: ${symbolicObject}, color palette: ${palette}, region: ${region}, Runeterra lore anchor: ${anchor}.`,
+        "cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark",
       ].join(" "),
     })),
   };
@@ -61,12 +66,107 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function paletteForStyle(style: string) {
-  if (style.includes("anime")) return "midnight indigo, pale moon blue, ember gold, ink black";
-  if (style.includes("gothic")) return "cathedral black, antique ivory, bruised violet, tarnished gold";
-  if (style.includes("cosmic")) return "void blue, star silver, eclipse purple, cold gold";
-  if (style.includes("crime")) return "wet asphalt black, smoky teal, old blood burgundy, brass gold";
-  return "deep navy, charcoal black, aged parchment, muted royal gold";
+function chooseRuneterraRegion(input: BookFormInput) {
+  if (input.runeterraRegion !== "Auto") {
+    return input.runeterraRegion;
+  }
+
+  if (input.archetype === "monster" || input.gender === "creature") return "The Void";
+  if (input.archetype === "thief" || input.archetype === "assassin" || input.universeStyle === "crime fantasy") {
+    return input.tone === "dark" ? "Zaun" : "Bilgewater";
+  }
+  if (input.archetype === "mage" || input.archetype === "oracle") {
+    return input.tone === "noble" ? "Targon" : "Ionia";
+  }
+  if (input.archetype === "guardian" || input.tone === "heroic" || input.tone === "noble") {
+    return input.archetype === "guardian" ? "Demacia" : "Targon";
+  }
+  if (input.tone === "dark" || input.tone === "cursed" || input.tone === "tragic") {
+    return input.tone === "cursed" ? "Shadow Isles" : "Noxus";
+  }
+  if (input.tone === "mysterious") return "Ionia";
+
+  return "Shurima";
+}
+
+function paletteForRegion(region: string) {
+  const palettes: Record<string, string> = {
+    Demacia: "white stone, royal blue, silver steel, restrained gold",
+    Noxus: "black iron, crimson banners, ash gray, war-tarnished bronze",
+    Ionia: "spirit blossom pink, jade green, dusk violet, soft gold",
+    Piltover: "polished brass, academy blue, cream stone, hextech cyan",
+    Zaun: "chemtech green, rusted copper, sump black, toxic amber",
+    Shurima: "sun gold, desert ochre, turquoise relic light, ancient sandstone",
+    Freljord: "glacial blue, bone white, storm gray, ember orange",
+    Bilgewater: "sea black, lantern orange, weathered teal, salt-stained brass",
+    Targon: "star silver, midnight blue, cosmic violet, solar gold",
+    Ixtal: "jungle emerald, elemental turquoise, obsidian, sunlit gold",
+    "Shadow Isles": "spectral green, grave black, ruined silver, cold mist",
+    "Bandle City": "dreamlike violet, warm amber, moss green, impossible starlight",
+    "The Void": "void purple, abyss black, sickly magenta, alien blue",
+  };
+
+  return palettes[region] || "Runeterran gold, deep navy, ancient stone, twilight blue";
+}
+
+function loreAnchorForRegion(region: string) {
+  const anchors: Record<string, string> = {
+    Demacia: "Demacia's fear of magic, rigid honor, petricite traditions, and borderland duty shape this original character.",
+    Noxus: "Noxian conquest, ambition, military hierarchy, and the shadow of political orders shape this original character.",
+    Ionia: "Ionian spirits, living land, old monasteries, and wounds left by invasion shape this original character.",
+    Piltover: "Piltover's progress, invention, social prestige, and Hextech ambition shape this original character.",
+    Zaun: "Zaunite survival, Chemtech risk, sump experiments, and class resentment shape this original character.",
+    Shurima: "Ancient Shuriman ruins, sun relics, lost empires, and rumors of Ascended power shape this original character.",
+    Freljord: "Freljordian tribes, old oaths, brutal winters, and legends of demigods shape this original character.",
+    Bilgewater: "Bilgewater's cutthroat ports, sea monsters, relic trade, and pirate codes shape this original character.",
+    Targon: "Targon's celestial faiths, Solari and Lunari tensions, and the mountain's impossible trials shape this original character.",
+    Ixtal: "Ixtal's elemental mastery, hidden borders, and guarded knowledge shape this original character.",
+    "Shadow Isles": "The Black Mist, ruined echoes, curses, and the struggle against undeath shape this original character.",
+    "Bandle City": "Bandle City's strange paths, yordle whimsy, and impossible spirit logic shape this original character.",
+    "The Void": "Void corruption, impossible hunger, and the terror of what waits beyond reality shape this original character.",
+  };
+
+  return anchors[region] || "Runeterra's regional conflicts and old magic shape this original character.";
+}
+
+function clothingForRegion(region: string, archetype: string) {
+  const clothing: Record<string, string> = {
+    Demacia: `petricite-trimmed travel armor and a restrained ${archetype}'s mantle`,
+    Noxus: `blackened iron leathers, crimson cloth, and a hard ${archetype}'s silhouette`,
+    Ionia: `layered Ionian robes, lacquered guards, and spirit-woven cords`,
+    Piltover: `tailored academy fabrics, brass fittings, and subtle hextech details`,
+    Zaun: `patched leather, respirator straps, chem-glass vials, and sump-worn layers`,
+    Shurima: `sun-bleached wrappings, ancient gold clasps, and desert-worn armor`,
+    Freljord: `fur-lined armor, bone charms, and frost-bitten tribal patterns`,
+    Bilgewater: `salt-dark coat, brass buckles, sea-worn leather, and hidden knives`,
+    Targon: `celestial fabrics, climbing wraps, and star-metal ornaments`,
+    Ixtal: `woven jungle armor, elemental stones, and bright ceremonial cords`,
+    "Shadow Isles": `torn noble cloth, spectral mail, and mist-stained relic bindings`,
+    "Bandle City": `impossible patchwork finery, tiny charms, and dreamlike travel gear`,
+    "The Void": `scarred armor fused with alien chitin and torn Runeterran cloth`,
+  };
+
+  return clothing[region] || `regional Runeterran clothing with a ${archetype}'s practical details`;
+}
+
+function auraForRegion(region: string, tone: string) {
+  const aura: Record<string, string> = {
+    Demacia: `${tone} petricite glow restrained beneath disciplined breath`,
+    Noxus: `${tone} crimson pressure like banners before war`,
+    Ionia: `${tone} spirit-light moving like petals on water`,
+    Piltover: `${tone} hextech shimmer held behind polished restraint`,
+    Zaun: `${tone} chemtech haze flickering through the veins`,
+    Shurima: `${tone} sunlit sand and ancient relic radiance`,
+    Freljord: `${tone} frostwind aura with ember-deep resolve`,
+    Bilgewater: `${tone} lantern smoke and storm-tide omen`,
+    Targon: `${tone} celestial light from a distant constellation`,
+    Ixtal: `${tone} elemental current coiling through the air`,
+    "Shadow Isles": `${tone} Black Mist glow bound to a stubborn living will`,
+    "Bandle City": `${tone} impossible shimmer, half dream and half warning`,
+    "The Void": `${tone} violet distortion pressing against reality`,
+  };
+
+  return aura[region] || `${tone} Runeterran aura shaped by old magic`;
 }
 
 function objectForArchetype(archetype: string) {
@@ -86,10 +186,50 @@ function objectForArchetype(archetype: string) {
   return objects[archetype] || "an ancient relic of unknown purpose";
 }
 
-function titles(input: BookFormInput, index: number) {
+function powerForRegion(region: string, archetype: string) {
+  const powers: Record<string, string> = {
+    Demacia: "a dangerous magic muted by petricite and oathbound discipline",
+    Noxus: "blood-warm battle sorcery tempered by ruthless will",
+    Ionia: "spirit magic that answers grief, balance, and memory",
+    Piltover: "unstable Hextech resonance locked inside a personal relic",
+    Zaun: "Chemtech-altered vitality that burns brighter than it should",
+    Shurima: "sun-touched relic power awakened from ancient ruins",
+    Freljord: "frostborn endurance whispered through old tribal rites",
+    Bilgewater: "sea-cursed luck bound to a relic from the deep",
+    Targon: "a fragment of celestial radiance earned through suffering",
+    Ixtal: "elemental force shaped by hidden axioms and strict focus",
+    "Shadow Isles": "a living resistance to the Black Mist's claim",
+    "Bandle City": "strange spirit-path magic that refuses ordinary rules",
+    "The Void": "a terrifying void-touched mutation fought through will",
+  };
+
+  return powers[region] || `${archetype} power shaped by Runeterra's old forces`;
+}
+
+function threatForRegion(region: string) {
+  const threats: Record<string, string> = {
+    Demacia: "fear of magic and a secretive magistrate's suspicion",
+    Noxus: "an original warband hungry for status",
+    Ionia: "a restless spirit born from old invasion wounds",
+    Piltover: "a patron who sees people as inventions to own",
+    Zaun: "a Chemtech syndicate with experimental ambitions",
+    Shurima: "a tomb-born cult searching for forbidden relics",
+    Freljord: "a rival oath-circle hardened by winter and prophecy",
+    Bilgewater: "a drowned captain's crew and a debt written in salt",
+    Targon: "a zealot faction reading the stars too narrowly",
+    Ixtal: "a hidden tribunal guarding elemental secrets",
+    "Shadow Isles": "a mistbound wraith seeking a living vessel",
+    "Bandle City": "a path between realms opening where it should not",
+    "The Void": "a small but growing breach beneath familiar ground",
+  };
+
+  return threats[region] || "a lore-compatible regional threat";
+}
+
+function titles(input: BookFormInput, index: number, region: string) {
   const list = [
     `The Birth Beneath the Black Star`,
-    `The Child of ${titleCase(input.universeStyle)}`,
+    `The Child of ${region}`,
     `The Scar That Remembered`,
     `The First Omen`,
     `The Awakening of ${titleCase(input.strength)}`,
@@ -101,31 +241,33 @@ function titles(input: BookFormInput, index: number) {
   return list[index];
 }
 
-function pageText(input: BookFormInput, index: number, legendaryTitle: string) {
+function pageText(input: BookFormInput, index: number, legendaryTitle: string, region: string) {
+  const power = powerForRegion(region, input.archetype);
+  const threat = threatForRegion(region);
   const pages = [
-    `${input.name} was born when the moon vanished behind a black star and the midwives lowered their voices. A mark like cooled gold rested near the heart, pulsing whenever the child breathed. The elders named it a warning, but one silent archivist wrote that ${legendaryTitle} had entered the world before destiny was ready.`,
-    `As a child of ${input.universeStyle}, ${input.name} learned to listen where others only feared silence. The young ${input.archetype} wandered broken courtyards, watched old banners rot, and carried small acts of ${input.strength} like hidden candles. Even then, every kindness seemed to anger the dark, as if the world resisted what the child might become.`,
-    `The wound came before glory. Someone trusted was lost, or something sacred was taken, and ${input.weakness} settled into ${input.name} like winter in the bones. Yet the pain did not end the path. It became a secret chamber, and inside it ${input.strength} began to sharpen, slow and dangerous.`,
-    `Years later, the first sign appeared. A dead lantern lit itself when ${input.name} passed, and the shadows bent toward the ground like servants. No teacher explained it. No priest claimed it. The omen simply followed the ${input.archetype} through rain and ruin, proving that the unseen powers had finally opened one eye.`,
-    `The awakening demanded a price. At the edge of a forbidden shrine, ${input.name} touched ${objectForArchetype(input.archetype)} and felt power answer through blood, breath, and memory. It did not arrive as mercy. It arrived as a storm to be mastered, binding ${input.strength} to a gift that could save or destroy.`,
-    `The enemy rose wearing the shape of ${input.weakness}. It spoke with familiar doubts and moved behind every locked gate, turning allies uncertain and roads hostile. ${input.name} understood then that the war was not only against a monster or throne, but against the part of the soul that still believed defeat was deserved.`,
-    `Transformation came without applause. The old fear remained, but it no longer ruled. Around ${input.name}, the awakened power formed armor, sigil, and flame, changing the ${input.archetype} into a living legend. Those who had seen the child now stepped back, for the wounded heart had become a crown of night.`,
-    `At the final page, the archive refused to close. It showed ${input.name} standing before a door of ash, stars, and unfinished vows. Beyond it waited a kingdom, a curse, or a power with no name. The prophecy ended there, because the next line could only be written by ${input.name}.`,
+    `${input.name} was born in ${region} beneath an omen the elders refused to name. A mark like cooled gold rested near the heart, pulsing whenever the child breathed. Some called it a regional superstition, but one silent chronicler wrote that ${legendaryTitle} had entered Runeterra before destiny was ready.`,
+    `As a child of ${region}, ${input.name} learned the laws of the land before learning peace. The young ${input.archetype} crossed markets, shrines, alleys, or frozen roads shaped by local fear and pride, carrying ${input.strength} like a hidden candle. Even then, the region seemed to test what the child might become.`,
+    `The wound came before glory. A local cruelty, failed oath, or forbidden power left ${input.name} with ${input.weakness} buried deep beneath the ribs. Yet the pain did not end the path. In ${region}, suffering often becomes a weapon, and inside that wound ${input.strength} began to sharpen.`,
+    `Years later, the first sign appeared. ${power} stirred when ${input.name} passed, bending the air around ${objectForArchetype(input.archetype)}. No champion came to explain it, and no history changed for them. The omen simply followed the ${input.archetype}, proving Runeterra had noticed another soul at its margins.`,
+    `The trial demanded a price. In a forgotten place of ${region}, ${input.name} touched ${objectForArchetype(input.archetype)} and awakened ${power}. It did not arrive as mercy. It arrived as a force to be mastered, binding ${input.strength} to a gift that could save a village or doom it.`,
+    `The enemy rose from ${threat}, wearing the shape of ${input.weakness}. It turned neighbors uncertain, roads hostile, and old stories dangerous. ${input.name} understood then that the war was not only against a monster or faction, but against the part of the soul that still believed defeat was deserved.`,
+    `Transformation came without applause. The old fear remained, but it no longer ruled. Around ${input.name}, ${power} formed armor, sigil, and flame, changing the ${input.archetype} into a Runeterran legend. Those who had known the wounded child stepped back, seeing a power still choosing what it would become.`,
+    `At the final page, ${region} offered no clean ending. A door of ash, stars, mist, or machinery opened before ${input.name}, and beyond it waited a kingdom, curse, or war not yet named. The prophecy ended there, because Runeterra leaves its greatest legends unfinished until they choose to move.`,
   ];
 
   return pages[index];
 }
 
-function visualPhase(input: BookFormInput, index: number) {
+function visualPhase(input: BookFormInput, index: number, region: string) {
   const phases = [
-    `the birth of ${input.name} under a black star, elders and omens around the newborn`,
-    `young ${input.name} growing up in ${input.universeStyle}, discovering the first signs of being a ${input.archetype}`,
+    `the birth of ${input.name} in ${region} under a black star, elders and regional omens around the newborn`,
+    `young ${input.name} growing up in ${region}, discovering the first signs of being a ${input.archetype}`,
     `${input.name} at the moment of the defining wound, surrounded by symbols of ${input.weakness}`,
-    `the first supernatural omen appearing before ${input.name}, shadows and ancient lights reacting`,
+    `the first supernatural omen appearing before ${input.name}, ${region}'s magic and ancient lights reacting`,
     `${input.name} obtaining powers from ${objectForArchetype(input.archetype)}, energy awakening through the body`,
-    `${input.name} facing the enemy that embodies ${input.weakness}, external threat and inner fear combined`,
-    `${input.name} transformed into a legendary ${input.archetype}, mastering the awakened power`,
-    `${input.name} before a mysterious prophetic door, open ending, destiny unresolved`,
+    `${input.name} facing a ${region} enemy that embodies ${input.weakness}, external threat and inner fear combined`,
+    `${input.name} transformed into a legendary ${input.archetype} of ${region}, mastering the awakened power`,
+    `${input.name} before a mysterious prophetic door in ${region}, open ending, destiny unresolved`,
   ];
 
   return phases[index];

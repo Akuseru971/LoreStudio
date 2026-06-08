@@ -4,6 +4,21 @@ export type BookFormInput = {
   archetype: string;
   tone: string;
   universeStyle: string;
+  runeterraRegion:
+    | "Auto"
+    | "Demacia"
+    | "Noxus"
+    | "Ionia"
+    | "Piltover"
+    | "Zaun"
+    | "Shurima"
+    | "Freljord"
+    | "Bilgewater"
+    | "Targon"
+    | "Ixtal"
+    | "Shadow Isles"
+    | "Bandle City"
+    | "The Void";
   strength: string;
   weakness: string;
 };
@@ -21,10 +36,12 @@ export type BookPage = {
 export type LoreBook = {
   title: string;
   subtitle: string;
+  mainRegion: string;
   narratorIntro: string;
   characterBible: {
     name: string;
     legendaryTitle: string;
+    region: string;
     visualIdentity: string;
     clothing: string;
     faceAndBody: string;
@@ -32,6 +49,7 @@ export type LoreBook = {
     symbolicObject: string;
     colorPalette: string;
     worldRules: string;
+    runeterraLoreAnchor: string;
   };
   pages: BookPage[];
 };

@@ -26,6 +26,23 @@ export const universeStyles = [
   "crime fantasy",
 ] as const;
 
+export const runeterraRegions = [
+  "Auto",
+  "Demacia",
+  "Noxus",
+  "Ionia",
+  "Piltover",
+  "Zaun",
+  "Shurima",
+  "Freljord",
+  "Bilgewater",
+  "Targon",
+  "Ixtal",
+  "Shadow Isles",
+  "Bandle City",
+  "The Void",
+] as const;
+
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
 }
@@ -55,6 +72,7 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
   const archetype = sanitizeText(source.archetype, 40);
   const tone = sanitizeText(source.tone, 40);
   const universeStyle = sanitizeText(source.universeStyle, 40);
+  const runeterraRegion = sanitizeText(source.runeterraRegion, 40) || "Auto";
 
   if (!name || !strength || !weakness) {
     return { error: "Name, strength, and weakness are required." };
@@ -76,6 +94,10 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
     return { error: "Invalid universe style." };
   }
 
+  if (!runeterraRegions.includes(runeterraRegion as BookFormInput["runeterraRegion"])) {
+    return { error: "Invalid Runeterra region." };
+  }
+
   return {
     input: {
       name,
@@ -83,6 +105,7 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
       archetype,
       tone,
       universeStyle,
+      runeterraRegion: runeterraRegion as BookFormInput["runeterraRegion"],
       strength,
       weakness,
     },
@@ -109,26 +132,36 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     aura: "quiet moonlit aura",
     symbolicObject: "an old sealed book",
     colorPalette: "deep navy, charcoal black, parchment, muted gold",
-    worldRules: "Oaths shape reality and forgotten names hold power.",
+    worldRules: "Runeterra's old powers answer only to consequence, memory, and sacrifice.",
+    region: "Runeterra",
+    runeterraLoreAnchor: "An original Runeterran legend compatible with known regional conflicts.",
   };
+  const mainRegion = sanitizeText(book.mainRegion, 80) || sanitizeText(bible.region, 80) || "Runeterra";
 
   return {
     ...book,
     title: sanitizeText(book.title, 120) || "The Book of the Unwritten Legend",
     subtitle: sanitizeText(book.subtitle, 180) || "A dark fantasy chronicle recovered from a silent archive.",
+    mainRegion,
     narratorIntro:
       sanitizeText(book.narratorIntro, 260) ||
       "The archive opens with a low breath, and a forgotten name begins to glow.",
     characterBible: {
       name: sanitizeText(bible.name, 80) || "The Unnamed",
       legendaryTitle: sanitizeText(bible.legendaryTitle, 120) || "The Unwritten Legend",
+      region: sanitizeText(bible.region, 80) || mainRegion,
       visualIdentity: sanitizeText(bible.visualIdentity, 260) || "enigmatic dark fantasy protagonist",
       clothing: sanitizeText(bible.clothing, 260) || "weathered ceremonial cloak and ancient leather armor",
       faceAndBody: sanitizeText(bible.faceAndBody, 260) || "solemn face, resilient posture, mysterious presence",
       aura: sanitizeText(bible.aura, 180) || "quiet moonlit aura",
       symbolicObject: sanitizeText(bible.symbolicObject, 180) || "an old sealed book",
       colorPalette: sanitizeText(bible.colorPalette, 180) || "deep navy, charcoal black, parchment, muted gold",
-      worldRules: sanitizeText(bible.worldRules, 300) || "Oaths shape reality and forgotten names hold power.",
+      worldRules:
+        sanitizeText(bible.worldRules, 300) ||
+        "Runeterra's old powers answer only to consequence, memory, and sacrifice.",
+      runeterraLoreAnchor:
+        sanitizeText(bible.runeterraLoreAnchor, 300) ||
+        "An original Runeterran legend compatible with known regional conflicts.",
     },
     pages: expectedChapters.map((chapter, index) => {
       const page = book.pages?.[index];

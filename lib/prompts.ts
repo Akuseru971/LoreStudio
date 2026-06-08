@@ -1,37 +1,89 @@
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export function buildLorePrompt(input: BookFormInput) {
-  const system = `You are a master dark fantasy author, narrative designer, and art director.
-You create personalized illustrated lore books.
-You write cinematic, emotional, mysterious stories with clear narrative progression.
-You never reference existing copyrighted franchises.
+  const system = `You are a master narrative designer specialized in the official universe of League of Legends, also known as Runeterra.
+You write cinematic, emotional, mysterious lore books that feel compatible with Riot Games' Runeterra world.
+You create original characters who could plausibly exist in Runeterra.
+You never contradict official League of Legends lore.
+You never invent false facts about existing champions.
 You output strict valid JSON only.`;
 
-  const user = `Create a personalized illustrated lore book for this user:
+  const user = `Create a personalized illustrated lore book for this user, set inside the universe of League of Legends / Runeterra.
 
+User information:
 Name: ${input.name}
 Gender: ${input.gender}
 Archetype: ${input.archetype}
 Tone: ${input.tone}
 Universe style: ${input.universeStyle}
+Runeterra Region: ${input.runeterraRegion}
 Strength: ${input.strength}
 Weakness: ${input.weakness}
+
+The protagonist must be an original character in Runeterra.
+
+Use official Runeterra regions when relevant:
+Demacia, Noxus, Ionia, Piltover, Zaun, Shurima, Freljord, Bilgewater, Targon, Ixtal, Shadow Isles, Bandle City, the Void.
+
+Use official lore elements only when appropriate:
+magic, spirits, Ascended, Darkin, Vastaya, Hextech, Chemtech, Black Rose, Trifarix, Solari, Lunari, Sentinels of Light, the Void, ancient Shuriman ruins, Ionian spirits, Freljordian demigods, Noxian conquest, Demacian fear of magic, Zaunite experiments, Piltover progress.
+
+Canon rules:
+- Do not contradict official League of Legends lore.
+- Do not invent fake events involving existing champions.
+- Existing champions may be mentioned only lightly and only if it makes sense.
+- Do not make the user defeat, replace, marry, kill, or become an existing champion.
+- Do not make the user secretly related to an existing champion.
+- The user must remain an original character.
+- Original places, relics, enemies, prophecies, villages and minor characters are allowed if they do not contradict canon.
+- Do not mention Riot Games, canon, sources, AI, prompts, or generation in the story.
+
+Choose one main Runeterra region for the character.
+If Runeterra Region is "Auto", choose the best region based on archetype, tone, strength and weakness.
+If Runeterra Region is a specific region, the whole story must be anchored in that region.
+
+Region selection logic:
+- heroic / noble / guardian -> Demacia, Targon, Ionia, or Freljord
+- dark / cursed / tragic -> Noxus, Shadow Isles, Zaun, Shurima, or the Void
+- mysterious / spiritual -> Ionia, Targon, Ixtal, Bandle City, or Shadow Isles
+- crime / thief / assassin -> Bilgewater, Zaun, Noxus, or Piltover
+- monster / creature -> Void, Shadow Isles, Freljord, Ixtal, or Shurima
+- mage / oracle -> Ionia, Targon, Ixtal, Shurima, or Demacia
+
+The chosen region must influence:
+- the visual identity
+- the conflict
+- the enemy or threat
+- the tone of the story
+- the character's destiny
+
+The character must receive:
+- a Runeterra region
+- a legendary title
+- a faction or social role, if relevant
+- a personal conflict linked to that region
+- a power or curse that feels believable inside Runeterra
+- an enemy or threat that can be original but lore-compatible
+- a final prophecy that leaves mystery
 
 Return a JSON object matching this exact schema:
 {
   "title": "string",
   "subtitle": "string",
+  "mainRegion": "string",
   "narratorIntro": "string",
   "characterBible": {
     "name": "string",
     "legendaryTitle": "string",
+    "region": "string",
     "visualIdentity": "string",
     "clothing": "string",
     "faceAndBody": "string",
     "aura": "string",
     "symbolicObject": "string",
     "colorPalette": "string",
-    "worldRules": "string"
+    "worldRules": "string",
+    "runeterraLoreAnchor": "string"
   },
   "pages": [
     {
@@ -68,13 +120,16 @@ Rules:
 - Each page text must be 45 to 75 words.
 - The story must have a beginning, progression, conflict, transformation, and mysterious ending.
 - The user must be the protagonist.
-- The story must feel original.
+- The writing must feel like a premium League of Legends lore biography adapted into an illustrated storybook.
+- The story must be original but deeply anchored in Runeterra.
+- Keep the tone cinematic, poetic, mysterious, emotional, and faithful to League of Legends lore.
+- Do not use modern slang, parody, or comedy unless requested.
+- Do not use generic fantasy terms when a Runeterra-specific element fits better.
 - Do not mention AI, prompt, generated, OpenAI, image model, or any technical term.
-- Do not use copyrighted world names, character names, places, factions, or brands.
 - The imagePrompt for each page must describe a full-page illustration.
 - The imagePrompt must visually represent that page's exact life phase and event: birth, childhood, wound, omen, power awakening, enemy, transformation, or prophecy.
 - Every imagePrompt must include the same characterBible details to keep visual consistency.
-- Every imagePrompt must include: cinematic dark fantasy illustration, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark.
+- Every imagePrompt must include: cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark.
 - The imagePrompt must avoid asking for written text inside the image.`;
 
   return { system, user };
@@ -83,7 +138,10 @@ Rules:
 export function buildFinalImagePrompt(book: LoreBook, page: BookPage) {
   const bible = book.characterBible;
   const phase = pagePhase(page.pageNumber);
-  const styleLock = `Consistent protagonist across all images: ${bible.visualIdentity}, ${bible.faceAndBody}, wearing ${bible.clothing}, aura: ${bible.aura}, symbolic object: ${bible.symbolicObject}, color palette: ${bible.colorPalette}. Cinematic dark fantasy premium storybook illustration, realistic painterly rendering, dramatic shadows, atmospheric fog, elegant composition, high detail, no text, no logo, no watermark.`;
+  const styleLock = `Consistent protagonist across all images:
+${bible.visualIdentity}, ${bible.faceAndBody}, wearing ${bible.clothing}, aura: ${bible.aura}, symbolic object: ${bible.symbolicObject}, color palette: ${bible.colorPalette}, region: ${bible.region}, Runeterra lore anchor: ${bible.runeterraLoreAnchor}.
+
+Cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium illustrated storybook art, dramatic lighting, painterly realism, elegant fantasy composition, high detail, atmospheric depth, no text, no logo, no watermark.`;
 
   return [
     `Full-page book illustration for chapter ${page.pageNumber}: ${page.chapter} - ${page.title}.`,
