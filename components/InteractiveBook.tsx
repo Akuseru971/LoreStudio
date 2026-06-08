@@ -2,15 +2,57 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AudioControls from "@/components/AudioControls";
 import BookPage from "@/components/BookPage";
 import ResultActions from "@/components/ResultActions";
 import type { AudioSettings, LoreBook } from "@/lib/types";
 
-const HTMLFlipBook = dynamic(() => import("react-pageflip").then((mod) => mod.HTMLFlipBook), {
-  ssr: false,
-}) as any;
+type PageFlipHandle = {
+  pageFlip: () => {
+    flipPrev: () => void;
+    flipNext: () => void;
+  };
+};
+
+type PageFlipProps = {
+  children: ReactNode;
+  className: string;
+  style: CSSProperties;
+  startPage: number;
+  size: "fixed" | "stretch";
+  width: number;
+  height: number;
+  minWidth: number;
+  maxWidth: number;
+  minHeight: number;
+  maxHeight: number;
+  drawShadow: boolean;
+  flippingTime: number;
+  usePortrait: boolean;
+  startZIndex: number;
+  autoSize: boolean;
+  maxShadowOpacity: number;
+  showCover: boolean;
+  mobileScrollSupport: boolean;
+  clickEventForward: boolean;
+  useMouseEvents: boolean;
+  swipeDistance: number;
+  showPageCorners: boolean;
+  disableFlipByClick: boolean;
+  onFlip?: (event: { data?: number }) => void;
+};
+
+const HTMLFlipBook = dynamic<PageFlipProps & RefAttributes<PageFlipHandle>>(
+  () =>
+    import("react-pageflip").then(
+      (mod) => mod.default as unknown as ComponentType<PageFlipProps & RefAttributes<PageFlipHandle>>,
+    ),
+  {
+    ssr: false,
+  },
+);
 
 type InteractiveBookProps = {
   book: LoreBook;
@@ -28,7 +70,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     voiceEnabled: true,
   });
 
-  const flipRef = useRef<any>(null);
+  const flipRef = useRef<PageFlipHandle | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const activePage = book.pages[activePageIndex] || book.pages[0];
@@ -134,19 +176,37 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       return;
     }
 
+    let timer: number | undefined;
     if (settings.musicEnabled) {
-      void playMusic();
+      timer = window.setTimeout(() => {
+        void playMusic();
+      }, 0);
     } else {
       pauseMusic();
     }
+
+    return () => {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
   }, [isOpen, pauseMusic, playMusic, settings.musicEnabled]);
 
   useEffect(() => {
+    let timer: number | undefined;
     if (isOpen && settings.voiceEnabled) {
-      void playNarration(activePageIndex);
+      timer = window.setTimeout(() => {
+        void playNarration(activePageIndex);
+      }, 0);
     } else if (!settings.voiceEnabled) {
       voiceRef.current?.pause();
     }
+
+    return () => {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
   }, [activePageIndex, isOpen, playNarration, settings.voiceEnabled]);
 
   function handleOpen() {
