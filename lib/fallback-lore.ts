@@ -43,6 +43,7 @@ export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
       text: pageText(input, index, legendaryTitle),
       imagePrompt: [
         `Full-page illustration for ${chapter}: ${titles(input, index)}.`,
+        `Visual story phase: ${visualPhase(input, index)}.`,
         `${identity}, ${faceAndBody}, wearing ${clothing}, aura: ${aura}, symbolic object: ${symbolicObject}, color palette: ${palette}.`,
         "cinematic dark fantasy illustration, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark",
       ].join(" "),
@@ -87,13 +88,13 @@ function objectForArchetype(archetype: string) {
 
 function titles(input: BookFormInput, index: number) {
   const list = [
-    `The Name Beneath the Seal`,
-    `Where ${input.name} First Rose`,
+    `The Birth Beneath the Black Star`,
+    `The Child of ${titleCase(input.universeStyle)}`,
     `The Scar That Remembered`,
-    `The Omen in ${titleCase(input.universeStyle)}`,
-    `The Trial of ${titleCase(input.strength)}`,
+    `The First Omen`,
+    `The Awakening of ${titleCase(input.strength)}`,
     `The Shadow Wearing ${titleCase(input.weakness)}`,
-    `The Crown of the Inner Night`,
+    `The Shape of Power`,
     `The Door Left Open`,
   ];
 
@@ -102,15 +103,30 @@ function titles(input: BookFormInput, index: number) {
 
 function pageText(input: BookFormInput, index: number, legendaryTitle: string) {
   const pages = [
-    `${input.name} was not written in ordinary ink. The name appeared beneath a seal of black wax, trembling as if it knew the hand that would break it. Those who read it felt ${input.strength} stir in the dark, and understood that ${legendaryTitle} had been called before the age was ready.`,
-    `Before the roads had names, ${input.name} crossed the outer provinces of ${input.universeStyle}, where bells rang for strangers and doors opened only to the brave. A quiet hunger followed every step. It was not ambition, but a need to prove that even ${input.weakness} could become a map toward power.`,
-    `The first wound did not bleed. It spoke. It whispered of ${input.weakness}, of every hour when ${input.name} nearly turned away from the path. Yet the wound became a hidden shrine, and within it burned ${input.strength}, small as a coal, stubborn enough to outlast winter.`,
-    `On the seventh dusk, the sky bent low and marked ${input.name} with an omen. Ravens circled without wings, candles burned blue under rain, and the old stones leaned closer. The sign promised no safety. It only revealed that the world had noticed, and that notice was never given freely.`,
-    `The trial came dressed as mercy. ${input.name} was offered rest, praise, and a golden road away from danger. But legends are not made by comfort. With ${input.strength} held like a blade against the ribs, the ${input.archetype} stepped forward and paid with silence, memory, and sleep.`,
-    `The enemy had no single face. It wore every doubt that ${input.weakness} had ever planted, every voice that called the dream foolish. In the halls beneath the archive, ${input.name} met that shadow and did not destroy it. Instead, the shadow was named, and naming made it kneel.`,
-    `What rose afterward was not the same soul that entered. ${input.name} carried the old fear, but it had changed shape, becoming armor with a living pulse. The air darkened around the ${input.archetype}, and even the distant stars seemed to bow toward a power still learning its own name.`,
-    `At the final page, the archive refused to close. It showed ${input.name} a door standing alone in a field of ash and moonlit flowers. Beyond it waited a crown, a curse, or a kingdom not yet born. The prophecy ended there, because some legends must be opened by hand.`,
+    `${input.name} was born when the moon vanished behind a black star and the midwives lowered their voices. A mark like cooled gold rested near the heart, pulsing whenever the child breathed. The elders named it a warning, but one silent archivist wrote that ${legendaryTitle} had entered the world before destiny was ready.`,
+    `As a child of ${input.universeStyle}, ${input.name} learned to listen where others only feared silence. The young ${input.archetype} wandered broken courtyards, watched old banners rot, and carried small acts of ${input.strength} like hidden candles. Even then, every kindness seemed to anger the dark, as if the world resisted what the child might become.`,
+    `The wound came before glory. Someone trusted was lost, or something sacred was taken, and ${input.weakness} settled into ${input.name} like winter in the bones. Yet the pain did not end the path. It became a secret chamber, and inside it ${input.strength} began to sharpen, slow and dangerous.`,
+    `Years later, the first sign appeared. A dead lantern lit itself when ${input.name} passed, and the shadows bent toward the ground like servants. No teacher explained it. No priest claimed it. The omen simply followed the ${input.archetype} through rain and ruin, proving that the unseen powers had finally opened one eye.`,
+    `The awakening demanded a price. At the edge of a forbidden shrine, ${input.name} touched ${objectForArchetype(input.archetype)} and felt power answer through blood, breath, and memory. It did not arrive as mercy. It arrived as a storm to be mastered, binding ${input.strength} to a gift that could save or destroy.`,
+    `The enemy rose wearing the shape of ${input.weakness}. It spoke with familiar doubts and moved behind every locked gate, turning allies uncertain and roads hostile. ${input.name} understood then that the war was not only against a monster or throne, but against the part of the soul that still believed defeat was deserved.`,
+    `Transformation came without applause. The old fear remained, but it no longer ruled. Around ${input.name}, the awakened power formed armor, sigil, and flame, changing the ${input.archetype} into a living legend. Those who had seen the child now stepped back, for the wounded heart had become a crown of night.`,
+    `At the final page, the archive refused to close. It showed ${input.name} standing before a door of ash, stars, and unfinished vows. Beyond it waited a kingdom, a curse, or a power with no name. The prophecy ended there, because the next line could only be written by ${input.name}.`,
   ];
 
   return pages[index];
+}
+
+function visualPhase(input: BookFormInput, index: number) {
+  const phases = [
+    `the birth of ${input.name} under a black star, elders and omens around the newborn`,
+    `young ${input.name} growing up in ${input.universeStyle}, discovering the first signs of being a ${input.archetype}`,
+    `${input.name} at the moment of the defining wound, surrounded by symbols of ${input.weakness}`,
+    `the first supernatural omen appearing before ${input.name}, shadows and ancient lights reacting`,
+    `${input.name} obtaining powers from ${objectForArchetype(input.archetype)}, energy awakening through the body`,
+    `${input.name} facing the enemy that embodies ${input.weakness}, external threat and inner fear combined`,
+    `${input.name} transformed into a legendary ${input.archetype}, mastering the awakened power`,
+    `${input.name} before a mysterious prophetic door, open ending, destiny unresolved`,
+  ];
+
+  return phases[index];
 }
