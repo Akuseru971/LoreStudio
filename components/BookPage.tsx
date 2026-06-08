@@ -10,6 +10,7 @@ type BookPageProps = {
   side?: "image" | "text";
   isImageLoading?: boolean;
   isTextRevealed?: boolean;
+  revealedWordCount?: number;
 };
 
 export default function BookPage({
@@ -18,10 +19,13 @@ export default function BookPage({
   side = "text",
   isImageLoading = false,
   isTextRevealed = true,
+  revealedWordCount,
 }: BookPageProps) {
   if (side === "image") {
     return <ImageLeaf page={page} isImageLoading={isImageLoading} />;
   }
+
+  const textWords = page.text.split(/\s+/).filter(Boolean);
 
   return (
     <article className="page parchment-surface page-shadow relative flex h-full w-full flex-col overflow-hidden p-5 text-[#20170d] sm:p-7">
@@ -47,7 +51,23 @@ export default function BookPage({
           >
             <p className="font-title text-2xl leading-tight text-[#2d1b0d] sm:text-3xl">{page.title}</p>
             {isTextRevealed ? (
-              <p className="mt-5 text-base leading-8 text-[#3e2b18]">{page.text}</p>
+              <p className="mt-5 text-base leading-8 text-[#3e2b18]">
+                {textWords.map((word, index) => (
+                  <motion.span
+                    key={`${page.pageNumber}-${word}-${index}`}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{
+                      opacity: revealedWordCount === undefined || index < revealedWordCount ? 1 : 0.12,
+                      y: revealedWordCount === undefined || index < revealedWordCount ? 0 : 4,
+                    }}
+                    transition={{ duration: 0.28, ease: "easeOut" }}
+                    className="inline-block"
+                  >
+                    {word}
+                    {index < textWords.length - 1 ? "\u00a0" : ""}
+                  </motion.span>
+                ))}
+              </p>
             ) : (
               <p className="mt-5 text-sm italic leading-7 text-[#6b4a24]/75">
                 The narrator draws breath. The ink waits for the voice.

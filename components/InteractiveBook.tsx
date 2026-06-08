@@ -65,13 +65,19 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const [isOpen, setIsOpen] = useState(false);
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [musicAvailable, setMusicAvailable] = useState(false);
-  const [audioCache, setAudioCache] = useState<Record<number, string | null>>({});
+  const [audioCache, setAudioCache] = useState<Record<number, string | null>>(() =>
+    Object.fromEntries(
+      book.pages
+        .filter((page) => page.audioUrl !== undefined)
+        .map((page) => [page.pageNumber, page.audioUrl || null]),
+    ),
+  );
   const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
   const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
   const [revealedPages, setRevealedPages] = useState<Record<number, boolean>>({});
+  const [revealedWordCounts, setRevealedWordCounts] = useState<Record<number, number>>({});
   const [highestReachedIndex, setHighestReachedIndex] = useState(0);
   const [hasCompletedFirstListen, setHasCompletedFirstListen] = useState(false);
-  const [isNarrationPlaying, setIsNarrationPlaying] = useState(false);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [settings, setSettings] = useState<AudioSettings>({
     musicEnabled: true,
@@ -84,6 +90,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
   const autoAdvanceTimerRef = useRef<number | undefined>(undefined);
+  const wordRevealTimerRef = useRef<number | undefined>(undefined);
   const highestReachedRef = useRef(0);
   const hasCompletedFirstListenRef = useRef(false);
   const pagesWithImages = useMemo(
@@ -214,6 +221,18 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
   }, [book.pages, fetchImageForPage]);
 
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        window.clearTimeout(autoAdvanceTimerRef.current);
+      }
+      if (wordRevealTimerRef.current) {
+        window.clearInterval(wordRevealTimerRef.current);
+      }
+      voiceRef.current?.pause();
+    };
+  }, []);
+
   const goToSpread = useCallback(
     (pageIndex: number) => {
       const nextIndex = Math.min(Math.max(pageIndex, 0), illustratedPages.length - 1);
@@ -226,6 +245,74 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const estimateReadingDuration = useCallback((text: string) => {
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
     return Math.min(14000, Math.max(6500, wordCount * 360));
+  }, []);
+
+  const getAudioDuration = useCallback(
+    async (audio: HTMLAudioElement, fallbackText: string) =>
+      new Promise<number>((resolve) => {
+        const fallback = estimateReadingDuration(fallbackText);
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          resolve(audio.duration * 1000);
+          return;
+        }
+
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          resolve(fallback);
+        }, 900);
+
+        function cleanup() {
+          window.clearTimeout(timeout);
+          audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+          audio.removeEventListener("durationchange", onLoadedMetadata);
+        }
+
+        function onLoadedMetadata() {
+          if (Number.isFinite(audio.duration) && audio.duration > 0) {
+            cleanup();
+            resolve(audio.duration * 1000);
+          }
+        }
+
+        audio.addEventListener("loadedmetadata", onLoadedMetadata);
+        audio.addEventListener("durationchange", onLoadedMetadata);
+      }),
+    [estimateReadingDuration],
+  );
+
+  const startWordReveal = useCallback((pageNumber: number, text: string, durationMs: number, runId: number) => {
+    if (wordRevealTimerRef.current) {
+      window.clearInterval(wordRevealTimerRef.current);
+    }
+
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    const totalWords = words.length;
+    if (!totalWords) {
+      return;
+    }
+
+    setRevealedWordCounts((current) => ({ ...current, [pageNumber]: 0 }));
+    const intervalMs = Math.max(90, durationMs / totalWords);
+    let visibleWords = 0;
+
+    wordRevealTimerRef.current = window.setInterval(() => {
+      if (narrationRunRef.current !== runId) {
+        if (wordRevealTimerRef.current) {
+          window.clearInterval(wordRevealTimerRef.current);
+        }
+        return;
+      }
+
+      visibleWords += 1;
+      setRevealedWordCounts((current) => ({
+        ...current,
+        [pageNumber]: Math.min(visibleWords, totalWords),
+      }));
+
+      if (visibleWords >= totalWords && wordRevealTimerRef.current) {
+        window.clearInterval(wordRevealTimerRef.current);
+      }
+    }, intervalMs);
   }, []);
 
   const completeGuidedPage = useCallback(
@@ -260,20 +347,25 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       if (autoAdvanceTimerRef.current) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
+      if (wordRevealTimerRef.current) {
+        window.clearInterval(wordRevealTimerRef.current);
+      }
 
       narrationRunRef.current += 1;
       const runId = narrationRunRef.current;
       voiceRef.current?.pause();
-      setIsNarrationPlaying(false);
+      setRevealedWordCounts((current) => ({ ...current, [page.pageNumber]: 0 }));
 
       if (!settings.voiceEnabled) {
+        const fallbackDuration = estimateReadingDuration(page.text);
         setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
+        startWordReveal(page.pageNumber, page.text, fallbackDuration, runId);
         if (options.autoAdvance) {
           autoAdvanceTimerRef.current = window.setTimeout(() => {
             if (narrationRunRef.current === runId) {
               completeGuidedPage(pageIndex);
             }
-          }, estimateReadingDuration(page.text));
+          }, fallbackDuration);
         }
         return;
       }
@@ -283,15 +375,16 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
         return;
       }
 
-      setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-
       if (!audioUrl) {
+        const fallbackDuration = estimateReadingDuration(page.text);
+        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
+        startWordReveal(page.pageNumber, page.text, fallbackDuration, runId);
         if (options.autoAdvance) {
           autoAdvanceTimerRef.current = window.setTimeout(() => {
             if (narrationRunRef.current === runId) {
               completeGuidedPage(pageIndex);
             }
-          }, estimateReadingDuration(page.text));
+          }, fallbackDuration);
         }
         return;
       }
@@ -304,11 +397,16 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       voice.pause();
       voice.src = audioUrl;
       voice.volume = 0.82;
+      const revealDuration = await getAudioDuration(voice, page.text);
+      if (narrationRunRef.current !== runId) {
+        return;
+      }
       voice.onended = () => {
         if (narrationRunRef.current !== runId) {
           return;
         }
-        setIsNarrationPlaying(false);
+        const totalWords = page.text.trim().split(/\s+/).filter(Boolean).length;
+        setRevealedWordCounts((current) => ({ ...current, [page.pageNumber]: totalWords }));
         if (options.autoAdvance) {
           completeGuidedPage(pageIndex);
         }
@@ -317,7 +415,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
         if (narrationRunRef.current !== runId) {
           return;
         }
-        setIsNarrationPlaying(false);
         if (options.autoAdvance) {
           completeGuidedPage(pageIndex);
         }
@@ -326,20 +423,31 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       try {
         await voice.play();
         if (narrationRunRef.current === runId) {
-          setIsNarrationPlaying(true);
+          setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
+          startWordReveal(page.pageNumber, page.text, revealDuration, runId);
         }
       } catch {
-        setIsNarrationPlaying(false);
+        const fallbackDuration = estimateReadingDuration(page.text);
+        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
+        startWordReveal(page.pageNumber, page.text, fallbackDuration, runId);
         if (options.autoAdvance) {
           autoAdvanceTimerRef.current = window.setTimeout(() => {
             if (narrationRunRef.current === runId) {
               completeGuidedPage(pageIndex);
             }
-          }, estimateReadingDuration(page.text));
+          }, fallbackDuration);
         }
       }
     },
-    [completeGuidedPage, estimateReadingDuration, fetchAudioForPage, illustratedPages, settings.voiceEnabled],
+    [
+      completeGuidedPage,
+      estimateReadingDuration,
+      fetchAudioForPage,
+      getAudioDuration,
+      illustratedPages,
+      settings.voiceEnabled,
+      startWordReveal,
+    ],
   );
 
   useEffect(() => {
@@ -506,11 +614,13 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
               <button
                 type="button"
                 onClick={handleOpen}
-                className="leather-surface group relative min-h-[34rem] w-full max-w-[26rem] overflow-hidden rounded-[2rem] border border-[#d9bd78]/25 p-8 text-center shadow-[0_45px_100px_rgba(0,0,0,0.68)] transition duration-700 hover:-translate-y-2 hover:shadow-[0_55px_120px_rgba(0,0,0,0.78)] sm:min-h-[39rem]"
+                className="leather-surface manuscript-cover group relative min-h-[34rem] w-full max-w-[26rem] overflow-hidden rounded-[2rem] border border-[#d9bd78]/25 p-8 text-center shadow-[0_45px_100px_rgba(0,0,0,0.68)] transition duration-700 hover:-translate-y-2 hover:shadow-[0_55px_120px_rgba(0,0,0,0.78)] sm:min-h-[39rem]"
               >
                 <div className="absolute inset-y-0 left-8 w-2 bg-gradient-to-b from-transparent via-[#d9bd78]/45 to-transparent" />
                 <div className="absolute inset-5 rounded-[1.5rem] border border-[#d9bd78]/30" />
                 <div className="absolute inset-9 rounded-[1.1rem] border border-[#d9bd78]/15" />
+                <div className="absolute left-1/2 top-[18%] h-24 w-24 -translate-x-1/2 rounded-full border border-[#d9bd78]/35 bg-black/20 shadow-[inset_0_4px_14px_rgba(255,240,180,0.16),0_18px_35px_rgba(0,0,0,0.45)]" />
+                <div className="absolute left-1/2 top-[18%] h-10 w-10 -translate-x-1/2 translate-y-7 rotate-45 border border-[#d9bd78]/40 bg-[#d9bd78]/10 shadow-[0_0_30px_rgba(217,189,120,0.16)]" />
                 <div className="relative z-10 flex h-full min-h-[29rem] flex-col items-center justify-between sm:min-h-[34rem]">
                   <div className="flex gap-3">
                     {coverMarks.map((mark) => (
@@ -598,6 +708,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                         side="text"
                         isActive={index === activePageIndex}
                         isTextRevealed={Boolean(revealedPages[page.pageNumber])}
+                        revealedWordCount={revealedWordCounts[page.pageNumber]}
                       />
                     </div>,
                   ])}
@@ -634,7 +745,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
               <AudioControls
                 settings={settings}
                 musicAvailable={musicAvailable}
-                isLoadingVoice={isLoadingVoice || isNarrationPlaying}
+                isLoadingVoice={isLoadingVoice}
                 onToggleMusic={toggleMusic}
                 onToggleVoice={toggleVoice}
                 onReplayVoice={() => void startPageNarration(activePageIndex, { autoAdvance: false })}

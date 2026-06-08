@@ -35,18 +35,37 @@ async function generateImageForPage(book: LoreBook, pageNumber: number) {
   return data.imageUrl || undefined;
 }
 
-async function attachInitialIllustrations(book: LoreBook) {
-  const pages = [...book.pages];
-  const imagePages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+async function generateAudioForPage(page: LoreBook["pages"][number]) {
+  const response = await fetch("/api/generate-audio", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: page.text, pageNumber: page.pageNumber }),
+  });
 
-  const imageResults = await Promise.allSettled(
-    imagePages.map((page) => generateImageForPage(book, page.pageNumber)),
-  );
+  const data = await readJsonResponse<{ audioUrl?: string | null }>(response);
+  return data.audioUrl || null;
+}
+
+async function attachInitialAssets(book: LoreBook) {
+  const pages = [...book.pages];
+  const experiencePages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+
+  const [imageResults, audioResults] = await Promise.all([
+    Promise.allSettled(experiencePages.map((page) => generateImageForPage(book, page.pageNumber))),
+    Promise.allSettled(experiencePages.map((page) => generateAudioForPage(page))),
+  ]);
 
   imageResults.forEach((result, index) => {
     pages[index] = {
       ...pages[index],
       imageUrl: result.status === "fulfilled" ? result.value : undefined,
+    };
+  });
+
+  audioResults.forEach((result, index) => {
+    pages[index] = {
+      ...pages[index],
+      audioUrl: result.status === "fulfilled" ? result.value : null,
     };
   });
 
@@ -77,8 +96,8 @@ export default function Home() {
         throw new Error(data.error || "The archives refused to open. Try again.");
       }
 
-      const illustratedBook = await attachInitialIllustrations(data.book);
-      setBook(illustratedBook);
+      const preparedBook = await attachInitialAssets(data.book);
+      setBook(preparedBook);
       setView("book");
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "The archives refused to open. Try again.");

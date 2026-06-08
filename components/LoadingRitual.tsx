@@ -8,7 +8,7 @@ const phrases = [
   "Binding your name to Runeterra...",
   "Forging the pages of your legend...",
   "Painting the first visions...",
-  "Awakening the narrator...",
+  "Awakening every narrator voice...",
 ];
 
 export default function LoadingRitual() {
@@ -90,7 +90,7 @@ export default function LoadingRitual() {
           />
         </div>
         <p className="mt-4 text-sm leading-6 text-[#9baabd]">
-          The story and its first illustrations are being bound before the book appears.
+          The story, illustrations, and narrator voices are being bound before the book appears.
         </p>
       </section>
     </main>

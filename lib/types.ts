@@ -39,7 +39,7 @@ export type BookPage = {
   };
   imagePrompt: string;
   imageUrl?: string;
-  audioUrl?: string;
+  audioUrl?: string | null;
 };
 
 export type LoreBook = {
