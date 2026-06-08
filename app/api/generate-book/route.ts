@@ -171,7 +171,7 @@ async function requestLoreBook(input: BookFormInput, useSchema: boolean) {
         : { type: "json_object" },
       verbosity: "medium",
     },
-    max_output_tokens: 6500,
+    max_output_tokens: 5000,
   });
 
   return parseLoreBook(getResponseText(response));
@@ -183,10 +183,7 @@ async function generateLoreBook(input: BookFormInput) {
     return buildFallbackLoreBook(input);
   }
 
-  const attempts = [
-    { label: "json_schema", useSchema: true },
-    { label: "json_object", useSchema: false },
-  ];
+  const attempts = [{ label: "json_schema", useSchema: true }];
 
   for (const attempt of attempts) {
     try {

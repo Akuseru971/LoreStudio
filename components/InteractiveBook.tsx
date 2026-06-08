@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import AudioControls from "@/components/AudioControls";
 import BookPage from "@/components/BookPage";
 import ResultActions from "@/components/ResultActions";
-import { ILLUSTRATED_PAGE_COUNT, INITIAL_IMAGE_COUNT } from "@/lib/book-config";
+import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
 
 type PageFlipHandle = {
@@ -188,24 +188,8 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   );
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function prefetchRemainingIllustrations() {
-      const remainingPages = book.pages.slice(INITIAL_IMAGE_COUNT, ILLUSTRATED_PAGE_COUNT);
-
-      for (const page of remainingPages) {
-        if (cancelled) {
-          return;
-        }
-        await fetchImageForPage(page.pageNumber);
-      }
-    }
-
-    void prefetchRemainingIllustrations();
-
-    return () => {
-      cancelled = true;
-    };
+    const pagesToIllustrate = book.pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+    void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
   }, [book.pages, fetchImageForPage]);
 
   const playNarration = useCallback(
