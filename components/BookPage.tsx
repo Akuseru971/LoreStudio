@@ -9,9 +9,16 @@ type BookPageProps = {
   isActive: boolean;
   side?: "image" | "text";
   isImageLoading?: boolean;
+  isTextRevealed?: boolean;
 };
 
-export default function BookPage({ page, isActive, side = "text", isImageLoading = false }: BookPageProps) {
+export default function BookPage({
+  page,
+  isActive,
+  side = "text",
+  isImageLoading = false,
+  isTextRevealed = true,
+}: BookPageProps) {
   if (side === "image") {
     return <ImageLeaf page={page} isImageLoading={isImageLoading} />;
   }
@@ -32,14 +39,20 @@ export default function BookPage({ page, isActive, side = "text", isImageLoading
 
         <div className="flex flex-1 items-center">
           <motion.div
-            key={`${page.pageNumber}-${isActive}`}
+            key={`${page.pageNumber}-${isActive}-${isTextRevealed}`}
             initial={{ opacity: 0, y: 18 }}
-            animate={isActive ? { opacity: 1, y: 0 } : { opacity: 0.72, y: 8 }}
+            animate={isActive && isTextRevealed ? { opacity: 1, y: 0 } : { opacity: 0.72, y: 8 }}
             transition={{ duration: 0.75, ease: "easeOut" }}
             className="w-full rounded-[1.4rem] border border-[#6b4a24]/20 bg-[#fff3c5]/30 p-5 shadow-inner sm:p-7"
           >
             <p className="font-title text-2xl leading-tight text-[#2d1b0d] sm:text-3xl">{page.title}</p>
-            <p className="mt-5 text-base leading-8 text-[#3e2b18]">{page.text}</p>
+            {isTextRevealed ? (
+              <p className="mt-5 text-base leading-8 text-[#3e2b18]">{page.text}</p>
+            ) : (
+              <p className="mt-5 text-sm italic leading-7 text-[#6b4a24]/75">
+                The narrator draws breath. The ink waits for the voice.
+              </p>
+            )}
           </motion.div>
         </div>
 
