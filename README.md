@@ -53,7 +53,7 @@ If your OpenAI account does not have access to `gpt-image-2`, set:
 OPENAI_IMAGE_MODEL=gpt-image-1
 ```
 
-Image generation automatically falls back to `gpt-image-1` if the configured image model fails. GPT Image models return base64 image data, so images are generated page-by-page after the book opens instead of being bundled into the initial book response.
+Image generation automatically falls back to `gpt-image-1` if the configured image model fails. The app generates 5 illustrated double-page spreads: the first 2 images are generated before the book appears, then images 3-5 continue in the background.
 
 ## Development
 

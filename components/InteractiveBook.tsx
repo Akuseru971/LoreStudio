@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import AudioControls from "@/components/AudioControls";
 import BookPage from "@/components/BookPage";
 import ResultActions from "@/components/ResultActions";
+import { ILLUSTRATED_PAGE_COUNT, INITIAL_IMAGE_COUNT } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
 
 type PageFlipHandle = {
@@ -77,12 +78,17 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const requestedImagesRef = useRef<Set<number>>(new Set());
-  const pagesWithImages = book.pages.map((page) => ({
-    ...page,
-    imageUrl: imageCache[page.pageNumber] || page.imageUrl,
-  }));
-  const activePage = pagesWithImages[activePageIndex] || pagesWithImages[0];
-  const isFinalPage = isOpen && activePageIndex >= book.pages.length - 1;
+  const pagesWithImages = useMemo(
+    () =>
+      book.pages.map((page) => ({
+        ...page,
+        imageUrl: imageCache[page.pageNumber] || page.imageUrl,
+      })),
+    [book.pages, imageCache],
+  );
+  const illustratedPages = useMemo(() => pagesWithImages.slice(0, ILLUSTRATED_PAGE_COUNT), [pagesWithImages]);
+  const activePage = illustratedPages[activePageIndex] || illustratedPages[0];
+  const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
 
   const coverMarks = useMemo(() => ["I", "II", "III", "IV"], []);
 
@@ -152,6 +158,10 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
 
   const fetchImageForPage = useCallback(
     async (pageNumber: number) => {
+      if (pageNumber < 1 || pageNumber > ILLUSTRATED_PAGE_COUNT) {
+        return;
+      }
+
       const page = book.pages.find((item) => item.pageNumber === pageNumber);
       if (!page || page.imageUrl || requestedImagesRef.current.has(pageNumber)) {
         return;
@@ -176,6 +186,27 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     },
     [book],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function prefetchRemainingIllustrations() {
+      const remainingPages = book.pages.slice(INITIAL_IMAGE_COUNT, ILLUSTRATED_PAGE_COUNT);
+
+      for (const page of remainingPages) {
+        if (cancelled) {
+          return;
+        }
+        await fetchImageForPage(page.pageNumber);
+      }
+    }
+
+    void prefetchRemainingIllustrations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [book.pages, fetchImageForPage]);
 
   const playNarration = useCallback(
     async (pageIndex: number) => {
@@ -249,7 +280,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       return;
     }
 
-    const page = book.pages[activePageIndex];
+    const page = illustratedPages[activePageIndex];
     if (!page) {
       return;
     }
@@ -261,7 +292,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activePageIndex, book.pages, fetchImageForPage, isOpen]);
+  }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -270,8 +301,8 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
 
     let cancelled = false;
     const orderedPages = [
-      ...book.pages.slice(activePageIndex),
-      ...book.pages.slice(0, activePageIndex),
+      ...illustratedPages.slice(activePageIndex),
+      ...illustratedPages.slice(0, activePageIndex),
     ];
 
     async function prefetchImages() {
@@ -288,7 +319,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     return () => {
       cancelled = true;
     };
-  }, [activePageIndex, book.pages, fetchImageForPage, isOpen]);
+  }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
   function handleOpen() {
     setIsOpen(true);
@@ -300,7 +331,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   function handleFlip(event: { data?: number }) {
     const physicalPage = typeof event.data === "number" ? event.data : 0;
     const nextIndex = Math.floor(Math.max(physicalPage, 0) / 2);
-    setActivePageIndex(Math.min(nextIndex, book.pages.length - 1));
+    setActivePageIndex(Math.min(nextIndex, illustratedPages.length - 1));
   }
 
   function flipPrevious() {
@@ -309,7 +340,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   }
 
   function flipNext() {
-    const nextSpread = Math.min(activePageIndex + 1, book.pages.length - 1);
+    const nextSpread = Math.min(activePageIndex + 1, illustratedPages.length - 1);
     flipRef.current?.pageFlip()?.flip(nextSpread * 2, "top");
   }
 
@@ -427,7 +458,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                   disableFlipByClick={false}
                   onFlip={handleFlip}
                 >
-                  {pagesWithImages.flatMap((page, index) => [
+                  {illustratedPages.flatMap((page, index) => [
                     <div key={`${page.pageNumber}-image`} className="page">
                       <BookPage
                         page={page}

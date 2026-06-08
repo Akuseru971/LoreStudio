@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateBookPageImage } from "@/lib/images";
 import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
@@ -14,13 +15,19 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as { book?: LoreBook; pageNumber?: number };
     const pageNumber = body.pageNumber;
-    if (!body.book || typeof pageNumber !== "number" || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 8) {
+    if (
+      !body.book ||
+      typeof pageNumber !== "number" ||
+      !Number.isInteger(pageNumber) ||
+      pageNumber < 1 ||
+      pageNumber > ILLUSTRATED_PAGE_COUNT
+    ) {
       return NextResponse.json({ imageUrl: null, error: "Invalid image request." }, { status: 400 });
     }
 
     const book = normalizeLoreBook(body.book);
     const page = book.pages[pageNumber - 1];
-    const imageUrl = await generateBookPageImage(book, page);
+    const imageUrl = await generateBookPageImage(book, page, { fallbackOnFailure: true });
 
     return NextResponse.json({ imageUrl: imageUrl || null });
   } catch (error) {
