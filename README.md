@@ -53,7 +53,7 @@ For the premium version, you can switch to a higher-quality image model:
 OPENAI_IMAGE_MODEL=gpt-image-1
 ```
 
-Image generation uses `gpt-image-1-mini` by default to prioritize fast MVP generation. The model remains configurable through `OPENAI_IMAGE_MODEL`. The app generates 5 illustrated double-page spreads. `/api/generate-book` returns the lore first so the book appears quickly, then the browser requests all 5 images in the background through `/api/generate-image`.
+Image generation uses `gpt-image-1-mini` by default to prioritize fast MVP generation. The model remains configurable through `OPENAI_IMAGE_MODEL`. The app generates 5 illustrated double-page spreads. After `/api/generate-book` returns the lore, the browser requests the 5 images through `/api/generate-image` while the cinematic loading screen stays active; once the image requests settle, the book cover fades in.
 
 ## Development
 

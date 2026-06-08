@@ -5,9 +5,9 @@ import { AnimatePresence, motion } from "framer-motion";
 
 const phrases = [
   "Opening the forgotten archives...",
-  "Binding your name to the myth...",
+  "Binding your name to Runeterra...",
   "Forging the pages of your legend...",
-  "Painting what history forgot...",
+  "Painting the first visions...",
   "Awakening the narrator...",
 ];
 
@@ -90,7 +90,7 @@ export default function LoadingRitual() {
           />
         </div>
         <p className="mt-4 text-sm leading-6 text-[#9baabd]">
-          Images, pages, and voices are being bound into a single relic. The archive may take a moment.
+          The story and its first illustrations are being bound before the book appears.
         </p>
       </section>
     </main>

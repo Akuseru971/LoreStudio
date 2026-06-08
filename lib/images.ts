@@ -20,38 +20,37 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
   const models = Array.from(new Set([requestedModel, "gpt-image-1"]));
   const requestedSize = process.env.OPENAI_IMAGE_SIZE || "1024x1536";
   const sizes = Array.from(new Set([requestedSize, "1024x1024"]));
+  const attempts = sizes.flatMap((size) => models.map((model) => ({ model, size })));
   const prompt = buildFinalImagePrompt(book, page);
   const maxAttempts = options.maxAttempts ?? 2;
   let attemptCount = 0;
 
-  for (const model of models) {
-    for (const size of sizes) {
-      if (attemptCount >= maxAttempts) {
-        break;
+  for (const { model, size } of attempts) {
+    if (attemptCount >= maxAttempts) {
+      break;
+    }
+
+    attemptCount += 1;
+
+    try {
+      const isGptImageModel = model.startsWith("gpt-image");
+      const response = await openai.images.generate({
+        model,
+        prompt,
+        size: size as "1024x1024" | "1024x1536" | "1536x1024",
+        ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
+      });
+
+      const image = response.data?.[0];
+      if (image?.b64_json) {
+        return dataUrlFromBase64(image.b64_json, "image/png");
       }
 
-      attemptCount += 1;
-
-      try {
-        const isGptImageModel = model.startsWith("gpt-image");
-        const response = await openai.images.generate({
-          model,
-          prompt,
-          size: size as "1024x1024" | "1024x1536" | "1536x1024",
-          ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
-        });
-
-        const image = response.data?.[0];
-        if (image?.b64_json) {
-          return dataUrlFromBase64(image.b64_json, "image/png");
-        }
-
-        if (image?.url) {
-          return image.url;
-        }
-      } catch (error) {
-        console.warn(`Image generation failed for page ${page.pageNumber} with ${model}/${size}.`, error);
+      if (image?.url) {
+        return image.url;
       }
+    } catch (error) {
+      console.warn(`Image generation failed for page ${page.pageNumber} with ${model}/${size}.`, error);
     }
   }
 
