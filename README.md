@@ -42,18 +42,18 @@ Optional defaults:
 
 ```bash
 OPENAI_TEXT_MODEL=gpt-5
-OPENAI_IMAGE_MODEL=gpt-image-2
+OPENAI_IMAGE_MODEL=gpt-image-1-mini
 OPENAI_IMAGE_SIZE=1024x1536
 ELEVENLABS_MODEL_ID=eleven_v3
 ```
 
-If your OpenAI account does not have access to `gpt-image-2`, set:
+For the premium version, you can switch to a higher-quality image model:
 
 ```bash
 OPENAI_IMAGE_MODEL=gpt-image-1
 ```
 
-Image generation automatically falls back to `gpt-image-1` if the configured image model fails. The app generates 5 illustrated double-page spreads. `/api/generate-book` returns the lore first so the book appears quickly, then the browser requests all 5 images in the background through `/api/generate-image`.
+Image generation uses `gpt-image-1-mini` by default to prioritize fast MVP generation. The model remains configurable through `OPENAI_IMAGE_MODEL`. The app generates 5 illustrated double-page spreads. `/api/generate-book` returns the lore first so the book appears quickly, then the browser requests all 5 images in the background through `/api/generate-image`.
 
 ## Development
 
