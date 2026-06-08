@@ -9,6 +9,20 @@ import type { BookFormInput, LoreBook } from "@/lib/types";
 
 type ViewState = "form" | "loading" | "book" | "error";
 
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const rawText = await response.text();
+
+  try {
+    return JSON.parse(rawText) as T;
+  } catch {
+    throw new Error(
+      response.ok
+        ? "The archives answered in an unreadable language. Try again."
+        : "The archive server failed to answer. Please redeploy or try again.",
+    );
+  }
+}
+
 export default function Home() {
   const [view, setView] = useState<ViewState>("form");
   const [book, setBook] = useState<LoreBook | null>(null);
@@ -25,7 +39,7 @@ export default function Home() {
         body: JSON.stringify(input),
       });
 
-      const data = (await response.json()) as { book?: LoreBook; error?: string };
+      const data = await readJsonResponse<{ book?: LoreBook; error?: string }>(response);
       if (!response.ok || !data.book) {
         throw new Error(data.error || "The archives refused to open. Try again.");
       }

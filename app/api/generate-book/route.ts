@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { buildFinalImagePrompt, buildLorePrompt } from "@/lib/prompts";
+import { buildLorePrompt } from "@/lib/prompts";
 import { openai } from "@/lib/openai";
 import type { LoreBook } from "@/lib/types";
-import { dataUrlFromBase64, normalizeLoreBook, validateBookInput } from "@/lib/utils";
+import { normalizeLoreBook, validateBookInput } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,44 +42,6 @@ async function generateLoreBook(input: NonNullable<ReturnType<typeof validateBoo
   return normalizeLoreBook(parsed);
 }
 
-async function generatePageImage(book: LoreBook, pageIndex: number) {
-  const page = book.pages[pageIndex];
-  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-  const prompt = buildFinalImagePrompt(book, page);
-
-  async function requestImage(size: "1024x1536" | "1024x1024") {
-    return openai.images.generate({
-      model,
-      prompt,
-      size,
-      response_format: "b64_json",
-    });
-  }
-
-  try {
-    let response;
-    try {
-      response = await requestImage("1024x1536");
-    } catch (portraitError) {
-      console.warn("Portrait image generation failed; retrying square image.", portraitError);
-      response = await requestImage("1024x1024");
-    }
-
-    const image = response.data?.[0];
-    if (image?.b64_json) {
-      return dataUrlFromBase64(image.b64_json, "image/png");
-    }
-
-    if (image?.url) {
-      return image.url;
-    }
-  } catch (error) {
-    console.warn(`Image generation failed for page ${page.pageNumber}.`, error);
-  }
-
-  return undefined;
-}
-
 export async function POST(request: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -94,17 +56,10 @@ export async function POST(request: Request) {
 
     const loreBook = await generateLoreBook(input);
 
-    // MVP note: eight image generations can be slow on serverless functions. This
-    // keeps the first build simple with allSettled, while preserving graceful
-    // placeholders. A production scale-up can move images to background jobs.
-    const imageResults = await Promise.allSettled(loreBook.pages.map((_, index) => generatePageImage(loreBook, index)));
-
-    const pages = loreBook.pages.map((page, index) => ({
-      ...page,
-      imageUrl: imageResults[index].status === "fulfilled" ? imageResults[index].value : undefined,
-    }));
-
-    return NextResponse.json({ book: { ...loreBook, pages } });
+    // Returning 8 base64 images in one serverless response can exceed Vercel's
+    // response body limits. Images are generated lazily one page at a time via
+    // /api/generate-image, while the book remains immediately usable.
+    return NextResponse.json({ book: loreBook });
   } catch (error) {
     console.error("Book generation failed.", error);
     return NextResponse.json({ error: "The archives refused to open. Try again." }, { status: 500 });

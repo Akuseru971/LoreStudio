@@ -64,6 +64,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [musicAvailable, setMusicAvailable] = useState(false);
   const [audioCache, setAudioCache] = useState<Record<number, string | null>>({});
+  const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [settings, setSettings] = useState<AudioSettings>({
     musicEnabled: true,
@@ -73,7 +74,11 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const flipRef = useRef<PageFlipHandle | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
-  const activePage = book.pages[activePageIndex] || book.pages[0];
+  const pagesWithImages = book.pages.map((page) => ({
+    ...page,
+    imageUrl: imageCache[page.pageNumber] || page.imageUrl,
+  }));
+  const activePage = pagesWithImages[activePageIndex] || pagesWithImages[0];
   const isFinalPage = isOpen && activePageIndex >= book.pages.length - 1;
 
   const coverMarks = useMemo(() => ["I", "II", "III", "IV"], []);
@@ -142,6 +147,27 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     [audioCache],
   );
 
+  const fetchImageForPage = useCallback(
+    async (pageNumber: number) => {
+      if (imageCache[pageNumber] !== undefined) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ book, pageNumber }),
+        });
+        const data = (await response.json()) as { imageUrl?: string | null };
+        setImageCache((current) => ({ ...current, [pageNumber]: data.imageUrl || null }));
+      } catch {
+        setImageCache((current) => ({ ...current, [pageNumber]: null }));
+      }
+    },
+    [book, imageCache],
+  );
+
   const playNarration = useCallback(
     async (pageIndex: number) => {
       const page = book.pages[pageIndex];
@@ -208,6 +234,25 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       }
     };
   }, [activePageIndex, isOpen, playNarration, settings.voiceEnabled]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const page = book.pages[activePageIndex];
+    if (!page) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void fetchImageForPage(page.pageNumber);
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [activePageIndex, book.pages, fetchImageForPage, isOpen]);
 
   function handleOpen() {
     setIsOpen(true);
@@ -343,7 +388,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                   disableFlipByClick={false}
                   onFlip={handleFlip}
                 >
-                  {book.pages.map((page, index) => (
+                  {pagesWithImages.map((page, index) => (
                     <div key={page.pageNumber} className="page">
                       <BookPage page={page} isActive={index === activePageIndex} />
                     </div>
