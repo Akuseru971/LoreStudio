@@ -89,7 +89,7 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
   };
 }
 
-export function normalizeLoreBook(book: LoreBook): LoreBook {
+export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
   const expectedChapters = [
     "The Name",
     "Origin",
@@ -100,9 +100,36 @@ export function normalizeLoreBook(book: LoreBook): LoreBook {
     "The Transformation",
     "The Final Prophecy",
   ];
+  const bible = book.characterBible || {
+    name: "The Unnamed",
+    legendaryTitle: "The Unwritten Legend",
+    visualIdentity: "enigmatic dark fantasy protagonist",
+    clothing: "weathered ceremonial cloak and ancient leather armor",
+    faceAndBody: "solemn face, resilient posture, mysterious presence",
+    aura: "quiet moonlit aura",
+    symbolicObject: "an old sealed book",
+    colorPalette: "deep navy, charcoal black, parchment, muted gold",
+    worldRules: "Oaths shape reality and forgotten names hold power.",
+  };
 
   return {
     ...book,
+    title: sanitizeText(book.title, 120) || "The Book of the Unwritten Legend",
+    subtitle: sanitizeText(book.subtitle, 180) || "A dark fantasy chronicle recovered from a silent archive.",
+    narratorIntro:
+      sanitizeText(book.narratorIntro, 260) ||
+      "The archive opens with a low breath, and a forgotten name begins to glow.",
+    characterBible: {
+      name: sanitizeText(bible.name, 80) || "The Unnamed",
+      legendaryTitle: sanitizeText(bible.legendaryTitle, 120) || "The Unwritten Legend",
+      visualIdentity: sanitizeText(bible.visualIdentity, 260) || "enigmatic dark fantasy protagonist",
+      clothing: sanitizeText(bible.clothing, 260) || "weathered ceremonial cloak and ancient leather armor",
+      faceAndBody: sanitizeText(bible.faceAndBody, 260) || "solemn face, resilient posture, mysterious presence",
+      aura: sanitizeText(bible.aura, 180) || "quiet moonlit aura",
+      symbolicObject: sanitizeText(bible.symbolicObject, 180) || "an old sealed book",
+      colorPalette: sanitizeText(bible.colorPalette, 180) || "deep navy, charcoal black, parchment, muted gold",
+      worldRules: sanitizeText(bible.worldRules, 300) || "Oaths shape reality and forgotten names hold power.",
+    },
     pages: expectedChapters.map((chapter, index) => {
       const page = book.pages?.[index];
 
