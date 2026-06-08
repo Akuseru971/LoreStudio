@@ -80,7 +80,7 @@ All OpenAI and ElevenLabs calls happen in server routes under `app/api`, so API 
 
 The narration defaults to ElevenLabs voice `32RJn1LZiXZZLVacVQoD` with model `eleven_v3`. You can override either value in Vercel with `ELEVENLABS_VOICE_ID` or `ELEVENLABS_MODEL_ID`.
 
-API routes are split to avoid long blocking requests: book generation is capped at 60 seconds, image generation at 120 seconds, and audio at 60 seconds.
+API routes are split to avoid one long blocking request. The repository does not configure `maxDuration`; Vercel will apply the timeout allowed by your project plan.
 
 ### Vercel 404 on first deploy
 

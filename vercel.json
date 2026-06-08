@@ -1,16 +1,5 @@
 {
   "framework": "nextjs",
   "installCommand": "npm install",
-  "buildCommand": "npm run build",
-  "functions": {
-    "app/api/generate-book/route.ts": {
-      "maxDuration": 60
-    },
-    "app/api/generate-image/route.ts": {
-      "maxDuration": 120
-    },
-    "app/api/generate-audio/route.ts": {
-      "maxDuration": 60
-    }
-  }
+  "buildCommand": "npm run build"
 }

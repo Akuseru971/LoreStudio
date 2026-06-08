@@ -6,7 +6,6 @@ import { dataUrlFromBase64 } from "@/lib/utils";
 type GenerateImageOptions = {
   fallbackOnFailure?: boolean;
   maxAttempts?: number;
-  perAttemptTimeoutMs?: number;
 };
 
 export async function generateBookPageImage(book: LoreBook, page: BookPage, options: GenerateImageOptions = {}) {
@@ -20,7 +19,6 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
   const sizes = Array.from(new Set([requestedSize, "1024x1024"]));
   const prompt = buildFinalImagePrompt(book, page);
   const maxAttempts = options.maxAttempts ?? 2;
-  const perAttemptTimeoutMs = options.perAttemptTimeoutMs ?? 35000;
   let attemptCount = 0;
 
   for (const model of models) {
@@ -33,17 +31,12 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
 
       try {
         const isGptImageModel = model.startsWith("gpt-image");
-        const response = await openai.images.generate(
-          {
-            model,
-            prompt,
-            size: size as "1024x1024" | "1024x1536" | "1536x1024",
-            ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
-          },
-          {
-            timeout: perAttemptTimeoutMs,
-          },
-        );
+        const response = await openai.images.generate({
+          model,
+          prompt,
+          size: size as "1024x1024" | "1024x1536" | "1536x1024",
+          ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
+        });
 
         const image = response.data?.[0];
         if (image?.b64_json) {

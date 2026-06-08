@@ -6,7 +6,6 @@ import type { BookFormInput, LoreBook } from "@/lib/types";
 import { normalizeLoreBook, validateBookInput } from "@/lib/utils";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
 const loreBookJsonSchema = {
   type: "object",
@@ -168,8 +167,6 @@ async function requestLoreBook(input: BookFormInput, useSchema: boolean) {
       verbosity: "medium",
     },
     max_output_tokens: 6500,
-  }, {
-    timeout: 45000,
   });
 
   return parseLoreBook(getResponseText(response));

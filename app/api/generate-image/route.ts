@@ -5,7 +5,6 @@ import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
@@ -27,7 +26,6 @@ export async function POST(request: Request) {
       ? await generateBookPageImage(book, page, {
           fallbackOnFailure: true,
           maxAttempts: 2,
-          perAttemptTimeoutMs: 45000,
         })
       : buildFallbackIllustration(book, page);
 
