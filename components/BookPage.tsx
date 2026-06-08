@@ -55,13 +55,15 @@ export default function BookPage({
                 {textWords.map((word, index) => (
                   <motion.span
                     key={`${page.pageNumber}-${word}-${index}`}
-                    initial={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0, y: 5, filter: "blur(10px)" }}
                     animate={{
-                      opacity: revealedWordCount === undefined || index < revealedWordCount ? 1 : 0.12,
-                      y: revealedWordCount === undefined || index < revealedWordCount ? 0 : 4,
+                      opacity: revealedWordCount === undefined || index < revealedWordCount ? 1 : 0,
+                      y: revealedWordCount === undefined || index < revealedWordCount ? 0 : 5,
+                      filter:
+                        revealedWordCount === undefined || index < revealedWordCount ? "blur(0px)" : "blur(10px)",
                     }}
-                    transition={{ duration: 0.28, ease: "easeOut" }}
-                    className="inline-block"
+                    transition={{ duration: 0.42, ease: "easeOut" }}
+                    className="smokey-word inline-block"
                   >
                     {word}
                     {index < textWords.length - 1 ? "\u00a0" : ""}

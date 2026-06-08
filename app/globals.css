@@ -239,6 +239,25 @@ button {
   border-radius: 18px;
 }
 
+.smokey-word {
+  position: relative;
+  text-shadow:
+    0 0 10px rgba(62, 43, 24, 0.16),
+    0 0 22px rgba(91, 61, 31, 0.12);
+  will-change: opacity, transform, filter;
+}
+
+.smokey-word::after {
+  position: absolute;
+  inset: -0.12em -0.18em;
+  z-index: -1;
+  content: "";
+  opacity: 0.18;
+  background: radial-gradient(circle, rgba(72, 45, 19, 0.18), transparent 58%);
+  filter: blur(8px);
+  transform: translateY(-0.02em);
+}
+
 .ritual-particle {
   position: absolute;
   width: 3px;

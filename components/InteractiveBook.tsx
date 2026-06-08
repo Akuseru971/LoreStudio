@@ -90,7 +90,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
   const autoAdvanceTimerRef = useRef<number | undefined>(undefined);
-  const wordRevealTimerRef = useRef<number | undefined>(undefined);
+  const wordRevealFrameRef = useRef<number | undefined>(undefined);
   const highestReachedRef = useRef(0);
   const hasCompletedFirstListenRef = useRef(false);
   const pagesWithImages = useMemo(
@@ -226,8 +226,8 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       if (autoAdvanceTimerRef.current) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
-      if (wordRevealTimerRef.current) {
-        window.clearInterval(wordRevealTimerRef.current);
+      if (wordRevealFrameRef.current) {
+        window.cancelAnimationFrame(wordRevealFrameRef.current);
       }
       voiceRef.current?.pause();
     };
@@ -280,9 +280,15 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     [estimateReadingDuration],
   );
 
-  const startWordReveal = useCallback((pageNumber: number, text: string, durationMs: number, runId: number) => {
-    if (wordRevealTimerRef.current) {
-      window.clearInterval(wordRevealTimerRef.current);
+  const startWordReveal = useCallback((
+    pageNumber: number,
+    text: string,
+    durationMs: number,
+    runId: number,
+    audio?: HTMLAudioElement,
+  ) => {
+    if (wordRevealFrameRef.current) {
+      window.cancelAnimationFrame(wordRevealFrameRef.current);
     }
 
     const words = text.trim().split(/\s+/).filter(Boolean);
@@ -292,27 +298,35 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     }
 
     setRevealedWordCounts((current) => ({ ...current, [pageNumber]: 0 }));
-    const intervalMs = Math.max(90, durationMs / totalWords);
-    let visibleWords = 0;
+    const startedAt = performance.now();
+    let lastVisibleWords = -1;
 
-    wordRevealTimerRef.current = window.setInterval(() => {
+    function tick() {
       if (narrationRunRef.current !== runId) {
-        if (wordRevealTimerRef.current) {
-          window.clearInterval(wordRevealTimerRef.current);
-        }
         return;
       }
 
-      visibleWords += 1;
-      setRevealedWordCounts((current) => ({
-        ...current,
-        [pageNumber]: Math.min(visibleWords, totalWords),
-      }));
+      const elapsedMs =
+        audio && !audio.paused && Number.isFinite(audio.currentTime)
+          ? audio.currentTime * 1000
+          : performance.now() - startedAt;
+      const progress = Math.min(1, Math.max(0, elapsedMs / durationMs));
+      const visibleWords = progress > 0 ? Math.min(totalWords, Math.max(1, Math.ceil(progress * totalWords))) : 0;
 
-      if (visibleWords >= totalWords && wordRevealTimerRef.current) {
-        window.clearInterval(wordRevealTimerRef.current);
+      if (visibleWords !== lastVisibleWords) {
+        lastVisibleWords = visibleWords;
+        setRevealedWordCounts((current) => ({
+          ...current,
+          [pageNumber]: visibleWords,
+        }));
       }
-    }, intervalMs);
+
+      if (progress < 1) {
+        wordRevealFrameRef.current = window.requestAnimationFrame(tick);
+      }
+    }
+
+    wordRevealFrameRef.current = window.requestAnimationFrame(tick);
   }, []);
 
   const completeGuidedPage = useCallback(
@@ -347,8 +361,8 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       if (autoAdvanceTimerRef.current) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
-      if (wordRevealTimerRef.current) {
-        window.clearInterval(wordRevealTimerRef.current);
+      if (wordRevealFrameRef.current) {
+        window.cancelAnimationFrame(wordRevealFrameRef.current);
       }
 
       narrationRunRef.current += 1;
@@ -424,7 +438,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
         await voice.play();
         if (narrationRunRef.current === runId) {
           setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-          startWordReveal(page.pageNumber, page.text, revealDuration, runId);
+          startWordReveal(page.pageNumber, page.text, revealDuration, runId, voice);
         }
       } catch {
         const fallbackDuration = estimateReadingDuration(page.text);
