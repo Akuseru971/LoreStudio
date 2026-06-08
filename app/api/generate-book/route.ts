@@ -5,7 +5,7 @@ import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook, validateBookInput } from "@/lib/utils";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function extractJson(text: string) {
   const trimmed = text.trim();

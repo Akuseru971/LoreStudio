@@ -77,6 +77,8 @@ All OpenAI and ElevenLabs calls happen in server routes under `app/api`, so API 
 
 The narration defaults to ElevenLabs voice `32RJn1LZiXZZLVacVQoD` with model `eleven_v3`. You can override either value in Vercel with `ELEVENLABS_VOICE_ID` or `ELEVENLABS_MODEL_ID`.
 
+The API routes are configured for a 300 second maximum duration. Make sure your Vercel plan supports 5 minute serverless functions; otherwise Vercel may still stop long generations earlier.
+
 ### Vercel 404 on first deploy
 
 If Vercel shows `404: NOT_FOUND` on `/`, the project is usually deploying the wrong branch or an older commit. The initial `main` branch only contained a placeholder README before this MVP was added.
