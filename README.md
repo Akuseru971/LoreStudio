@@ -34,7 +34,7 @@ Required:
 ```bash
 OPENAI_API_KEY=
 ELEVENLABS_API_KEY=
-ELEVENLABS_VOICE_ID=
+ELEVENLABS_VOICE_ID=32RJn1LZiXZZLVacVQoD
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
@@ -43,6 +43,7 @@ Optional defaults:
 ```bash
 OPENAI_TEXT_MODEL=gpt-5
 OPENAI_IMAGE_MODEL=gpt-image-2
+ELEVENLABS_MODEL_ID=eleven_v3
 ```
 
 If your OpenAI account does not have access to `gpt-image-2`, set:
@@ -73,6 +74,8 @@ npm run build
 4. Deploy with the default Next.js settings.
 
 All OpenAI and ElevenLabs calls happen in server routes under `app/api`, so API keys are not exposed client-side.
+
+The narration defaults to ElevenLabs voice `32RJn1LZiXZZLVacVQoD` with model `eleven_v3`. You can override either value in Vercel with `ELEVENLABS_VOICE_ID` or `ELEVENLABS_MODEL_ID`.
 
 ### Vercel 404 on first deploy
 

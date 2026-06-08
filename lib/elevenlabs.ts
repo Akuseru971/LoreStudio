@@ -1,10 +1,14 @@
 import { dataUrlFromBase64, sanitizeText } from "@/lib/utils";
 
+const DEFAULT_ELEVENLABS_VOICE_ID = "32RJn1LZiXZZLVacVQoD";
+const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";
+
 export async function generateNarrationAudio(text: string) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVENLABS_VOICE_ID;
+  const modelId = process.env.ELEVENLABS_MODEL_ID || DEFAULT_ELEVENLABS_MODEL_ID;
 
-  if (!apiKey || !voiceId) {
+  if (!apiKey) {
     return null;
   }
 
@@ -22,7 +26,7 @@ export async function generateNarrationAudio(text: string) {
     },
     body: JSON.stringify({
       text: safeText,
-      model_id: "eleven_multilingual_v2",
+      model_id: modelId,
       voice_settings: {
         stability: 0.45,
         similarity_boost: 0.85,
