@@ -53,7 +53,7 @@ If your OpenAI account does not have access to `gpt-image-2`, set:
 OPENAI_IMAGE_MODEL=gpt-image-1
 ```
 
-Image generation automatically falls back to `gpt-image-1` if the configured image model fails. The app generates 5 illustrated double-page spreads: the first 2 images are generated before the book appears, then images 3-5 continue in the background.
+Image generation automatically falls back to `gpt-image-1` if the configured image model fails. The app generates 5 illustrated double-page spreads. `/api/generate-book` returns the lore quickly, then the browser requests the first 2 images before revealing the book. Images 3-5 continue through `/api/generate-image` in the background, avoiding one long Vercel function request.
 
 ## Development
 
@@ -80,7 +80,7 @@ All OpenAI and ElevenLabs calls happen in server routes under `app/api`, so API 
 
 The narration defaults to ElevenLabs voice `32RJn1LZiXZZLVacVQoD` with model `eleven_v3`. You can override either value in Vercel with `ELEVENLABS_VOICE_ID` or `ELEVENLABS_MODEL_ID`.
 
-The API routes are configured for a 300 second maximum duration. Make sure your Vercel plan supports 5 minute serverless functions; otherwise Vercel may still stop long generations earlier.
+API routes are split to avoid long blocking requests: book generation is capped at 60 seconds, image generation at 120 seconds, and audio at 60 seconds.
 
 ### Vercel 404 on first deploy
 

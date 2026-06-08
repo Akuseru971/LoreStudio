@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { INITIAL_IMAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
-import { generateBookPageImage } from "@/lib/images";
 import { buildLorePrompt } from "@/lib/prompts";
 import { openai } from "@/lib/openai";
 import type { BookFormInput, LoreBook } from "@/lib/types";
 import { normalizeLoreBook, validateBookInput } from "@/lib/utils";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const loreBookJsonSchema = {
   type: "object",
@@ -200,33 +198,6 @@ async function generateLoreBook(input: BookFormInput) {
   return buildFallbackLoreBook(input);
 }
 
-async function attachInitialImages(book: LoreBook) {
-  const pages = [...book.pages];
-  const initialPages = pages.slice(0, Math.min(INITIAL_IMAGE_COUNT, ILLUSTRATED_PAGE_COUNT));
-
-  const imageResults = await Promise.allSettled(
-    initialPages.map((page) =>
-      generateBookPageImage(book, page, {
-        fallbackOnFailure: true,
-        maxAttempts: 2,
-        perAttemptTimeoutMs: 30000,
-      }),
-    ),
-  );
-
-  imageResults.forEach((result, index) => {
-    pages[index] = {
-      ...pages[index],
-      imageUrl: result.status === "fulfilled" ? result.value : undefined,
-    };
-  });
-
-  return {
-    ...book,
-    pages,
-  };
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -236,11 +207,10 @@ export async function POST(request: Request) {
     }
 
     const loreBook = await generateLoreBook(input);
-    const bookWithInitialImages = await attachInitialImages(loreBook);
 
-    // The app waits for the first two illustrations here, then the client renders
-    // the book and asks /api/generate-image for pages 3-5 in the background.
-    return NextResponse.json({ book: bookWithInitialImages });
+    // Keep this route fast: image generation happens through /api/generate-image.
+    // The client waits for the first two image calls before revealing the book.
+    return NextResponse.json({ book: loreBook });
   } catch (error) {
     console.error("Book generation failed.", error);
     return NextResponse.json({ error: "The archives refused to open. Try again." }, { status: 500 });

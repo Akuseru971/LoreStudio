@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import HeroForm from "@/components/HeroForm";
 import InteractiveBook from "@/components/InteractiveBook";
 import LoadingRitual from "@/components/LoadingRitual";
+import { INITIAL_IMAGE_COUNT } from "@/lib/book-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
 
 type ViewState = "form" | "loading" | "book" | "error";
@@ -21,6 +22,38 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
         : "The archive server failed to answer. Please redeploy or try again.",
     );
   }
+}
+
+async function generateImageForPage(book: LoreBook, pageNumber: number) {
+  const response = await fetch("/api/generate-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ book, pageNumber }),
+  });
+
+  const data = await readJsonResponse<{ imageUrl?: string | null }>(response);
+  return data.imageUrl || undefined;
+}
+
+async function attachInitialImages(book: LoreBook) {
+  const pages = [...book.pages];
+  const initialPages = pages.slice(0, INITIAL_IMAGE_COUNT);
+
+  const imageResults = await Promise.allSettled(
+    initialPages.map((page) => generateImageForPage(book, page.pageNumber)),
+  );
+
+  imageResults.forEach((result, index) => {
+    pages[index] = {
+      ...pages[index],
+      imageUrl: result.status === "fulfilled" ? result.value : undefined,
+    };
+  });
+
+  return {
+    ...book,
+    pages,
+  };
 }
 
 export default function Home() {
@@ -44,7 +77,8 @@ export default function Home() {
         throw new Error(data.error || "The archives refused to open. Try again.");
       }
 
-      setBook(data.book);
+      const bookWithInitialImages = await attachInitialImages(data.book);
+      setBook(bookWithInitialImages);
       setView("book");
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "The archives refused to open. Try again.");
