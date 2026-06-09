@@ -824,3 +824,302 @@ button {
     opacity: 0;
   }
 }
+
+/* ── Creation Ritual ── */
+
+.ritual-shell {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(40, 62, 98, 0.2), transparent 55%),
+    radial-gradient(ellipse at 20% 80%, rgba(20, 30, 50, 0.35), transparent 45%);
+}
+
+.ritual-background-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(70, 110, 160, 0.14), transparent 38rem),
+    radial-gradient(circle at 18% 22%, rgba(50, 80, 130, 0.1), transparent 22rem),
+    linear-gradient(180deg, #03040a 0%, #080c14 50%, #03040a 100%);
+}
+
+.ritual-smoke {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  mix-blend-mode: screen;
+}
+
+.ritual-smoke-a {
+  left: 5%;
+  top: 20%;
+  width: 22rem;
+  height: 16rem;
+  background: radial-gradient(ellipse, rgba(68, 102, 148, 0.35), transparent 72%);
+}
+
+.ritual-smoke-b {
+  right: 4%;
+  top: 30%;
+  width: 24rem;
+  height: 18rem;
+  background: radial-gradient(ellipse, rgba(52, 78, 118, 0.28), transparent 70%);
+}
+
+.ritual-smoke-c {
+  left: 20%;
+  bottom: 10%;
+  width: 18rem;
+  height: 14rem;
+  background: radial-gradient(ellipse, rgba(42, 62, 95, 0.25), transparent 68%);
+}
+
+.ritual-panel {
+  border: 1px solid rgba(201, 168, 88, 0.15);
+  background:
+    linear-gradient(145deg, rgba(14, 20, 32, 0.92), rgba(5, 7, 12, 0.96)),
+    radial-gradient(circle at top, rgba(90, 130, 180, 0.08), transparent 18rem);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.65);
+}
+
+.ritual-progress-track {
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 3px;
+}
+
+.ritual-progress-fill {
+  height: 0.55rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4a6080, #a89068 45%, #d4bc88 85%, #8aafd8);
+  box-shadow: 0 0 16px rgba(138, 175, 216, 0.25);
+}
+
+.ritual-progress-step {
+  flex: 1;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  transition: background 0.5s ease;
+}
+
+.ritual-progress-step-active {
+  background: linear-gradient(90deg, rgba(168, 144, 104, 0.5), rgba(138, 175, 216, 0.45));
+}
+
+.ritual-character-card {
+  background:
+    linear-gradient(145deg, rgba(12, 18, 28, 0.88), rgba(6, 8, 14, 0.94)),
+    radial-gradient(circle at 80% 20%, rgba(90, 130, 180, 0.08), transparent 12rem);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.ritual-region-seal {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  opacity: 0.55;
+  filter: blur(0.5px);
+}
+
+.ritual-seal-demacia { background: radial-gradient(circle, rgba(220, 210, 180, 0.5), rgba(160, 150, 120, 0.2)); border: 1px solid rgba(210, 190, 140, 0.35); }
+.ritual-seal-noxus { background: radial-gradient(circle, rgba(180, 60, 50, 0.45), rgba(80, 40, 40, 0.2)); border: 1px solid rgba(140, 50, 45, 0.35); }
+.ritual-seal-ionia { background: radial-gradient(circle, rgba(200, 140, 180, 0.4), rgba(120, 80, 140, 0.15)); border: 1px solid rgba(180, 120, 160, 0.3); }
+.ritual-seal-piltover { background: radial-gradient(circle, rgba(180, 160, 100, 0.4), rgba(80, 120, 180, 0.2)); border: 1px solid rgba(140, 170, 210, 0.3); }
+.ritual-seal-zaun { background: radial-gradient(circle, rgba(80, 180, 100, 0.35), rgba(40, 80, 50, 0.2)); border: 1px solid rgba(60, 140, 80, 0.35); }
+.ritual-seal-shurima { background: radial-gradient(circle, rgba(220, 180, 80, 0.45), rgba(140, 100, 40, 0.2)); border: 1px solid rgba(200, 160, 60, 0.35); }
+.ritual-seal-freljord { background: radial-gradient(circle, rgba(180, 210, 230, 0.4), rgba(100, 140, 170, 0.15)); border: 1px solid rgba(160, 200, 230, 0.3); }
+.ritual-seal-bilgewater { background: radial-gradient(circle, rgba(100, 130, 150, 0.4), rgba(160, 130, 80, 0.2)); border: 1px solid rgba(120, 150, 170, 0.3); }
+.ritual-seal-targon { background: radial-gradient(circle, rgba(200, 210, 230, 0.45), rgba(120, 140, 180, 0.2)); border: 1px solid rgba(180, 190, 220, 0.35); }
+.ritual-seal-ixtal { background: radial-gradient(circle, rgba(60, 180, 120, 0.4), rgba(30, 100, 70, 0.2)); border: 1px solid rgba(50, 160, 100, 0.35); }
+.ritual-seal-shadow-isles { background: radial-gradient(circle, rgba(40, 120, 120, 0.4), rgba(10, 20, 30, 0.3)); border: 1px solid rgba(50, 140, 140, 0.3); }
+.ritual-seal-bandle { background: radial-gradient(circle, rgba(180, 140, 220, 0.4), rgba(100, 80, 160, 0.2)); border: 1px solid rgba(160, 120, 200, 0.35); }
+.ritual-seal-void { background: radial-gradient(circle, rgba(120, 60, 180, 0.45), rgba(40, 20, 60, 0.3)); border: 1px solid rgba(100, 50, 160, 0.35); }
+.ritual-seal-default { background: radial-gradient(circle, rgba(140, 160, 190, 0.35), transparent); border: 1px solid rgba(140, 160, 190, 0.25); }
+
+.ritual-page-card {
+  background: linear-gradient(168deg, #e8d5a8, #c4a672);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.ritual-page-placeholder {
+  position: relative;
+  background:
+    radial-gradient(circle at 40% 30%, rgba(180, 155, 110, 0.2), transparent 50%),
+    linear-gradient(135deg, #1a1208, #0a1018);
+}
+
+.ritual-shimmer {
+  background: linear-gradient(105deg, transparent 0%, rgba(180, 200, 230, 0.12) 45%, transparent 90%);
+  animation: ritual-shimmer 2.8s ease-in-out infinite;
+}
+
+@keyframes ritual-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.ritual-choice-panel {
+  border: 1px solid rgba(201, 168, 88, 0.12);
+  border-radius: 1rem;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 1rem 1.1rem;
+}
+
+.ritual-relic-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 0.5rem;
+  border: 1px solid rgba(201, 168, 88, 0.15);
+  border-radius: 0.75rem;
+  background: rgba(8, 12, 20, 0.6);
+  color: rgba(212, 196, 160, 0.85);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+}
+
+.ritual-relic-option:hover,
+.ritual-relic-option-selected {
+  border-color: rgba(201, 168, 88, 0.45);
+  background: rgba(20, 28, 42, 0.75);
+  box-shadow: 0 0 20px rgba(126, 182, 255, 0.1);
+}
+
+.ritual-relic-icon {
+  font-size: 1.25rem;
+  opacity: 0.85;
+}
+
+.ritual-relic-label {
+  font-size: 0.58rem;
+  text-align: center;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+}
+
+.ritual-quote-option {
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(201, 168, 88, 0.1);
+  border-radius: 0.75rem;
+  background: rgba(8, 12, 20, 0.5);
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.ritual-quote-option:hover,
+.ritual-quote-option-selected {
+  border-color: rgba(201, 168, 88, 0.38);
+  background: rgba(18, 26, 40, 0.7);
+}
+
+.ritual-binding-checklist {
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(201, 168, 88, 0.12);
+  border-radius: 1rem;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.ritual-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: rgba(120, 135, 155, 0.65);
+  transition: color 0.4s ease;
+}
+
+.ritual-checklist-done {
+  color: rgba(200, 190, 160, 0.88);
+}
+
+.ritual-checklist-active {
+  color: rgba(180, 200, 230, 0.9);
+}
+
+.ritual-checklist-mark {
+  width: 1.1rem;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.ritual-book-silhouette {
+  position: relative;
+  width: 11rem;
+  height: 15rem;
+  transform-style: preserve-3d;
+}
+
+.ritual-book-silhouette-glow {
+  filter: drop-shadow(0 0 28px rgba(90, 140, 210, 0.35));
+}
+
+.ritual-silhouette-spine {
+  position: absolute;
+  top: 0.3rem;
+  left: -0.5rem;
+  bottom: 0.3rem;
+  width: 1rem;
+  border-radius: 0.3rem 0 0 0.3rem;
+  background: linear-gradient(90deg, #0a0e14, #1a2230);
+}
+
+.ritual-silhouette-pages {
+  position: absolute;
+  top: 0.35rem;
+  right: -0.4rem;
+  bottom: 0.35rem;
+  width: 0.85rem;
+  border-radius: 0 0.2rem 0.2rem 0;
+  background: repeating-linear-gradient(180deg, #b89868 0 2px, #d4b888 2px 4px);
+}
+
+.ritual-silhouette-cover {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.4rem 0.7rem 0.7rem 0.4rem;
+  background:
+    radial-gradient(ellipse at 50% 35%, rgba(80, 110, 150, 0.2), transparent 50%),
+    linear-gradient(155deg, #1a2230, #080c12 55%, #0e1218);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(201, 168, 88, 0.15);
+}
+
+.ritual-silhouette-medallion {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 168, 88, 0.3);
+  background: radial-gradient(circle, rgba(60, 90, 130, 0.4), rgba(10, 14, 20, 0.9));
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 20px rgba(90, 140, 210, 0.2);
+}
+
+.ritual-voice-panel {
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.ritual-waveform {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  height: 2.5rem;
+}
+
+.ritual-waveform-bar {
+  width: 3px;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #8aafd8, #a89068);
+  transform-origin: bottom;
+}
