@@ -210,19 +210,28 @@ export default function Home() {
       }));
     };
 
+    const generatePageImage = async (page: (typeof experiencePages)[number]) => {
+      const index = page.pageNumber - 1;
+      try {
+        const imageUrl = await generateImageForPage(baseBook, page.pageNumber);
+        pages[index] = { ...pages[index], imageUrl };
+      } catch {
+        pages[index] = { ...pages[index], imageUrl: undefined };
+      } finally {
+        imagesReadyCount += 1;
+        syncBook();
+      }
+    };
+
+    const firstPage = experiencePages[0];
+    const remainingImagePages = firstPage ? experiencePages.slice(1) : experiencePages;
+
+    if (firstPage) {
+      void generatePageImage(firstPage);
+    }
+
     const assetPromises = [
-      ...experiencePages.map(async (page) => {
-        const index = page.pageNumber - 1;
-        try {
-          const imageUrl = await generateImageForPage(baseBook, page.pageNumber);
-          pages[index] = { ...pages[index], imageUrl };
-        } catch {
-          pages[index] = { ...pages[index], imageUrl: undefined };
-        } finally {
-          imagesReadyCount += 1;
-          syncBook();
-        }
-      }),
+      ...remainingImagePages.map((page) => generatePageImage(page)),
       ...experiencePages.map(async (page) => {
         const index = page.pageNumber - 1;
         try {
@@ -262,9 +271,9 @@ export default function Home() {
     setRitualBook(null);
     setBook(null);
     setRitualStatus(createInitialRitualStatus());
+    setIsPlayingFirstLine(false);
     setSelectedRelic(null);
     setSelectedFinalQuote(null);
-    setIsPlayingFirstLine(false);
     voiceRef.current?.pause();
 
     try {

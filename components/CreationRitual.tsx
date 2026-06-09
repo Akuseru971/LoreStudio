@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import CharacterReveal from "@/components/CharacterReveal";
 import FinalQuoteChoice from "@/components/FinalQuoteChoice";
+import LegendRevealSequence from "@/components/LegendRevealSequence";
 import MagicalRitualBackground from "@/components/MagicalRitualBackground";
 import PagePreviewRitual from "@/components/PagePreviewRitual";
 import RelicChoice from "@/components/RelicChoice";
@@ -104,7 +105,10 @@ export default function CreationRitual({
   const [displayProgress, setDisplayProgress] = useState(status.progress);
   const [messageIndex, setMessageIndex] = useState(0);
   const [characterRevealed, setCharacterRevealed] = useState(false);
+  const [legendRevealDone, setLegendRevealDone] = useState(false);
+  const [postRevealMessage, setPostRevealMessage] = useState(false);
   const characterTimerRef = useRef<number | undefined>(undefined);
+  const revealSessionRef = useRef<string | null>(null);
 
   const phase = status.phase;
   const messages = PHASE_MESSAGES[phase];
@@ -130,23 +134,61 @@ export default function CreationRitual({
   const relics = useMemo(() => getRelicsForRegion(region === "Auto" ? "Ionia" : region), [region]);
   const quotes = useMemo(() => (book ? generateFinalQuotes(book) : []), [book]);
 
-  const showChoices = Boolean(book && status.loreReady && phase !== "archive" && phase !== "complete");
+  const showLegendReveal = Boolean(
+    book && status.loreReady && !legendRevealDone && phase !== "complete",
+  );
+
+  const firstRevealImageUrl = book?.pages[0]?.imageUrl || null;
+
+  const showChoices = Boolean(
+    book && status.loreReady && legendRevealDone && phase !== "archive" && phase !== "complete",
+  );
   const showCharacter = Boolean(
-    book && status.loreReady && characterRevealed && phase !== "archive" && phase !== "complete",
+    book &&
+      status.loreReady &&
+      legendRevealDone &&
+      characterRevealed &&
+      phase !== "archive" &&
+      phase !== "complete",
   );
 
   useEffect(() => {
-    if (status.loreReady && book && !characterRevealed) {
-      characterTimerRef.current = window.setTimeout(() => {
-        setCharacterRevealed(true);
-      }, 1200);
+    if (!book || !status.loreReady) {
+      setLegendRevealDone(false);
+      setPostRevealMessage(false);
+      revealSessionRef.current = null;
+      return;
     }
+
+    const sessionKey = `${book.characterBible.name}-${book.title}`;
+    if (revealSessionRef.current !== sessionKey) {
+      revealSessionRef.current = sessionKey;
+      setLegendRevealDone(false);
+      setPostRevealMessage(false);
+    }
+  }, [book, status.loreReady]);
+
+  useEffect(() => {
+    if (!status.loreReady || !book || !legendRevealDone || characterRevealed) {
+      return;
+    }
+
+    characterTimerRef.current = window.setTimeout(() => {
+      setCharacterRevealed(true);
+    }, 900);
+
     return () => {
       if (characterTimerRef.current) {
         window.clearTimeout(characterTimerRef.current);
       }
     };
-  }, [book, characterRevealed, status.loreReady]);
+  }, [book, characterRevealed, legendRevealDone, status.loreReady]);
+
+  const handleLegendRevealComplete = useCallback(() => {
+    setLegendRevealDone(true);
+    setPostRevealMessage(true);
+    window.setTimeout(() => setPostRevealMessage(false), 5000);
+  }, []);
 
   useEffect(() => {
     setMessageIndex(0);
@@ -217,7 +259,26 @@ export default function CreationRitual({
     <main className="archive-shell ritual-shell relative min-h-screen overflow-hidden px-4 py-8 sm:px-6">
       <MagicalRitualBackground phase={phase} />
 
-      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl flex-col">
+      <AnimatePresence>
+        {showLegendReveal && book ? (
+          <LegendRevealSequence
+            key="legend-reveal"
+            isVisible={showLegendReveal}
+            name={book.characterBible.name}
+            legendaryTitle={book.characterBible.legendaryTitle}
+            region={book.mainRegion || book.characterBible.region}
+            imageUrl={firstRevealImageUrl}
+            onComplete={handleLegendRevealComplete}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <div
+        className={cn(
+          "relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl flex-col transition-opacity duration-700",
+          showLegendReveal ? "pointer-events-none opacity-0" : "opacity-100",
+        )}
+      >
         <header className="mb-6 text-center">
           <p className="font-title text-[0.62rem] uppercase tracking-[0.38em] text-[#a89068]/75">
             The Creation Ritual
@@ -280,7 +341,14 @@ export default function CreationRitual({
                 exit={{ opacity: 0, y: -12 }}
                 transition={{ duration: 0.55 }}
               >
-                <RitualPhase phase={phase} message={currentMessage}>
+                <RitualPhase
+                  phase={phase}
+                  message={
+                    postRevealMessage
+                      ? "The first page is being written…"
+                      : currentMessage
+                  }
+                >
                   {(phase === "archive" || (phase === "binding" && !showCharacter)) && (
                     <div className="flex justify-center py-4">
                       <BookSilhouette glowing={phase === "binding"} />
