@@ -9,6 +9,7 @@ import BookPage from "@/components/BookPage";
 import ResultActions from "@/components/ResultActions";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type PageFlipHandle = {
   pageFlip: () => {
@@ -61,6 +62,9 @@ type InteractiveBookProps = {
   onReset: () => void;
 };
 
+const OPENING_DURATION_MS = 2100;
+const NARRATION_START_DELAY_MS = 900;
+
 export default function InteractiveBook({ book, onReset }: InteractiveBookProps) {
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
   const [activePageIndex, setActivePageIndex] = useState(0);
@@ -111,7 +115,21 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     ? activePageIndex < illustratedPages.length - 1
     : canLookBack && activePageIndex < highestReachedIndex;
 
-  const coverMarks = useMemo(() => ["I", "II", "III", "IV"], []);
+  const coverParticles = useMemo(
+    () =>
+      Array.from({ length: 10 }, (_, index) => ({
+        id: index,
+        left: `${12 + ((index * 17) % 76)}%`,
+        top: `${18 + ((index * 23) % 64)}%`,
+        duration: `${4 + (index % 4)}s`,
+        delay: `${index * 0.35}s`,
+      })),
+    [],
+  );
+
+  const characterName = book.characterBible.name;
+  const showCover = bookState !== "open";
+  const showOpenBook = bookState === "opening" || bookState === "open";
 
   useEffect(() => {
     highestReachedRef.current = highestReachedIndex;
@@ -427,23 +445,18 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   }, [isOpen, pauseMusic, playMusic, settings.musicEnabled]);
 
   useEffect(() => {
-    let timer: number | undefined;
-    if (isOpen && settings.voiceEnabled) {
-      timer = window.setTimeout(() => {
-        void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
-      }, 0);
-    } else if (isOpen && !settings.voiceEnabled) {
-      timer = window.setTimeout(() => {
-        void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
-      }, 0);
+    if (!isOpen) {
+      return;
     }
 
+    const timer = window.setTimeout(() => {
+      void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
+    }, NARRATION_START_DELAY_MS);
+
     return () => {
-      if (timer) {
-        window.clearTimeout(timer);
-      }
+      window.clearTimeout(timer);
     };
-  }, [activePageIndex, hasCompletedFirstListen, isOpen, settings.voiceEnabled, startPageNarration]);
+  }, [activePageIndex, hasCompletedFirstListen, isOpen, startPageNarration]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -506,7 +519,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     void playMusic();
     window.setTimeout(() => {
       setBookState("open");
-    }, 1700);
+    }, OPENING_DURATION_MS);
   }
 
   function handleFlip(event: { data?: number }) {
@@ -562,187 +575,243 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       {musicAvailable ? <audio ref={musicRef} src="/audio/mysterious-theme.mp3" loop preload="auto" /> : null}
 
       <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col items-center justify-center">
-        <AnimatePresence mode="wait">
-          {!isOpen ? (
-            <motion.section
-              key="cover"
-              initial={{ opacity: 0, y: 38, rotateX: 8 }}
-              animate={
-                bookState === "opening"
-                  ? { opacity: 1, y: -10, rotateX: 0, scale: 1.07 }
-                  : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
-              }
-              exit={{ opacity: 0, scale: 0.96, filter: "blur(10px)" }}
-              transition={{ duration: bookState === "opening" ? 1.45 : 0.85, ease: "easeOut" }}
-              className="book-scene flex w-full justify-center"
-            >
-              <motion.button
-                type="button"
-                onClick={handleOpen}
-                disabled={bookState === "opening"}
+        <div className="book-scene relative w-full">
+          <AnimatePresence>
+            {showOpenBook ? (
+              <motion.section
+                key="pages"
+                initial={{ opacity: 0, y: 28, scale: 0.94 }}
                 animate={
                   bookState === "opening"
-                    ? {
-                        rotateY: -13,
-                        boxShadow:
-                          "0 65px 140px rgba(0,0,0,0.82), 0 0 90px rgba(71,132,211,0.22), inset -24px 0 38px rgba(0,0,0,0.58)",
-                      }
-                    : { rotateY: 0 }
+                    ? { opacity: 0.2, y: 8, scale: 0.98 }
+                    : { opacity: 1, y: 0, scale: 1 }
                 }
-                transition={{ duration: 1.7, ease: [0.22, 1, 0.36, 1] }}
-                className="leather-surface manuscript-cover group relative min-h-[34rem] w-full max-w-[26rem] overflow-hidden rounded-[2rem] border border-[#d9bd78]/25 p-8 text-center shadow-[0_45px_100px_rgba(0,0,0,0.68)] transition duration-700 hover:-translate-y-2 hover:shadow-[0_55px_120px_rgba(0,0,0,0.78)] sm:min-h-[39rem]"
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: bookState === "opening" ? 1.6 : 0.85, ease: "easeOut" }}
+                className={cn(
+                  "w-full",
+                  bookState === "opening" ? "pointer-events-none absolute inset-x-0 top-0" : "relative",
+                )}
+                aria-hidden={bookState === "opening"}
               >
-                <motion.div
-                  className="pointer-events-none absolute inset-y-8 right-0 z-20 w-10 bg-[#7eb6ff]/20 blur-xl"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: bookState === "opening" ? [0, 0.95, 0.4] : 0 }}
-                  transition={{ duration: 1.45, ease: "easeInOut" }}
-                />
-                <motion.div
-                  className="pointer-events-none absolute inset-0 z-20 bg-[radial-gradient(circle_at_70%_50%,rgba(126,182,255,0.22),transparent_34%)]"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: bookState === "opening" ? 1 : 0 }}
-                  transition={{ duration: 1.2 }}
-                />
-                <div className="absolute inset-y-0 left-8 w-2 bg-gradient-to-b from-transparent via-[#d9bd78]/45 to-transparent" />
-                <div className="absolute inset-5 rounded-[1.5rem] border border-[#d9bd78]/30" />
-                <div className="absolute inset-9 rounded-[1.1rem] border border-[#d9bd78]/15" />
-                <div className="absolute left-1/2 top-[18%] h-24 w-24 -translate-x-1/2 rounded-full border border-[#d9bd78]/35 bg-black/20 shadow-[inset_0_4px_14px_rgba(255,240,180,0.16),0_18px_35px_rgba(0,0,0,0.45)]" />
-                <div className="absolute left-1/2 top-[18%] h-10 w-10 -translate-x-1/2 translate-y-7 rotate-45 border border-[#d9bd78]/40 bg-[#d9bd78]/10 shadow-[0_0_30px_rgba(217,189,120,0.16)]" />
-                <div className="relative z-10 flex h-full min-h-[29rem] flex-col items-center justify-between sm:min-h-[34rem]">
-                  <div className="flex gap-3">
-                    {coverMarks.map((mark) => (
-                      <span
-                        key={mark}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d9bd78]/30 text-xs text-[#d9bd78]/80"
-                      >
-                        {mark}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div>
-                    <p className="font-title text-xs uppercase tracking-[0.42em] text-[#d9bd78]/80">Personal myth</p>
-                    <h1 className="font-title mt-6 text-4xl leading-tight text-[#f8e8c5] sm:text-5xl">{book.title}</h1>
-                    <p className="mx-auto mt-5 max-w-xs text-sm leading-7 text-[#bfc8d4]">{book.subtitle}</p>
-                  </div>
-
-                  <div>
-                    <p className="mx-auto mb-5 max-w-xs text-sm italic leading-7 text-[#b6a481]">{book.narratorIntro}</p>
-                    <span className="gold-button inline-flex rounded-full px-6 py-3 text-xs font-bold uppercase tracking-[0.24em]">
-                      {bookState === "opening" ? "The archive awakens" : "Open the book"}
-                    </span>
-                  </div>
+                <div className="mb-5 text-center">
+                  <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
+                    {activePage.chapter}
+                  </p>
+                  <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{characterName}</h1>
                 </div>
-              </motion.button>
-            </motion.section>
-          ) : (
-            <motion.section
-              key="pages"
-              initial={{ opacity: 0, y: 32, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.75, ease: "easeOut" }}
-              className="w-full"
-            >
-              <div className="mb-5 text-center">
-                <p className="font-title text-xs uppercase tracking-[0.36em] text-[#d9bd78]">
-                  {activePage.chapter}
-                </p>
-                <h1 className="font-title mt-2 text-3xl text-[#f7ebce] sm:text-4xl">{book.title}</h1>
-              </div>
 
-              <div className="book-scene mx-auto flex w-full max-w-6xl justify-center overflow-visible">
-                <HTMLFlipBook
-                  ref={flipRef}
-                  className="pageflip-root"
-                  style={{}}
-                  startPage={0}
-                  size="stretch"
-                  width={420}
-                  height={640}
-                  minWidth={300}
-                  maxWidth={460}
-                  minHeight={500}
-                  maxHeight={700}
-                  drawShadow
-                  flippingTime={950}
-                  usePortrait
-                  startZIndex={0}
-                  autoSize
-                  maxShadowOpacity={0.55}
-                  showCover={false}
-                  mobileScrollSupport
-                  clickEventForward
-                  useMouseEvents={!isGuidedFirstListen}
-                  swipeDistance={30}
-                  showPageCorners
-                  disableFlipByClick={isGuidedFirstListen}
-                  onFlip={handleFlip}
-                >
-                  {illustratedPages.flatMap((page, index) => [
-                    <div key={`${page.pageNumber}-image`} className="page">
-                      <BookPage
-                        page={page}
-                        side="image"
-                        isActive={index === activePageIndex}
-                        isImageLoading={Boolean(loadingImages[page.pageNumber])}
-                        isTextRevealed={Boolean(revealedPages[page.pageNumber])}
+                <div className="mx-auto flex w-full max-w-6xl justify-center overflow-visible">
+                  <HTMLFlipBook
+                    ref={flipRef}
+                    className="pageflip-root"
+                    style={{}}
+                    startPage={0}
+                    size="stretch"
+                    width={420}
+                    height={640}
+                    minWidth={300}
+                    maxWidth={460}
+                    minHeight={500}
+                    maxHeight={700}
+                    drawShadow
+                    flippingTime={950}
+                    usePortrait
+                    startZIndex={0}
+                    autoSize
+                    maxShadowOpacity={0.55}
+                    showCover={false}
+                    mobileScrollSupport
+                    clickEventForward
+                    useMouseEvents={!isGuidedFirstListen}
+                    swipeDistance={30}
+                    showPageCorners
+                    disableFlipByClick={isGuidedFirstListen}
+                    onFlip={handleFlip}
+                  >
+                    {illustratedPages.flatMap((page, index) => [
+                      <div key={`${page.pageNumber}-image`} className="page">
+                        <BookPage
+                          page={page}
+                          side="image"
+                          isActive={index === activePageIndex}
+                          isImageLoading={Boolean(loadingImages[page.pageNumber])}
+                          isTextRevealed={Boolean(revealedPages[page.pageNumber])}
+                        />
+                      </div>,
+                      <div key={`${page.pageNumber}-text`} className="page">
+                        <BookPage
+                          page={page}
+                          side="text"
+                          isActive={index === activePageIndex}
+                          isTextRevealed={Boolean(revealedPages[page.pageNumber])}
+                          audioDuration={audioDurations[page.pageNumber]}
+                        />
+                      </div>,
+                    ])}
+                  </HTMLFlipBook>
+                </div>
+
+                {isOpen ? (
+                  <>
+                    <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={flipPrevious}
+                        disabled={!canGoPrevious}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        onClick={flipNext}
+                        disabled={!canGoNext}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        Next page
+                      </button>
+                    </div>
+
+                    {isGuidedFirstListen ? (
+                      <p className="mx-auto mt-3 max-w-2xl text-center text-xs uppercase tracking-[0.22em] text-[#8a9aad]">
+                        {highestReachedIndex < 4
+                          ? "First listening in progress - pages turn with the narrator."
+                          : "You may now look back, but the prophecy still unfolds forward with the voice."}
+                      </p>
+                    ) : null}
+
+                    <AudioControls
+                      settings={settings}
+                      musicAvailable={musicAvailable}
+                      isLoadingVoice={isLoadingVoice}
+                      onToggleMusic={toggleMusic}
+                      onToggleVoice={toggleVoice}
+                      onReplayVoice={() => void startPageNarration(activePageIndex, { autoAdvance: false })}
+                    />
+
+                    {isFinalPage ? <ResultActions onReset={onReset} /> : null}
+                  </>
+                ) : null}
+              </motion.section>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {showCover ? (
+              <motion.section
+                key="cover"
+                initial={{ opacity: 0, y: 32, rotateX: 6 }}
+                animate={
+                  bookState === "opening"
+                    ? { opacity: 1, y: -14, rotateX: 0, scale: 1.08 }
+                    : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
+                }
+                exit={{ opacity: 0, scale: 1.02, filter: "blur(8px)" }}
+                transition={{ duration: bookState === "opening" ? 1.8 : 0.9, ease: "easeOut" }}
+                className={cn("relative z-10 flex w-full justify-center")}
+              >
+                <div className="ancient-tome">
+                  <div className="tome-shadow" />
+                  <div className="tome-spine" aria-hidden="true" />
+                  <div className="tome-pages-block" aria-hidden="true" />
+
+                  <motion.button
+                    type="button"
+                    onClick={handleOpen}
+                    disabled={bookState === "opening"}
+                    animate={
+                      bookState === "opening"
+                        ? {
+                            rotateY: -18,
+                            boxShadow:
+                              "0 2px 0 rgba(255,220,170,0.08) inset, 0 55px 120px rgba(0,0,0,0.82), 0 0 80px rgba(71,132,211,0.28), inset -20px 0 40px rgba(0,0,0,0.55)",
+                          }
+                        : { rotateY: 0 }
+                    }
+                    transition={{ duration: OPENING_DURATION_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+                    className="tome-cover"
+                  >
+                    <div className="tome-cover-texture" aria-hidden="true" />
+                    <div className="tome-embossed-border" aria-hidden="true" />
+                    <div className="tome-magic-edge" aria-hidden="true" />
+                    <div className="tome-magic-glow" aria-hidden="true" />
+
+                    <motion.div
+                      className="tome-opening-glow"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: bookState === "opening" ? 1 : 0 }}
+                      transition={{ duration: 1.4, ease: "easeInOut" }}
+                      aria-hidden="true"
+                    />
+                    <motion.div
+                      className="tome-light-leak"
+                      initial={{ opacity: 0, scaleX: 0.3 }}
+                      animate={
+                        bookState === "opening"
+                          ? { opacity: [0, 1, 0.5], scaleX: 1 }
+                          : { opacity: 0, scaleX: 0.3 }
+                      }
+                      transition={{ duration: 1.8, ease: "easeInOut" }}
+                      aria-hidden="true"
+                    />
+
+                    {coverParticles.map((particle) => (
+                      <span
+                        key={particle.id}
+                        className="tome-particle"
+                        style={
+                          {
+                            left: particle.left,
+                            top: particle.top,
+                            "--float-duration": particle.duration,
+                            "--float-delay": particle.delay,
+                          } as CSSProperties
+                        }
+                        aria-hidden="true"
                       />
-                    </div>,
-                    <div key={`${page.pageNumber}-text`} className="page">
-                      <BookPage
-                        page={page}
-                        side="text"
-                        isActive={index === activePageIndex}
-                        isTextRevealed={Boolean(revealedPages[page.pageNumber])}
-                        audioDuration={audioDurations[page.pageNumber]}
-                      />
-                    </div>,
-                  ])}
-                </HTMLFlipBook>
-              </div>
+                    ))}
 
-              <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={flipPrevious}
-                  disabled={!canGoPrevious}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#d9bd78]/45 hover:text-[#f7ebce] disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={flipNext}
-                  disabled={!canGoNext}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#d9bd78]/45 hover:text-[#f7ebce] disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  Next page
-                </button>
-              </div>
+                    {bookState === "opening"
+                      ? coverParticles.slice(0, 5).map((particle) => (
+                          <motion.span
+                            key={`escape-${particle.id}`}
+                            className="tome-particle"
+                            style={{ left: particle.left, top: particle.top }}
+                            initial={{ opacity: 0, y: 0 }}
+                            animate={{ opacity: [0, 0.9, 0], y: -40, x: 12 }}
+                            transition={{
+                              duration: 1.6,
+                              delay: particle.id * 0.12,
+                              ease: "easeOut",
+                            }}
+                            aria-hidden="true"
+                          />
+                        ))
+                      : null}
 
-              {isGuidedFirstListen ? (
-                <p className="mx-auto mt-3 max-w-2xl text-center text-xs uppercase tracking-[0.22em] text-[#9baabd]">
-                  {highestReachedIndex < 4
-                    ? "First listening in progress - pages turn with the narrator."
-                    : "You may now look back, but the prophecy still unfolds forward with the voice."}
-                </p>
-              ) : null}
+                    <div className="tome-title-panel">
+                      <motion.h1
+                        className="font-cover-title tome-cover-title"
+                        initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
+                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                        transition={{ duration: 1.2, ease: "easeOut", delay: 0.5 }}
+                      >
+                        {characterName}
+                      </motion.h1>
+                    </div>
 
-              <AudioControls
-                settings={settings}
-                musicAvailable={musicAvailable}
-                isLoadingVoice={isLoadingVoice}
-                onToggleMusic={toggleMusic}
-                onToggleVoice={toggleVoice}
-                onReplayVoice={() => void startPageNarration(activePageIndex, { autoAdvance: false })}
-              />
-
-              {isFinalPage ? <ResultActions onReset={onReset} /> : null}
-            </motion.section>
-          )}
-        </AnimatePresence>
+                    <div className="tome-cta">
+                      <span className="tome-cta-button">
+                        {bookState === "opening" ? "The archive awakens" : "Open the book"}
+                      </span>
+                    </div>
+                  </motion.button>
+                </div>
+              </motion.section>
+            ) : null}
+          </AnimatePresence>
+        </div>
       </div>
     </main>
   );
