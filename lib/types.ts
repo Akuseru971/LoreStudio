@@ -1,9 +1,7 @@
 export type BookFormInput = {
   name: string;
   gender: "man" | "woman" | "creature" | "unknown";
-  archetype: string;
-  tone: string;
-  universeStyle: string;
+  characterType: string;
   runeterraRegion:
     | "Auto"
     | "Demacia"
@@ -19,8 +17,6 @@ export type BookFormInput = {
     | "Shadow Isles"
     | "Bandle City"
     | "The Void";
-  strength: string;
-  weakness: string;
 };
 
 export type BookPage = {
@@ -46,11 +42,18 @@ export type LoreBook = {
   title: string;
   subtitle: string;
   mainRegion: string;
+  storyEngine: string;
+  protagonistRole: string;
+  coreConflict: string;
+  distinctiveHook: string;
   narratorIntro: string;
   characterBible: {
     name: string;
+    gender: string;
+    characterType: string;
     legendaryTitle: string;
     region: string;
+    socialRole: string;
     visualIdentity: string;
     clothing: string;
     faceAndBody: string;

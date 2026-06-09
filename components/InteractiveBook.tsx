@@ -62,7 +62,7 @@ type InteractiveBookProps = {
 };
 
 export default function InteractiveBook({ book, onReset }: InteractiveBookProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [musicAvailable, setMusicAvailable] = useState(false);
   const [audioCache, setAudioCache] = useState<Record<number, string | null>>(() =>
@@ -75,7 +75,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
   const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
   const [revealedPages, setRevealedPages] = useState<Record<number, boolean>>({});
-  const [revealedWordCounts, setRevealedWordCounts] = useState<Record<number, number>>({});
+  const [audioDurations, setAudioDurations] = useState<Record<number, number>>({});
   const [highestReachedIndex, setHighestReachedIndex] = useState(0);
   const [hasCompletedFirstListen, setHasCompletedFirstListen] = useState(false);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
@@ -90,7 +90,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
   const autoAdvanceTimerRef = useRef<number | undefined>(undefined);
-  const wordRevealFrameRef = useRef<number | undefined>(undefined);
   const highestReachedRef = useRef(0);
   const hasCompletedFirstListenRef = useRef(false);
   const pagesWithImages = useMemo(
@@ -103,6 +102,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   );
   const illustratedPages = useMemo(() => pagesWithImages.slice(0, ILLUSTRATED_PAGE_COUNT), [pagesWithImages]);
   const activePage = illustratedPages[activePageIndex] || illustratedPages[0];
+  const isOpen = bookState === "open";
   const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
   const isGuidedFirstListen = isOpen && !hasCompletedFirstListen;
   const canLookBack = hasCompletedFirstListen || highestReachedIndex >= 4;
@@ -226,9 +226,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       if (autoAdvanceTimerRef.current) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
-      if (wordRevealFrameRef.current) {
-        window.cancelAnimationFrame(wordRevealFrameRef.current);
-      }
       voiceRef.current?.pause();
     };
   }, []);
@@ -280,55 +277,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     [estimateReadingDuration],
   );
 
-  const startWordReveal = useCallback((
-    pageNumber: number,
-    text: string,
-    durationMs: number,
-    runId: number,
-    audio?: HTMLAudioElement,
-  ) => {
-    if (wordRevealFrameRef.current) {
-      window.cancelAnimationFrame(wordRevealFrameRef.current);
-    }
-
-    const words = text.trim().split(/\s+/).filter(Boolean);
-    const totalWords = words.length;
-    if (!totalWords) {
-      return;
-    }
-
-    setRevealedWordCounts((current) => ({ ...current, [pageNumber]: 0 }));
-    const startedAt = performance.now();
-    let lastVisibleWords = -1;
-
-    function tick() {
-      if (narrationRunRef.current !== runId) {
-        return;
-      }
-
-      const elapsedMs =
-        audio && !audio.paused && Number.isFinite(audio.currentTime)
-          ? audio.currentTime * 1000
-          : performance.now() - startedAt;
-      const progress = Math.min(1, Math.max(0, elapsedMs / durationMs));
-      const visibleWords = progress > 0 ? Math.min(totalWords, Math.max(1, Math.ceil(progress * totalWords))) : 0;
-
-      if (visibleWords !== lastVisibleWords) {
-        lastVisibleWords = visibleWords;
-        setRevealedWordCounts((current) => ({
-          ...current,
-          [pageNumber]: visibleWords,
-        }));
-      }
-
-      if (progress < 1) {
-        wordRevealFrameRef.current = window.requestAnimationFrame(tick);
-      }
-    }
-
-    wordRevealFrameRef.current = window.requestAnimationFrame(tick);
-  }, []);
-
   const completeGuidedPage = useCallback(
     (pageIndex: number) => {
       if (!isOpen || hasCompletedFirstListenRef.current || pageIndex !== highestReachedRef.current) {
@@ -361,19 +309,15 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       if (autoAdvanceTimerRef.current) {
         window.clearTimeout(autoAdvanceTimerRef.current);
       }
-      if (wordRevealFrameRef.current) {
-        window.cancelAnimationFrame(wordRevealFrameRef.current);
-      }
 
       narrationRunRef.current += 1;
       const runId = narrationRunRef.current;
       voiceRef.current?.pause();
-      setRevealedWordCounts((current) => ({ ...current, [page.pageNumber]: 0 }));
 
       if (!settings.voiceEnabled) {
         const fallbackDuration = estimateReadingDuration(page.text);
+        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
         setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        startWordReveal(page.pageNumber, page.text, fallbackDuration, runId);
         if (options.autoAdvance) {
           autoAdvanceTimerRef.current = window.setTimeout(() => {
             if (narrationRunRef.current === runId) {
@@ -391,8 +335,8 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
 
       if (!audioUrl) {
         const fallbackDuration = estimateReadingDuration(page.text);
+        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
         setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        startWordReveal(page.pageNumber, page.text, fallbackDuration, runId);
         if (options.autoAdvance) {
           autoAdvanceTimerRef.current = window.setTimeout(() => {
             if (narrationRunRef.current === runId) {
@@ -415,12 +359,11 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       if (narrationRunRef.current !== runId) {
         return;
       }
+      setAudioDurations((current) => ({ ...current, [page.pageNumber]: revealDuration / 1000 }));
       voice.onended = () => {
         if (narrationRunRef.current !== runId) {
           return;
         }
-        const totalWords = page.text.trim().split(/\s+/).filter(Boolean).length;
-        setRevealedWordCounts((current) => ({ ...current, [page.pageNumber]: totalWords }));
         if (options.autoAdvance) {
           completeGuidedPage(pageIndex);
         }
@@ -438,12 +381,11 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
         await voice.play();
         if (narrationRunRef.current === runId) {
           setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-          startWordReveal(page.pageNumber, page.text, revealDuration, runId, voice);
         }
       } catch {
         const fallbackDuration = estimateReadingDuration(page.text);
+        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
         setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        startWordReveal(page.pageNumber, page.text, fallbackDuration, runId);
         if (options.autoAdvance) {
           autoAdvanceTimerRef.current = window.setTimeout(() => {
             if (narrationRunRef.current === runId) {
@@ -460,7 +402,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       getAudioDuration,
       illustratedPages,
       settings.voiceEnabled,
-      startWordReveal,
     ],
   );
 
@@ -551,15 +492,21 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
   function handleOpen() {
+    if (bookState !== "closed") {
+      return;
+    }
     narrationRunRef.current += 1;
     highestReachedRef.current = 0;
     hasCompletedFirstListenRef.current = false;
     setHighestReachedIndex(0);
     setHasCompletedFirstListen(false);
     setRevealedPages({});
-    setIsOpen(true);
+    setBookState("opening");
     setActivePageIndex(0);
     void playMusic();
+    window.setTimeout(() => {
+      setBookState("open");
+    }, 1700);
   }
 
   function handleFlip(event: { data?: number }) {
@@ -620,16 +567,43 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
             <motion.section
               key="cover"
               initial={{ opacity: 0, y: 38, rotateX: 8 }}
-              animate={{ opacity: 1, y: 0, rotateX: 0 }}
+              animate={
+                bookState === "opening"
+                  ? { opacity: 1, y: -10, rotateX: 0, scale: 1.07 }
+                  : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
+              }
               exit={{ opacity: 0, scale: 0.96, filter: "blur(10px)" }}
-              transition={{ duration: 0.85, ease: "easeOut" }}
+              transition={{ duration: bookState === "opening" ? 1.45 : 0.85, ease: "easeOut" }}
               className="book-scene flex w-full justify-center"
             >
-              <button
+              <motion.button
                 type="button"
                 onClick={handleOpen}
+                disabled={bookState === "opening"}
+                animate={
+                  bookState === "opening"
+                    ? {
+                        rotateY: -13,
+                        boxShadow:
+                          "0 65px 140px rgba(0,0,0,0.82), 0 0 90px rgba(71,132,211,0.22), inset -24px 0 38px rgba(0,0,0,0.58)",
+                      }
+                    : { rotateY: 0 }
+                }
+                transition={{ duration: 1.7, ease: [0.22, 1, 0.36, 1] }}
                 className="leather-surface manuscript-cover group relative min-h-[34rem] w-full max-w-[26rem] overflow-hidden rounded-[2rem] border border-[#d9bd78]/25 p-8 text-center shadow-[0_45px_100px_rgba(0,0,0,0.68)] transition duration-700 hover:-translate-y-2 hover:shadow-[0_55px_120px_rgba(0,0,0,0.78)] sm:min-h-[39rem]"
               >
+                <motion.div
+                  className="pointer-events-none absolute inset-y-8 right-0 z-20 w-10 bg-[#7eb6ff]/20 blur-xl"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: bookState === "opening" ? [0, 0.95, 0.4] : 0 }}
+                  transition={{ duration: 1.45, ease: "easeInOut" }}
+                />
+                <motion.div
+                  className="pointer-events-none absolute inset-0 z-20 bg-[radial-gradient(circle_at_70%_50%,rgba(126,182,255,0.22),transparent_34%)]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: bookState === "opening" ? 1 : 0 }}
+                  transition={{ duration: 1.2 }}
+                />
                 <div className="absolute inset-y-0 left-8 w-2 bg-gradient-to-b from-transparent via-[#d9bd78]/45 to-transparent" />
                 <div className="absolute inset-5 rounded-[1.5rem] border border-[#d9bd78]/30" />
                 <div className="absolute inset-9 rounded-[1.1rem] border border-[#d9bd78]/15" />
@@ -656,11 +630,11 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                   <div>
                     <p className="mx-auto mb-5 max-w-xs text-sm italic leading-7 text-[#b6a481]">{book.narratorIntro}</p>
                     <span className="gold-button inline-flex rounded-full px-6 py-3 text-xs font-bold uppercase tracking-[0.24em]">
-                      Open the book
+                      {bookState === "opening" ? "The archive awakens" : "Open the book"}
                     </span>
                   </div>
                 </div>
-              </button>
+              </motion.button>
             </motion.section>
           ) : (
             <motion.section
@@ -722,7 +696,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                         side="text"
                         isActive={index === activePageIndex}
                         isTextRevealed={Boolean(revealedPages[page.pageNumber])}
-                        revealedWordCount={revealedWordCounts[page.pageNumber]}
+                        audioDuration={audioDurations[page.pageNumber]}
                       />
                     </div>,
                   ])}

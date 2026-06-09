@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import type { BookFormInput } from "@/lib/types";
-import { archetypes, genders, runeterraRegions, tones, universeStyles } from "@/lib/utils";
+import { characterTypes, genders, runeterraRegions } from "@/lib/utils";
 
 type HeroFormProps = {
   onSubmit: (input: BookFormInput) => void;
@@ -12,12 +12,8 @@ type HeroFormProps = {
 const defaultInput: BookFormInput = {
   name: "",
   gender: "unknown",
-  archetype: "wanderer",
-  tone: "mysterious",
-  universeStyle: "dark fantasy",
+  characterType: "Wanderer",
   runeterraRegion: "Auto",
-  strength: "",
-  weakness: "",
 };
 
 function labelize(value: string) {
@@ -29,12 +25,8 @@ export default function HeroForm({ onSubmit, disabled = false }: HeroFormProps) 
     onSubmit({
       name: String(formData.get("name") || "").trim().slice(0, 40),
       gender: String(formData.get("gender") || "unknown") as BookFormInput["gender"],
-      archetype: String(formData.get("archetype") || "wanderer"),
-      tone: String(formData.get("tone") || "mysterious"),
-      universeStyle: String(formData.get("universeStyle") || "dark fantasy"),
+      characterType: String(formData.get("characterType") || "Wanderer"),
       runeterraRegion: String(formData.get("runeterraRegion") || "Auto") as BookFormInput["runeterraRegion"],
-      strength: String(formData.get("strength") || "").trim().slice(0, 80),
-      weakness: String(formData.get("weakness") || "").trim().slice(0, 80),
     });
   }
 
@@ -95,13 +87,11 @@ export default function HeroForm({ onSubmit, disabled = false }: HeroFormProps) 
             </label>
 
             <SelectField name="gender" label="Gender" values={genders} defaultValue={defaultInput.gender} />
-            <SelectField name="archetype" label="Archetype" values={archetypes} defaultValue={defaultInput.archetype} />
-            <SelectField name="tone" label="Story tone" values={tones} defaultValue={defaultInput.tone} />
             <SelectField
-              name="universeStyle"
-              label="Universe style"
-              values={universeStyles}
-              defaultValue={defaultInput.universeStyle}
+              name="characterType"
+              label="Character type"
+              values={characterTypes}
+              defaultValue={defaultInput.characterType}
             />
             <SelectField
               name="runeterraRegion"
@@ -109,30 +99,6 @@ export default function HeroForm({ onSubmit, disabled = false }: HeroFormProps) 
               values={runeterraRegions}
               defaultValue={defaultInput.runeterraRegion}
             />
-
-            <label>
-              <span className="mb-2 block text-xs uppercase tracking-[0.22em] text-[#d9bd78]">One strength</span>
-              <input
-                name="strength"
-                required
-                maxLength={80}
-                placeholder="Unbroken loyalty"
-                className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-[#f8ecd0] outline-none transition focus:border-[#d9bd78]/60 focus:bg-black/50"
-                defaultValue={defaultInput.strength}
-              />
-            </label>
-
-            <label>
-              <span className="mb-2 block text-xs uppercase tracking-[0.22em] text-[#d9bd78]">One weakness</span>
-              <input
-                name="weakness"
-                required
-                maxLength={80}
-                placeholder="Fear of being forgotten"
-                className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-[#f8ecd0] outline-none transition focus:border-[#d9bd78]/60 focus:bg-black/50"
-                defaultValue={defaultInput.weakness}
-              />
-            </label>
           </div>
 
           <button

@@ -91,6 +91,10 @@ button {
   font-family: var(--font-cinzel), Georgia, serif;
 }
 
+.font-manuscript {
+  font-family: var(--font-kalam), "Comic Sans MS", cursive;
+}
+
 .archive-shell {
   position: relative;
   min-height: 100vh;

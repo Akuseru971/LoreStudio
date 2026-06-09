@@ -3,27 +3,27 @@ import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export const genders = ["man", "woman", "creature", "unknown"] as const;
 
-export const archetypes = [
-  "warrior",
-  "mage",
-  "assassin",
-  "king",
-  "queen",
-  "wanderer",
-  "monster",
-  "oracle",
-  "thief",
-  "guardian",
-] as const;
-
-export const tones = ["heroic", "tragic", "mysterious", "dark", "noble", "cursed"] as const;
-
-export const universeStyles = [
-  "dark fantasy",
-  "anime fantasy",
-  "gothic",
-  "cosmic",
-  "crime fantasy",
+export const characterTypes = [
+  "Warrior",
+  "Mage",
+  "Assassin",
+  "Guardian",
+  "Wanderer",
+  "Inventor",
+  "Healer",
+  "Oracle",
+  "Hunter",
+  "Noble",
+  "Thief",
+  "Monster",
+  "Spirit-Bound",
+  "Soldier",
+  "Scholar",
+  "Pirate",
+  "Chemtech Survivor",
+  "Void-Touched",
+  "Vastaya",
+  "Ascended Disciple",
 ] as const;
 
 export const runeterraRegions = [
@@ -66,32 +66,20 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
 
   const source = body as Partial<Record<keyof BookFormInput, unknown>>;
   const name = sanitizeText(source.name, 40);
-  const strength = sanitizeText(source.strength, 80);
-  const weakness = sanitizeText(source.weakness, 80);
   const gender = source.gender;
-  const archetype = sanitizeText(source.archetype, 40);
-  const tone = sanitizeText(source.tone, 40);
-  const universeStyle = sanitizeText(source.universeStyle, 40);
+  const characterType = sanitizeText(source.characterType, 60);
   const runeterraRegion = sanitizeText(source.runeterraRegion, 40) || "Auto";
 
-  if (!name || !strength || !weakness) {
-    return { error: "Name, strength, and weakness are required." };
+  if (!name) {
+    return { error: "Name is required." };
   }
 
   if (!genders.includes(gender as BookFormInput["gender"])) {
     return { error: "Invalid gender." };
   }
 
-  if (!archetypes.includes(archetype as (typeof archetypes)[number])) {
-    return { error: "Invalid archetype." };
-  }
-
-  if (!tones.includes(tone as (typeof tones)[number])) {
-    return { error: "Invalid tone." };
-  }
-
-  if (!universeStyles.includes(universeStyle as (typeof universeStyles)[number])) {
-    return { error: "Invalid universe style." };
+  if (!characterTypes.includes(characterType as (typeof characterTypes)[number])) {
+    return { error: "Invalid character type." };
   }
 
   if (!runeterraRegions.includes(runeterraRegion as BookFormInput["runeterraRegion"])) {
@@ -102,12 +90,8 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
     input: {
       name,
       gender: gender as BookFormInput["gender"],
-      archetype,
-      tone,
-      universeStyle,
+      characterType,
       runeterraRegion: runeterraRegion as BookFormInput["runeterraRegion"],
-      strength,
-      weakness,
     },
   };
 }
@@ -125,7 +109,10 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
   ];
   const bible = book.characterBible || {
     name: "The Unnamed",
+    gender: "unknown",
+    characterType: "Wanderer",
     legendaryTitle: "The Unwritten Legend",
+    socialRole: "itinerant witness",
     visualIdentity: "enigmatic dark fantasy protagonist",
     clothing: "weathered ceremonial cloak and ancient leather armor",
     faceAndBody: "solemn face, resilient posture, mysterious presence",
@@ -161,13 +148,26 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     title: sanitizeText(book.title, 120) || "The Book of the Unwritten Legend",
     subtitle: sanitizeText(book.subtitle, 180) || "A dark fantasy chronicle recovered from a silent archive.",
     mainRegion,
+    storyEngine:
+      sanitizeText(book.storyEngine, 240) ||
+      "A specific local duty pulls an ordinary Runeterran into a regional conflict.",
+    protagonistRole: sanitizeText(book.protagonistRole, 160) || sanitizeText(bible.socialRole, 160) || "local witness",
+    coreConflict:
+      sanitizeText(book.coreConflict, 240) ||
+      "A concrete regional problem forces the protagonist to choose what they are willing to protect.",
+    distinctiveHook:
+      sanitizeText(book.distinctiveHook, 240) ||
+      "A personal object, craft, or secret makes the protagonist's path distinct.",
     narratorIntro:
       sanitizeText(book.narratorIntro, 260) ||
       "The archive opens with a low breath, and a forgotten name begins to glow.",
     characterBible: {
       name: sanitizeText(bible.name, 80) || "The Unnamed",
+      gender: sanitizeText(bible.gender, 40) || "unknown",
+      characterType: sanitizeText(bible.characterType, 80) || "Wanderer",
       legendaryTitle: sanitizeText(bible.legendaryTitle, 120) || "The Unwritten Legend",
       region: sanitizeText(bible.region, 80) || mainRegion,
+      socialRole: sanitizeText(bible.socialRole, 160) || "local witness",
       visualIdentity: sanitizeText(bible.visualIdentity, 260) || "enigmatic dark fantasy protagonist",
       clothing: sanitizeText(bible.clothing, 260) || "weathered ceremonial cloak and ancient leather armor",
       faceAndBody: sanitizeText(bible.faceAndBody, 260) || "solemn face, resilient posture, mysterious presence",
@@ -230,7 +230,7 @@ function defaultVisualDirection(pageNumber: number, region: string): BookPage["v
     3: {
       sceneType: "intimate emotional wound scene",
       cameraShot: "medium environmental shot focused on body language and symbolic loss",
-      characterAction: "the protagonist confronts loss, shame, exile, curse, or weakness through action",
+      characterAction: "the protagonist confronts loss, shame, obligation, cost, or conflict through action",
       environment: `a ruined, empty, or abandoned place in ${region} tied to the wound`,
       keyObjects: ["broken object", "empty room", "long shadow"],
       mood: "grieving, tense, vulnerable",

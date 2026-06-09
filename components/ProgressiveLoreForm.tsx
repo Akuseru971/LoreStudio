@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import MagicalBackground from "@/components/MagicalBackground";
 import SequentialField from "@/components/SequentialField";
 import type { BookFormInput } from "@/lib/types";
-import { archetypes, genders, runeterraRegions, tones, universeStyles } from "@/lib/utils";
+import { characterTypes, genders, runeterraRegions } from "@/lib/utils";
 
 type ProgressiveLoreFormProps = {
   onSubmit: (input: BookFormInput) => void;
@@ -17,23 +17,15 @@ type FormValues = Record<keyof BookFormInput, string>;
 const initialValues: FormValues = {
   name: "",
   gender: "",
-  archetype: "",
-  tone: "",
-  universeStyle: "",
+  characterType: "",
   runeterraRegion: "",
-  strength: "",
-  weakness: "",
 };
 
 const fieldOrder: Array<keyof BookFormInput> = [
   "name",
   "gender",
-  "archetype",
-  "tone",
-  "universeStyle",
+  "characterType",
   "runeterraRegion",
-  "strength",
-  "weakness",
 ];
 
 function labelize(value: string) {
@@ -45,7 +37,7 @@ function isMeaningfulText(value: string) {
 }
 
 function isFieldComplete(key: keyof BookFormInput, values: FormValues) {
-  if (key === "name" || key === "strength" || key === "weakness") {
+  if (key === "name") {
     return isMeaningfulText(values[key]);
   }
 
@@ -101,12 +93,8 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
     onSubmit({
       name: values.name.trim().slice(0, 40),
       gender: values.gender as BookFormInput["gender"],
-      archetype: values.archetype,
-      tone: values.tone,
-      universeStyle: values.universeStyle,
+      characterType: values.characterType,
       runeterraRegion: values.runeterraRegion as BookFormInput["runeterraRegion"],
-      strength: values.strength.trim().slice(0, 80),
-      weakness: values.weakness.trim().slice(0, 80),
     });
   }
 
@@ -159,40 +147,18 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
               ) : null}
 
               {visibleCount >= 3 ? (
-                <SequentialField key="archetype" isActive={visibleCount === 3}>
+                <SequentialField key="characterType" isActive={visibleCount === 3}>
                   <SelectInput
-                    label="Archetype"
-                    value={values.archetype}
-                    options={archetypes}
-                    onChange={(value) => updateValue("archetype", value)}
+                    label="Character type"
+                    value={values.characterType}
+                    options={characterTypes}
+                    onChange={(value) => updateValue("characterType", value)}
                   />
                 </SequentialField>
               ) : null}
 
               {visibleCount >= 4 ? (
-                <SequentialField key="tone" isActive={visibleCount === 4}>
-                  <SelectInput
-                    label="Story tone"
-                    value={values.tone}
-                    options={tones}
-                    onChange={(value) => updateValue("tone", value)}
-                  />
-                </SequentialField>
-              ) : null}
-
-              {visibleCount >= 5 ? (
-                <SequentialField key="universeStyle" isActive={visibleCount === 5}>
-                  <SelectInput
-                    label="Universe style"
-                    value={values.universeStyle}
-                    options={universeStyles}
-                    onChange={(value) => updateValue("universeStyle", value)}
-                  />
-                </SequentialField>
-              ) : null}
-
-              {visibleCount >= 6 ? (
-                <SequentialField key="runeterraRegion" isActive={visibleCount === 6}>
+                <SequentialField key="runeterraRegion" isActive={visibleCount === 4}>
                   <SelectInput
                     label="Runeterra Region"
                     value={values.runeterraRegion}
@@ -201,32 +167,7 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                   />
                 </SequentialField>
               ) : null}
-
-              {visibleCount >= 7 ? (
-                <SequentialField key="strength" isActive={visibleCount === 7}>
-                  <TextInput
-                    label="Strength"
-                    value={values.strength}
-                    placeholder="Unbroken loyalty"
-                    maxLength={80}
-                    onChange={(value) => updateValue("strength", value)}
-                  />
-                </SequentialField>
-              ) : null}
-
-              {visibleCount >= 8 ? (
-                <SequentialField key="weakness" isActive={visibleCount === 8}>
-                  <TextInput
-                    label="Weakness"
-                    value={values.weakness}
-                    placeholder="Fear of being forgotten"
-                    maxLength={80}
-                    onChange={(value) => updateValue("weakness", value)}
-                  />
-                </SequentialField>
-              ) : null}
-
-              {visibleCount >= 9 ? (
+              {visibleCount >= 5 ? (
                 <motion.button
                   key="submit"
                   type="submit"
