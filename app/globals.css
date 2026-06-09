@@ -171,244 +171,403 @@ button {
   transform: translateX(120%);
 }
 
-/* ── Ancient closed tome ── */
+/* ── Book atmosphere (smoke behind closed tome) ── */
 
-.ancient-tome {
+.book-atmosphere {
+  position: absolute;
+  inset: -4rem -6rem;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.book-atmosphere-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 48%, rgba(48, 78, 118, 0.22), transparent 52%),
+    radial-gradient(ellipse at 30% 60%, rgba(28, 48, 78, 0.18), transparent 45%),
+    radial-gradient(ellipse at 72% 38%, rgba(38, 62, 98, 0.14), transparent 42%);
+}
+
+.book-atmosphere-glow {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 22rem;
+  height: 22rem;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(90, 140, 200, 0.12), transparent 68%);
+  filter: blur(24px);
+}
+
+.book-smoke {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(42px);
+  mix-blend-mode: screen;
+}
+
+.book-smoke-a {
+  left: 8%;
+  top: 18%;
+  width: 18rem;
+  height: 14rem;
+  background: radial-gradient(ellipse, rgba(72, 108, 148, 0.38), transparent 72%);
+}
+
+.book-smoke-b {
+  right: 6%;
+  top: 28%;
+  width: 20rem;
+  height: 16rem;
+  background: radial-gradient(ellipse, rgba(58, 88, 128, 0.32), transparent 70%);
+}
+
+.book-smoke-c {
+  left: 22%;
+  bottom: 12%;
+  width: 16rem;
+  height: 12rem;
+  background: radial-gradient(ellipse, rgba(48, 72, 108, 0.28), transparent 68%);
+}
+
+.book-atmosphere-spark {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(140, 190, 240, 0.85);
+  box-shadow:
+    0 0 10px rgba(126, 182, 255, 0.75),
+    0 0 22px rgba(71, 132, 211, 0.35);
+  animation: book-spark-drift var(--spark-duration, 8s) ease-in-out infinite;
+}
+
+@keyframes book-spark-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 12px, 0) scale(0.7);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.75;
+  }
+  55% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate3d(14px, -72px, 0) scale(1);
+    opacity: 0;
+  }
+}
+
+/* ── Enchanted closed tome ── */
+
+.enchanted-tome-presentation {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 26rem;
+  min-height: 40rem;
+  margin: 0 auto;
+}
+
+.enchanted-tome-stage {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+}
+
+.enchanted-tome {
   position: relative;
   width: 100%;
-  max-width: 24rem;
   transform-style: preserve-3d;
 }
 
-.tome-shadow {
+.enchanted-tome-shadow {
   position: absolute;
-  bottom: -1.4rem;
-  left: 8%;
-  right: 8%;
-  height: 2.8rem;
+  bottom: -1.8rem;
+  left: 6%;
+  right: 6%;
+  height: 3.2rem;
   border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.62) 0%, transparent 72%);
-  filter: blur(14px);
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.68) 0%, transparent 74%);
+  filter: blur(16px);
   pointer-events: none;
 }
 
-.tome-pages-block {
+.enchanted-tome-pages {
   position: absolute;
-  top: 0.55rem;
-  right: -0.55rem;
-  bottom: 0.55rem;
-  width: 1.1rem;
-  border-radius: 0 0.35rem 0.35rem 0;
+  top: 0.45rem;
+  right: -0.65rem;
+  bottom: 0.45rem;
+  width: 1.25rem;
+  border-radius: 0 0.3rem 0.3rem 0;
   background:
-    repeating-linear-gradient(180deg, #c8b48a 0 2px, #b9a078 2px 4px, #d4c29a 4px 6px),
-    linear-gradient(90deg, #a89068, #d8c8a4 40%, #b8a480);
+    repeating-linear-gradient(180deg, #d4b888 0 1px, #c4a878 1px 3px, #e0cc98 3px 5px, #b89868 5px 6px),
+    linear-gradient(90deg, #9a7848, #e8d4a8 35%, #c8a878 70%, #a88858);
   box-shadow:
-    2px 0 8px rgba(0, 0, 0, 0.45),
-    inset -3px 0 6px rgba(0, 0, 0, 0.22);
+    3px 0 10px rgba(0, 0, 0, 0.5),
+    inset -4px 0 8px rgba(0, 0, 0, 0.28),
+    inset 0 2px 4px rgba(255, 220, 160, 0.12);
   pointer-events: none;
 }
 
-.tome-spine {
+.enchanted-tome-spine {
   position: absolute;
-  top: 0.4rem;
-  left: -0.65rem;
-  bottom: 0.4rem;
-  width: 1.35rem;
-  border-radius: 0.4rem 0 0 0.4rem;
+  top: 0.35rem;
+  left: -0.75rem;
+  bottom: 0.35rem;
+  width: 1.5rem;
+  border-radius: 0.45rem 0 0 0.45rem;
   background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.55), rgba(42, 24, 16, 0.95) 30%, rgba(58, 32, 22, 0.98)),
-    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0 3px, transparent 3px 7px);
+    linear-gradient(90deg, rgba(0, 0, 0, 0.65), #1a2230 28%, #222c3c 55%, #141a24),
+    repeating-linear-gradient(180deg, rgba(200, 170, 100, 0.06) 0 4px, transparent 4px 9px);
   box-shadow:
-    -4px 0 12px rgba(0, 0, 0, 0.5),
-    inset 2px 0 4px rgba(255, 220, 160, 0.06);
+    -5px 0 14px rgba(0, 0, 0, 0.55),
+    inset 3px 0 6px rgba(200, 180, 120, 0.08);
   pointer-events: none;
 }
 
-.tome-cover {
+.enchanted-tome-bookmark {
+  position: absolute;
+  top: 2.5rem;
+  right: -0.15rem;
+  width: 0.55rem;
+  height: 5.5rem;
+  border-radius: 0 0.15rem 0.15rem 0;
+  background: linear-gradient(180deg, #c8a858, #8a6830 45%, #6a5028);
+  box-shadow:
+    1px 0 4px rgba(0, 0, 0, 0.45),
+    inset -1px 0 2px rgba(255, 220, 160, 0.2);
+  transform: rotate(2deg);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.enchanted-tome-cover {
   position: relative;
   display: block;
   width: 100%;
-  min-height: 36rem;
+  min-height: 38rem;
   padding: 0;
   border: none;
-  border-radius: 0.55rem 1.1rem 1.1rem 0.55rem;
+  border-radius: 0.5rem 0.85rem 0.85rem 0.5rem;
   transform-style: preserve-3d;
   transform-origin: left center;
   cursor: pointer;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at 50% 12%, rgba(180, 160, 120, 0.08), transparent 50%),
-    radial-gradient(ellipse at 80% 85%, rgba(30, 15, 10, 0.5), transparent 45%),
-    linear-gradient(155deg, #3d2218 0%, #1a0f0c 38%, #0e0908 72%, #18100e 100%);
   box-shadow:
-    0 2px 0 rgba(255, 220, 170, 0.06) inset,
-    0 -1px 0 rgba(0, 0, 0, 0.4) inset,
-    4px 0 16px rgba(0, 0, 0, 0.35),
-    0 40px 90px rgba(0, 0, 0, 0.72);
-  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.6s ease;
+    0 3px 0 rgba(200, 180, 120, 0.05) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.5) inset,
+    5px 0 20px rgba(0, 0, 0, 0.4),
+    0 48px 100px rgba(0, 0, 0, 0.78);
+  transition: box-shadow 0.7s ease;
 }
 
-.tome-cover:not(:disabled):hover {
-  transform: translateY(-4px) rotateY(-2deg);
+.enchanted-tome-cover:not(:disabled):hover {
   box-shadow:
-    0 2px 0 rgba(255, 220, 170, 0.08) inset,
-    0 50px 110px rgba(0, 0, 0, 0.78),
-    0 0 40px rgba(71, 132, 211, 0.08);
+    0 3px 0 rgba(200, 180, 120, 0.08) inset,
+    0 58px 120px rgba(0, 0, 0, 0.82),
+    0 0 50px rgba(71, 132, 211, 0.1);
 }
 
-.tome-cover:disabled {
+.enchanted-tome-cover:disabled {
   cursor: default;
 }
 
-.tome-cover-texture {
+.enchanted-tome-cover::after {
   position: absolute;
   inset: 0;
-  opacity: 0.45;
-  background:
-    repeating-linear-gradient(
-      38deg,
-      rgba(255, 255, 255, 0.025) 0 1px,
-      transparent 1px 4px
-    ),
-    repeating-linear-gradient(
-      128deg,
-      rgba(0, 0, 0, 0.12) 0 2px,
-      transparent 2px 6px
-    );
-  pointer-events: none;
-}
-
-.tome-embossed-border {
-  position: absolute;
-  inset: 1.15rem;
-  border-radius: 0.35rem;
-  border: 1px solid rgba(180, 155, 110, 0.22);
-  box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
-    inset 0 2px 8px rgba(255, 230, 180, 0.04),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.25),
-    0 0 0 1px rgba(180, 155, 110, 0.08);
-  pointer-events: none;
-}
-
-.tome-embossed-border::before {
-  position: absolute;
-  inset: 0.55rem;
-  border-radius: 0.2rem;
-  border: 1px solid rgba(160, 140, 100, 0.1);
-  content: "";
-  pointer-events: none;
-}
-
-.tome-title-panel {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2.5rem 2rem;
-  pointer-events: none;
-}
-
-.tome-cover-title {
-  max-width: 14rem;
-  text-align: center;
-  font-size: clamp(1.75rem, 5vw, 2.35rem);
-  line-height: 1.25;
-  color: rgba(220, 200, 165, 0.88);
-  text-shadow:
-    0 1px 0 rgba(255, 240, 200, 0.12),
-    0 -1px 2px rgba(0, 0, 0, 0.6),
-    0 0 24px rgba(126, 182, 255, 0.08);
-}
-
-.tome-magic-edge {
-  position: absolute;
-  inset: -1px;
+  z-index: 6;
   border-radius: inherit;
   pointer-events: none;
   box-shadow:
-    inset 0 0 20px rgba(71, 132, 211, 0.06),
-    inset -2px 0 12px rgba(126, 182, 255, 0.1);
+    inset 0 0 28px rgba(0, 0, 0, 0.35),
+    inset 3px 3px 8px rgba(255, 255, 255, 0.03);
+  content: "";
 }
 
-.tome-magic-glow {
+.enchanted-cover-base {
   position: absolute;
   inset: 0;
+  background:
+    radial-gradient(ellipse at 48% 38%, rgba(58, 78, 108, 0.22), transparent 55%),
+    radial-gradient(ellipse at 82% 88%, rgba(0, 0, 0, 0.55), transparent 42%),
+    linear-gradient(158deg, #1a2230 0%, #0e1218 32%, #080a10 58%, #121820 100%);
   pointer-events: none;
-  background: radial-gradient(ellipse at 92% 50%, rgba(126, 182, 255, 0.14), transparent 28%);
-  opacity: 0.6;
 }
 
-.tome-opening-glow {
+.enchanted-cover-leather {
   position: absolute;
   inset: 0;
+  opacity: 0.55;
+  background:
+    repeating-linear-gradient(42deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-38deg, rgba(0, 0, 0, 0.14) 0 2px, transparent 2px 7px),
+    radial-gradient(circle at 22% 78%, rgba(30, 40, 58, 0.4), transparent 40%);
   pointer-events: none;
-  background: radial-gradient(circle at 75% 50%, rgba(126, 182, 255, 0.28), transparent 40%);
 }
 
-.tome-light-leak {
+.enchanted-cover-filigree {
   position: absolute;
-  top: 10%;
-  right: 0;
-  bottom: 10%;
-  width: 2.5rem;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(126, 182, 255, 0.35));
-  filter: blur(8px);
+  z-index: 2;
 }
 
-.tome-particle {
+.enchanted-medallion {
   position: absolute;
-  width: 2px;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(126, 182, 255, 0.7);
-  box-shadow: 0 0 6px rgba(126, 182, 255, 0.5);
-  pointer-events: none;
-  animation: tome-particle-float var(--float-duration, 6s) ease-in-out infinite;
-  animation-delay: var(--float-delay, 0s);
-}
-
-.tome-cta {
-  position: absolute;
-  bottom: 2.2rem;
   left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
+  top: 42%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 9.5rem;
+  height: 10.5rem;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
-.tome-cta-button {
-  display: inline-flex;
-  padding: 0.65rem 1.5rem;
-  border: 1px solid rgba(180, 155, 110, 0.28);
+.enchanted-medallion-plate {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 35%, rgba(72, 92, 118, 0.45), transparent 48%),
+    radial-gradient(circle at 50% 55%, #1a2230, #0a0e14 72%);
+  box-shadow:
+    inset 0 3px 12px rgba(255, 240, 200, 0.06),
+    inset 0 -6px 16px rgba(0, 0, 0, 0.55),
+    0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.enchanted-medallion-ring {
+  position: absolute;
+  inset: -0.35rem;
+  border-radius: 50%;
+  border: 1.5px solid rgba(200, 168, 88, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 0 12px rgba(200, 168, 88, 0.12);
+}
+
+.enchanted-gem {
+  position: relative;
+  z-index: 2;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 28%, var(--gem-glow), transparent 42%),
+    radial-gradient(circle at 50% 55%, var(--gem-core), var(--gem-rim));
+  box-shadow:
+    inset 0 -2px 4px rgba(0, 0, 0, 0.45),
+    inset 0 2px 3px rgba(255, 255, 255, 0.25),
+    0 0 12px color-mix(in srgb, var(--gem-glow) 50%, transparent),
+    0 3px 8px rgba(0, 0, 0, 0.5);
+}
+
+.enchanted-gem-lg {
+  z-index: 3;
+}
+
+.enchanted-gem-tl { position: absolute; top: 14%; left: 14%; z-index: 3; }
+.enchanted-gem-tr { position: absolute; top: 14%; right: 14%; z-index: 3; }
+.enchanted-gem-bl { position: absolute; bottom: 18%; left: 14%; z-index: 3; }
+.enchanted-gem-br { position: absolute; bottom: 18%; right: 14%; z-index: 3; }
+.enchanted-gem-mid-l { position: absolute; top: 42%; left: 10%; z-index: 3; }
+.enchanted-gem-mid-r { position: absolute; top: 42%; right: 10%; z-index: 3; }
+
+.enchanted-cover-clasp {
+  position: absolute;
+  right: 1.1rem;
+  top: 50%;
+  z-index: 5;
+  width: 0.65rem;
+  height: 2.8rem;
+  transform: translateY(-50%);
+  border-radius: 0.2rem;
+  background: linear-gradient(90deg, #6a5830, #c8a858 40%, #8a7038 75%, #4a3c20);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 240, 200, 0.35),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.45),
+    2px 0 6px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.enchanted-cover-clasp::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, #e8d090, #8a6830);
+  box-shadow: 0 0 6px rgba(232, 208, 144, 0.4);
+  transform: translate(-50%, -50%);
+  content: "";
+}
+
+.enchanted-cover-highlight {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(125deg, rgba(255, 255, 255, 0.07) 0%, transparent 28%),
+    linear-gradient(305deg, rgba(0, 0, 0, 0.35) 0%, transparent 32%);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.enchanted-opening-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  background: radial-gradient(circle at 78% 50%, rgba(126, 182, 255, 0.32), transparent 42%);
+}
+
+.enchanted-light-leak {
+  position: absolute;
+  top: 8%;
+  right: 0;
+  bottom: 8%;
+  z-index: 7;
+  width: 2.8rem;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(126, 182, 255, 0.4));
+  filter: blur(10px);
+}
+
+.enchanted-escape-particle {
+  position: absolute;
+  z-index: 8;
+  width: 3px;
+  height: 3px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.25);
-  color: rgba(200, 185, 155, 0.75);
+  background: rgba(140, 190, 255, 0.9);
+  box-shadow: 0 0 8px rgba(126, 182, 255, 0.7);
+  pointer-events: none;
+}
+
+.enchanted-tome-cta {
+  position: relative;
+  z-index: 3;
+  margin-top: 2rem;
   font-size: 0.62rem;
   font-weight: 500;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.32em;
   text-transform: uppercase;
-  backdrop-filter: blur(4px);
-  transition: border-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease;
+  color: rgba(168, 188, 210, 0.65);
+  text-align: center;
+  transition: color 0.4s ease;
 }
 
-.tome-cover:not(:disabled):hover .tome-cta-button {
-  border-color: rgba(180, 155, 110, 0.45);
-  color: rgba(220, 200, 165, 0.9);
-  box-shadow: 0 0 20px rgba(126, 182, 255, 0.1);
-}
-
-@keyframes tome-particle-float {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-    opacity: 0.3;
-  }
-  50% {
-    transform: translateY(-18px) scale(1.2);
-    opacity: 0.8;
-  }
+.enchanted-tome-presentation:hover .enchanted-tome-cta {
+  color: rgba(200, 215, 235, 0.82);
 }
 
 /* ── Open manuscript pages ── */

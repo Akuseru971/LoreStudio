@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AudioControls from "@/components/AudioControls";
+import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
+import MagicalBookCover from "@/components/MagicalBookCover";
 import ResultActions from "@/components/ResultActions";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
@@ -115,14 +117,12 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     ? activePageIndex < illustratedPages.length - 1
     : canLookBack && activePageIndex < highestReachedIndex;
 
-  const coverParticles = useMemo(
+  const escapeParticles = useMemo(
     () =>
-      Array.from({ length: 10 }, (_, index) => ({
+      Array.from({ length: 6 }, (_, index) => ({
         id: index,
-        left: `${12 + ((index * 17) % 76)}%`,
-        top: `${18 + ((index * 23) % 64)}%`,
-        duration: `${4 + (index % 4)}s`,
-        delay: `${index * 0.35}s`,
+        left: `${20 + ((index * 19) % 60)}%`,
+        top: `${25 + ((index * 21) % 50)}%`,
       })),
     [],
   );
@@ -576,6 +576,14 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
 
       <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col items-center justify-center">
         <div className="book-scene relative w-full">
+          {showOpenBook && bookState === "open" ? (
+            <div className="pointer-events-none absolute inset-0 z-0 flex justify-center">
+              <div className="relative h-full w-full max-w-4xl">
+                <BookAtmosphere intensity="open" />
+              </div>
+            </div>
+          ) : null}
+
           <AnimatePresence>
             {showOpenBook ? (
               <motion.section
@@ -701,113 +709,22 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
             {showCover ? (
               <motion.section
                 key="cover"
-                initial={{ opacity: 0, y: 32, rotateX: 6 }}
+                initial={{ opacity: 0, y: 36, rotateX: 8 }}
                 animate={
                   bookState === "opening"
-                    ? { opacity: 1, y: -14, rotateX: 0, scale: 1.08 }
+                    ? { opacity: 1, y: -16, rotateX: 0, scale: 1.06 }
                     : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
                 }
-                exit={{ opacity: 0, scale: 1.02, filter: "blur(8px)" }}
-                transition={{ duration: bookState === "opening" ? 1.8 : 0.9, ease: "easeOut" }}
-                className={cn("relative z-10 flex w-full justify-center")}
+                exit={{ opacity: 0, scale: 1.02, filter: "blur(10px)" }}
+                transition={{ duration: bookState === "opening" ? 1.9 : 0.95, ease: "easeOut" }}
+                className="relative z-10 flex w-full justify-center"
               >
-                <div className="ancient-tome">
-                  <div className="tome-shadow" />
-                  <div className="tome-spine" aria-hidden="true" />
-                  <div className="tome-pages-block" aria-hidden="true" />
-
-                  <motion.button
-                    type="button"
-                    onClick={handleOpen}
-                    disabled={bookState === "opening"}
-                    animate={
-                      bookState === "opening"
-                        ? {
-                            rotateY: -18,
-                            boxShadow:
-                              "0 2px 0 rgba(255,220,170,0.08) inset, 0 55px 120px rgba(0,0,0,0.82), 0 0 80px rgba(71,132,211,0.28), inset -20px 0 40px rgba(0,0,0,0.55)",
-                          }
-                        : { rotateY: 0 }
-                    }
-                    transition={{ duration: OPENING_DURATION_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
-                    className="tome-cover"
-                  >
-                    <div className="tome-cover-texture" aria-hidden="true" />
-                    <div className="tome-embossed-border" aria-hidden="true" />
-                    <div className="tome-magic-edge" aria-hidden="true" />
-                    <div className="tome-magic-glow" aria-hidden="true" />
-
-                    <motion.div
-                      className="tome-opening-glow"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: bookState === "opening" ? 1 : 0 }}
-                      transition={{ duration: 1.4, ease: "easeInOut" }}
-                      aria-hidden="true"
-                    />
-                    <motion.div
-                      className="tome-light-leak"
-                      initial={{ opacity: 0, scaleX: 0.3 }}
-                      animate={
-                        bookState === "opening"
-                          ? { opacity: [0, 1, 0.5], scaleX: 1 }
-                          : { opacity: 0, scaleX: 0.3 }
-                      }
-                      transition={{ duration: 1.8, ease: "easeInOut" }}
-                      aria-hidden="true"
-                    />
-
-                    {coverParticles.map((particle) => (
-                      <span
-                        key={particle.id}
-                        className="tome-particle"
-                        style={
-                          {
-                            left: particle.left,
-                            top: particle.top,
-                            "--float-duration": particle.duration,
-                            "--float-delay": particle.delay,
-                          } as CSSProperties
-                        }
-                        aria-hidden="true"
-                      />
-                    ))}
-
-                    {bookState === "opening"
-                      ? coverParticles.slice(0, 5).map((particle) => (
-                          <motion.span
-                            key={`escape-${particle.id}`}
-                            className="tome-particle"
-                            style={{ left: particle.left, top: particle.top }}
-                            initial={{ opacity: 0, y: 0 }}
-                            animate={{ opacity: [0, 0.9, 0], y: -40, x: 12 }}
-                            transition={{
-                              duration: 1.6,
-                              delay: particle.id * 0.12,
-                              ease: "easeOut",
-                            }}
-                            aria-hidden="true"
-                          />
-                        ))
-                      : null}
-
-                    <div className="tome-title-panel">
-                      <motion.h1
-                        className="font-cover-title tome-cover-title"
-                        initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
-                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                        transition={{ duration: 1.2, ease: "easeOut", delay: 0.5 }}
-                      >
-                        {characterName}
-                      </motion.h1>
-                    </div>
-
-                    <div className="tome-cta">
-                      <span className="tome-cta-button">
-                        {bookState === "opening" ? "The archive awakens" : "Open the book"}
-                      </span>
-                    </div>
-                  </motion.button>
-                </div>
+                <MagicalBookCover
+                  bookState={bookState}
+                  openingDurationMs={OPENING_DURATION_MS}
+                  onOpen={handleOpen}
+                  escapeParticles={escapeParticles}
+                />
               </motion.section>
             ) : null}
           </AnimatePresence>
