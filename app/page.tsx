@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import HeroForm from "@/components/HeroForm";
+import IntroGate from "@/components/IntroGate";
 import InteractiveBook from "@/components/InteractiveBook";
 import LoadingRitual from "@/components/LoadingRitual";
+import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
 
-type ViewState = "form" | "loading" | "book" | "error";
+type ViewState = "intro" | "form" | "loading" | "book" | "error";
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const rawText = await response.text();
@@ -76,7 +77,7 @@ async function attachInitialAssets(book: LoreBook) {
 }
 
 export default function Home() {
-  const [view, setView] = useState<ViewState>("form");
+  const [view, setView] = useState<ViewState>("intro");
   const [book, setBook] = useState<LoreBook | null>(null);
   const [error, setError] = useState("The archives refused to open. Try again.");
 
@@ -112,9 +113,15 @@ export default function Home() {
 
   return (
     <AnimatePresence mode="wait">
+      {view === "intro" ? (
+        <motion.div key="intro" exit={{ opacity: 0, filter: "blur(18px)" }} transition={{ duration: 0.7 }}>
+          <IntroGate onStart={() => setView("form")} />
+        </motion.div>
+      ) : null}
+
       {view === "form" ? (
         <motion.div key="form" exit={{ opacity: 0, filter: "blur(12px)" }} transition={{ duration: 0.35 }}>
-          <HeroForm onSubmit={handleSubmit} />
+          <ProgressiveLoreForm onSubmit={handleSubmit} />
         </motion.div>
       ) : null}
 
