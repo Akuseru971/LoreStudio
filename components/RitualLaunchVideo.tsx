@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { RITUAL_LAUNCH_VIDEO_PATH } from "@/lib/video-config";
+import { getRitualLaunchVideoSrc } from "@/lib/video-config";
 
 type RitualLaunchVideoProps = {
   onComplete: () => void;
@@ -11,8 +11,10 @@ type RitualLaunchVideoProps = {
 export default function RitualLaunchVideo({ onComplete }: RitualLaunchVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const completedRef = useRef(false);
-  const [isReady, setIsReady] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const videoSrc = getRitualLaunchVideoSrc();
+  const [needsUserPlay, setNeedsUserPlay] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
 
   const finish = useCallback(() => {
@@ -23,27 +25,34 @@ export default function RitualLaunchVideo({ onComplete }: RitualLaunchVideoProps
     onComplete();
   }, [onComplete]);
 
+  const attemptPlay = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || completedRef.current) {
+      return;
+    }
+
+    video.muted = true;
+    setIsMuted(true);
+
+    try {
+      await video.play();
+      setIsPlaying(true);
+      setNeedsUserPlay(false);
+      setLoadError(false);
+    } catch {
+      setNeedsUserPlay(true);
+      setIsPlaying(false);
+    }
+  }, []);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) {
       return;
     }
 
-    video.muted = true;
-    video.playsInline = true;
-
-    const playPromise = video.play();
-    if (playPromise) {
-      playPromise.catch(() => {
-        setHasError(true);
-        finish();
-      });
-    }
-  }, [finish, isReady]);
-
-  if (hasError) {
-    return null;
-  }
+    void attemptPlay();
+  }, [attemptPlay, videoSrc]);
 
   return (
     <motion.div
@@ -57,27 +66,38 @@ export default function RitualLaunchVideo({ onComplete }: RitualLaunchVideoProps
     >
       <video
         ref={videoRef}
+        key={videoSrc}
         className="ritual-launch-video"
-        src={RITUAL_LAUNCH_VIDEO_PATH}
+        src={videoSrc}
         muted
         playsInline
+        autoPlay
         preload="auto"
-        onLoadedData={() => setIsReady(true)}
+        onCanPlay={() => void attemptPlay()}
+        onPlaying={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         onEnded={finish}
         onError={() => {
-          setHasError(true);
-          finish();
+          setLoadError(true);
+          setNeedsUserPlay(true);
         }}
       />
 
       <div className="ritual-launch-video-vignette" aria-hidden="true" />
 
+      {needsUserPlay && !isPlaying ? (
+        <div className="ritual-launch-video-prompt">
+          <p className="font-cover-title text-lg text-[#e8dcc8]/90">
+            {loadError ? "La vidéo n'a pas pu démarrer automatiquement." : "Votre légende commence…"}
+          </p>
+          <button type="button" onClick={() => void attemptPlay()} className="gold-button mt-4 rounded-full px-6 py-3 text-xs font-bold uppercase tracking-[0.24em]">
+            Lancer la vidéo
+          </button>
+        </div>
+      ) : null}
+
       <div className="ritual-launch-video-controls">
-        <button
-          type="button"
-          onClick={finish}
-          className="ritual-launch-video-skip"
-        >
+        <button type="button" onClick={finish} className="ritual-launch-video-skip">
           Passer
         </button>
         <button

@@ -1333,3 +1333,17 @@ button {
   border-color: rgba(201, 168, 88, 0.45);
   background: rgba(12, 18, 28, 0.72);
 }
+
+.ritual-launch-video-prompt {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  background: rgba(3, 4, 10, 0.55);
+  backdrop-filter: blur(4px);
+}

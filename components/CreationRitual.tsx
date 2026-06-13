@@ -13,7 +13,7 @@ import RitualPhase from "@/components/RitualPhase";
 import RitualProgress from "@/components/RitualProgress";
 import VideoBindingChecklist from "@/components/VideoBindingChecklist";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
-import { isExternalRitualVideoUrl, RITUAL_LAUNCH_VIDEO_PATH } from "@/lib/video-config";
+import { getRitualLaunchVideoSrc, isRitualLaunchVideoConfigured, shouldProxyRitualVideo } from "@/lib/video-config";
 import {
   PHASE_MESSAGES,
   computeTargetProgress,
@@ -110,7 +110,7 @@ export default function CreationRitual({
   const [legendRevealDone, setLegendRevealDone] = useState(false);
   const [postRevealMessage, setPostRevealMessage] = useState(false);
   const [launchVideoDone, setLaunchVideoDone] = useState(false);
-  const [launchVideoAvailable, setLaunchVideoAvailable] = useState(false);
+  const [launchVideoAvailable, setLaunchVideoAvailable] = useState(() => isRitualLaunchVideoConfigured());
   const characterTimerRef = useRef<number | undefined>(undefined);
   const revealSessionRef = useRef<string | null>(null);
   const launchSessionRef = useRef<string | null>(null);
@@ -168,14 +168,16 @@ export default function CreationRitual({
   }, [formInput.name]);
 
   useEffect(() => {
-    if (isExternalRitualVideoUrl()) {
+    const videoSrc = getRitualLaunchVideoSrc();
+
+    if (shouldProxyRitualVideo()) {
       setLaunchVideoAvailable(true);
       return;
     }
 
     let cancelled = false;
 
-    fetch(RITUAL_LAUNCH_VIDEO_PATH, { method: "HEAD" })
+    fetch(videoSrc, { method: "HEAD" })
       .then((response) => {
         if (!cancelled) {
           setLaunchVideoAvailable(response.ok);
