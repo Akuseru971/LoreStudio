@@ -24,3 +24,31 @@ export function getRitualLaunchVideoSrc(): string | null {
   }
   return "/api/ritual-video";
 }
+
+/** Précharge la vidéo dans le cache navigateur avant le clic Generate */
+export function prefetchRitualLaunchVideo() {
+  if (typeof window === "undefined" || !isRitualLaunchVideoConfigured()) {
+    return () => {};
+  }
+
+  const src = getRitualLaunchVideoSrc();
+  if (!src) {
+    return () => {};
+  }
+
+  const existing = document.querySelector<HTMLLinkElement>(`link[data-ritual-video-prefetch="${src}"]`);
+  if (existing) {
+    return () => {};
+  }
+
+  const link = document.createElement("link");
+  link.rel = "prefetch";
+  link.as = "video";
+  link.href = src;
+  link.setAttribute("data-ritual-video-prefetch", src);
+  document.head.appendChild(link);
+
+  return () => {
+    link.remove();
+  };
+}

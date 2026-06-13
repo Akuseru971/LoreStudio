@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import RitualVideoPlayer, { type RitualVideoPlayerHandle } from "@/components/RitualVideoPlayer";
 
 export type RitualLaunchVideoProps = {
   src: string;
@@ -12,7 +13,7 @@ export type RitualLaunchVideoProps = {
 const SLOW_LOAD_MS = 5000;
 
 export default function RitualLaunchVideo({ src, poster, onEnded, onSkip }: RitualLaunchVideoProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerRef = useRef<RitualVideoPlayerHandle | null>(null);
   const finishedRef = useRef(false);
   const playAttemptedRef = useRef(false);
 
@@ -24,52 +25,39 @@ export default function RitualLaunchVideo({ src, poster, onEnded, onSkip }: Ritu
   const [showSlowMessage, setShowSlowMessage] = useState(false);
   const [showContinue, setShowContinue] = useState(false);
 
-  const finish = useCallback(
-    (handler: () => void) => {
-      if (finishedRef.current) {
-        return;
-      }
-      finishedRef.current = true;
-      videoRef.current?.pause();
-      handler();
-    },
-    [],
-  );
+  const finish = useCallback((handler: () => void) => {
+    if (finishedRef.current) {
+      return;
+    }
+    finishedRef.current = true;
+    playerRef.current?.pause();
+    handler();
+  }, []);
 
   const handleSkip = useCallback(() => finish(onSkip), [finish, onSkip]);
   const handleContinue = useCallback(() => finish(onEnded), [finish, onEnded]);
 
-  const attemptPlay = useCallback(async (preferSound = false) => {
-    const video = videoRef.current;
-    if (!video || finishedRef.current || showContinue) {
+  const attemptPlay = useCallback(async () => {
+    if (finishedRef.current || showContinue || !playerRef.current) {
       return;
     }
 
-    if (preferSound) {
-      video.muted = false;
-      try {
-        await video.play();
-        setIsMuted(false);
-        setHasStarted(true);
-        setIsBuffering(false);
-        setShowSoundButton(false);
-        return;
-      } catch {
-        video.muted = true;
-        setIsMuted(true);
-        setShowSoundButton(true);
-      }
-    } else {
-      video.muted = true;
-      setIsMuted(true);
-    }
-
-    try {
-      await video.play();
+    const withSound = await playerRef.current.play(true);
+    if (withSound) {
+      setIsMuted(false);
       setHasStarted(true);
       setIsBuffering(false);
-    } catch {
-      setShowSoundButton(true);
+      setShowSoundButton(false);
+      return;
+    }
+
+    setIsMuted(true);
+    setShowSoundButton(true);
+
+    const mutedPlay = await playerRef.current.play(false);
+    if (mutedPlay) {
+      setHasStarted(true);
+      setIsBuffering(false);
     }
   }, [showContinue]);
 
@@ -78,7 +66,7 @@ export default function RitualLaunchVideo({ src, poster, onEnded, onSkip }: Ritu
       return;
     }
     playAttemptedRef.current = true;
-    void attemptPlay(true);
+    void attemptPlay();
   }, [attemptPlay]);
 
   useEffect(() => {
@@ -100,60 +88,61 @@ export default function RitualLaunchVideo({ src, poster, onEnded, onSkip }: Ritu
   }, [handleSkip, hasError]);
 
   const enableSound = useCallback(async () => {
-    const video = videoRef.current;
-    if (!video) {
+    if (!playerRef.current) {
       return;
     }
-    video.muted = false;
-    setIsMuted(false);
-    setShowSoundButton(false);
-    try {
-      await video.play();
+
+    const ok = await playerRef.current.enableSound();
+    if (ok) {
+      setIsMuted(false);
+      setShowSoundButton(false);
       setHasStarted(true);
       setIsBuffering(false);
-    } catch {
-      video.muted = true;
-      setIsMuted(true);
-      setShowSoundButton(true);
+      return;
     }
+
+    setIsMuted(true);
+    setShowSoundButton(true);
   }, []);
 
   return (
     <div className="ritual-launch-video-overlay" role="dialog" aria-label="Intro video">
-      <div className="ritual-launch-video-poster" aria-hidden="true">
-        {poster ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={poster} alt="" className="ritual-launch-video-poster-image" />
+      <div
+        className="ritual-launch-video-stage"
+        aria-hidden="true"
+        data-playing={hasStarted ? "true" : "false"}
+      >
+        {!hasStarted ? (
+          <div className="ritual-launch-video-poster">
+            {poster ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={poster} alt="" className="ritual-launch-video-poster-image" decoding="async" />
+            ) : null}
+          </div>
         ) : null}
-      </div>
 
-      <video
-        ref={videoRef}
-        className="ritual-launch-video"
-        src={src}
-        poster={poster}
-        playsInline
-        preload="auto"
-        controls={false}
-        muted={isMuted}
-        onLoadedMetadata={() => setIsBuffering(true)}
-        onCanPlay={() => void attemptPlay(false)}
-        onCanPlayThrough={() => setIsBuffering(false)}
-        onWaiting={() => setIsBuffering(true)}
-        onPlaying={() => {
-          setIsBuffering(false);
-          setHasStarted(true);
-          setShowSlowMessage(false);
-        }}
-        onEnded={() => {
-          setShowContinue(true);
-          setIsBuffering(false);
-        }}
-        onError={() => {
-          setHasError(true);
-          setIsBuffering(false);
-        }}
-      />
+        <RitualVideoPlayer
+          ref={playerRef}
+          src={src}
+          poster={poster}
+          muted={isMuted}
+          className="ritual-launch-video"
+          onBufferingChange={setIsBuffering}
+          onPlaying={() => {
+            setHasStarted(true);
+            setIsBuffering(false);
+            setShowSlowMessage(false);
+          }}
+          onEnded={() => {
+            setShowContinue(true);
+            setIsBuffering(false);
+          }}
+          onError={() => {
+            setHasError(true);
+            setIsBuffering(false);
+          }}
+        />
+      </div>
 
       <div className="ritual-launch-video-vignette" aria-hidden="true" />
 

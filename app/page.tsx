@@ -19,10 +19,10 @@ import {
 import {
   getRitualLaunchVideoSrc,
   isRitualLaunchVideoConfigured,
+  prefetchRitualLaunchVideo,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 type ViewState = "intro" | "form" | "loading" | "book" | "error";
 
@@ -139,10 +139,24 @@ export default function Home() {
     };
   }, [introVideoActive, introVideoDone, musicAvailable, musicEnabled, view]);
 
-  function handleIntroVideoFinish() {
+  useEffect(() => {
+    if (view !== "form" || !isRitualLaunchVideoConfigured()) {
+      return;
+    }
+
+    return prefetchRitualLaunchVideo();
+  }, [view]);
+
+  const handleIntroVideoFinish = useCallback(() => {
     setIntroVideoDone(true);
     setIntroVideoActive(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    if (ritualError && introVideoActive && !introVideoDone) {
+      handleIntroVideoFinish();
+    }
+  }, [handleIntroVideoFinish, introVideoActive, introVideoDone, ritualError]);
 
   const updateRitualStatus = useCallback((updater: (current: RitualStatus) => RitualStatus) => {
     setRitualStatus((current) => {
@@ -396,12 +410,7 @@ export default function Home() {
               />
             ) : null}
 
-            <div
-              className={cn(
-                introVideoActive && !introVideoDone && "pointer-events-none invisible fixed h-0 overflow-hidden opacity-0",
-              )}
-              aria-hidden={introVideoActive && !introVideoDone}
-            >
+            {(!introVideoActive || introVideoDone) && (
               <CreationRitual
               formInput={formInput}
               book={ritualBook}
@@ -436,7 +445,7 @@ export default function Home() {
               onPlayFirstLine={() => void playFirstNarratedLine()}
               isPlayingFirstLine={isPlayingFirstLine}
               />
-            </div>
+            )}
           </motion.div>
         ) : null}
 
