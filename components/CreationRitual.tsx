@@ -13,7 +13,7 @@ import RitualPhase from "@/components/RitualPhase";
 import RitualProgress from "@/components/RitualProgress";
 import VideoBindingChecklist from "@/components/VideoBindingChecklist";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
-import { RITUAL_LAUNCH_VIDEO_PATH } from "@/lib/video-config";
+import { isExternalRitualVideoUrl, RITUAL_LAUNCH_VIDEO_PATH } from "@/lib/video-config";
 import {
   PHASE_MESSAGES,
   computeTargetProgress,
@@ -168,6 +168,11 @@ export default function CreationRitual({
   }, [formInput.name]);
 
   useEffect(() => {
+    if (isExternalRitualVideoUrl()) {
+      setLaunchVideoAvailable(true);
+      return;
+    }
+
     let cancelled = false;
 
     fetch(RITUAL_LAUNCH_VIDEO_PATH, { method: "HEAD" })

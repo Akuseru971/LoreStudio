@@ -87,11 +87,13 @@ export default function RitualLaunchVideo({ onComplete }: RitualLaunchVideoProps
             if (!video) {
               return;
             }
-            video.muted = !video.muted;
+            const nextMuted = !video.muted;
+            video.muted = nextMuted;
+            setIsMuted(nextMuted);
           }}
           className="ritual-launch-video-mute"
         >
-          Son
+          {isMuted ? "Son" : "Muet"}
         </button>
       </div>
     </motion.div>
