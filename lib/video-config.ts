@@ -1,33 +1,26 @@
 /**
- * Vidéo jouée au lancement du rituel de génération.
+ * Vidéo d'ouverture du rituel de génération.
  *
- * Configuration (une des options) :
- * - RITUAL_LAUNCH_VIDEO_URL (serveur, recommandé pour Blob privé signé)
- * - NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO (URL complète, proxifiée via /api/ritual-video)
- * - Fichier local : public/video/ritual-launch.mp4
+ * NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO — URL externe (ex. Vercel Blob)
+ * RITUAL_LAUNCH_VIDEO_URL — alternative serveur (proxy /api/ritual-video)
+ * NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO_POSTER — image poster optionnelle
  */
-export const RITUAL_LAUNCH_VIDEO_PATH =
-  process.env.NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO?.trim() || "/video/ritual-launch.mp4";
+export const RITUAL_LAUNCH_VIDEO_URL =
+  process.env.NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO?.trim() ||
+  process.env.RITUAL_LAUNCH_VIDEO_URL?.trim() ||
+  "";
 
-export function isExternalRitualVideoUrl(url: string = RITUAL_LAUNCH_VIDEO_PATH) {
-  return /^https?:\/\//i.test(url);
-}
+export const RITUAL_LAUNCH_VIDEO_POSTER =
+  process.env.NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO_POSTER?.trim() || undefined;
 
 export function isRitualLaunchVideoConfigured() {
-  return Boolean(
-    process.env.RITUAL_LAUNCH_VIDEO_URL?.trim() ||
-      process.env.NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO?.trim(),
-  );
+  return Boolean(RITUAL_LAUNCH_VIDEO_URL);
 }
 
-/** URL utilisée par le lecteur <video> côté client */
-export function getRitualLaunchVideoSrc() {
-  if (isRitualLaunchVideoConfigured() || isExternalRitualVideoUrl()) {
-    return "/api/ritual-video";
+/** Src du lecteur — proxy pour URLs externes afin d'éviter les blocages CORS/403 */
+export function getRitualLaunchVideoSrc(): string | null {
+  if (!isRitualLaunchVideoConfigured()) {
+    return null;
   }
-  return "/video/ritual-launch.mp4";
-}
-
-export function shouldProxyRitualVideo() {
-  return getRitualLaunchVideoSrc() === "/api/ritual-video";
+  return "/api/ritual-video";
 }

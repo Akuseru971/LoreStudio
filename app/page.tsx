@@ -6,6 +6,7 @@ import CreationRitual from "@/components/CreationRitual";
 import IntroGate from "@/components/IntroGate";
 import InteractiveBook from "@/components/InteractiveBook";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
+import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import {
   computeRitualPhase,
@@ -15,7 +16,13 @@ import {
   pickDefaultRelic,
   type RitualStatus,
 } from "@/lib/ritual";
+import {
+  getRitualLaunchVideoSrc,
+  isRitualLaunchVideoConfigured,
+  RITUAL_LAUNCH_VIDEO_POSTER,
+} from "@/lib/video-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type ViewState = "intro" | "form" | "loading" | "book" | "error";
 
@@ -71,6 +78,10 @@ export default function Home() {
   const [musicEnabled, setMusicEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isPlayingFirstLine, setIsPlayingFirstLine] = useState(false);
+  const [introVideoActive, setIntroVideoActive] = useState(false);
+  const [introVideoDone, setIntroVideoDone] = useState(false);
+
+  const introVideoSrc = getRitualLaunchVideoSrc();
 
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
@@ -113,7 +124,7 @@ export default function Home() {
   }, [ritualStatus.loreReady, view]);
 
   useEffect(() => {
-    if (view !== "loading" || !musicAvailable || !musicEnabled || !musicRef.current) {
+    if (view !== "loading" || !musicAvailable || !musicEnabled || !musicRef.current || (introVideoActive && !introVideoDone)) {
       musicRef.current?.pause();
       return;
     }
@@ -126,7 +137,12 @@ export default function Home() {
     return () => {
       musicRef.current?.pause();
     };
-  }, [musicAvailable, musicEnabled, view]);
+  }, [introVideoActive, introVideoDone, musicAvailable, musicEnabled, view]);
+
+  function handleIntroVideoFinish() {
+    setIntroVideoDone(true);
+    setIntroVideoActive(false);
+  }
 
   const updateRitualStatus = useCallback((updater: (current: RitualStatus) => RitualStatus) => {
     setRitualStatus((current) => {
@@ -276,9 +292,11 @@ export default function Home() {
     setSelectedFinalQuote(null);
     voiceRef.current?.pause();
 
-    try {
-      await runCreationRitual(input, runId);
-    } catch (generationError) {
+    const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
+    setIntroVideoActive(hasIntroVideo);
+    setIntroVideoDone(!hasIntroVideo);
+
+    void runCreationRitual(input, runId).catch((generationError) => {
       if (generationRunRef.current !== runId) {
         return;
       }
@@ -287,7 +305,7 @@ export default function Home() {
           ? generationError.message
           : "The archive resisted the ritual. Try again.",
       );
-    }
+    });
   }
 
   function handleRitualComplete() {
@@ -369,7 +387,22 @@ export default function Home() {
 
         {view === "loading" && formInput ? (
           <motion.div key="loading" exit={{ opacity: 0, filter: "blur(12px)" }} transition={{ duration: 0.65 }}>
-            <CreationRitual
+            {introVideoActive && !introVideoDone && introVideoSrc ? (
+              <RitualLaunchVideo
+                src={introVideoSrc}
+                poster={RITUAL_LAUNCH_VIDEO_POSTER}
+                onEnded={handleIntroVideoFinish}
+                onSkip={handleIntroVideoFinish}
+              />
+            ) : null}
+
+            <div
+              className={cn(
+                introVideoActive && !introVideoDone && "pointer-events-none invisible fixed h-0 overflow-hidden opacity-0",
+              )}
+              aria-hidden={introVideoActive && !introVideoDone}
+            >
+              <CreationRitual
               formInput={formInput}
               book={ritualBook}
               status={ritualStatus}
@@ -402,7 +435,8 @@ export default function Home() {
               firstPageAudioUrl={firstPageAudioUrl}
               onPlayFirstLine={() => void playFirstNarratedLine()}
               isPlayingFirstLine={isPlayingFirstLine}
-            />
+              />
+            </div>
           </motion.div>
         ) : null}
 

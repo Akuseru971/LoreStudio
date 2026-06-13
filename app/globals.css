@@ -1290,31 +1290,131 @@ button {
 }
 
 .ritual-launch-video {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
+.ritual-launch-video-poster {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 45%, rgba(28, 36, 52, 0.55) 0%, transparent 70%),
+    linear-gradient(180deg, #05060c 0%, #0a0d14 45%, #03040a 100%);
+}
+
+.ritual-launch-video-poster-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.92;
+}
+
 .ritual-launch-video-vignette {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
   background:
     linear-gradient(180deg, rgba(3, 4, 10, 0.35) 0%, transparent 22%, transparent 78%, rgba(3, 4, 10, 0.55) 100%),
     radial-gradient(ellipse at center, transparent 55%, rgba(3, 4, 10, 0.45) 100%);
 }
 
-.ritual-launch-video-controls {
+.ritual-launch-video-loader {
   position: absolute;
-  bottom: 1.75rem;
-  right: 1.5rem;
-  z-index: 2;
+  inset: 0;
+  z-index: 3;
   display: flex;
-  gap: 0.65rem;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
 }
 
-.ritual-launch-video-skip,
-.ritual-launch-video-mute {
+.ritual-launch-video-spinner {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgba(201, 168, 88, 0.18);
+  border-top-color: rgba(201, 168, 88, 0.72);
+  border-radius: 50%;
+  animation: ritual-launch-spin 0.9s linear infinite;
+}
+
+@keyframes ritual-launch-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ritual-launch-video-slow-message {
+  position: absolute;
+  bottom: 5.5rem;
+  left: 50%;
+  z-index: 4;
+  max-width: 18rem;
+  transform: translateX(-50%);
+  padding: 0 1.25rem;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: rgba(216, 196, 152, 0.82);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+}
+
+.ritual-launch-video-sound {
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%);
+  padding: 0.6rem 1.25rem;
+  border: 1px solid rgba(201, 168, 88, 0.35);
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.72);
+  color: rgba(232, 220, 200, 0.9);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+  transition: border-color 0.25s ease, background 0.25s ease;
+}
+
+.ritual-launch-video-sound:hover {
+  border-color: rgba(201, 168, 88, 0.55);
+  background: rgba(14, 20, 32, 0.85);
+}
+
+.ritual-launch-video-continue-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 3rem;
+  pointer-events: none;
+}
+
+.ritual-launch-video-continue {
+  pointer-events: auto;
+  border-radius: 999px;
+  padding: 0.85rem 2rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+
+.ritual-launch-video-skip-top {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 5;
   padding: 0.55rem 1.1rem;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
@@ -1328,22 +1428,7 @@ button {
   transition: border-color 0.3s ease, background 0.3s ease;
 }
 
-.ritual-launch-video-skip:hover,
-.ritual-launch-video-mute:hover {
+.ritual-launch-video-skip-top:hover {
   border-color: rgba(201, 168, 88, 0.45);
   background: rgba(12, 18, 28, 0.72);
-}
-
-.ritual-launch-video-prompt {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  text-align: center;
-  background: rgba(3, 4, 10, 0.55);
-  backdrop-filter: blur(4px);
 }

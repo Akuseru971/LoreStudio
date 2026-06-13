@@ -1,121 +1,191 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { getRitualLaunchVideoSrc } from "@/lib/video-config";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-type RitualLaunchVideoProps = {
-  onComplete: () => void;
+export type RitualLaunchVideoProps = {
+  src: string;
+  poster?: string;
+  onEnded: () => void;
+  onSkip: () => void;
 };
 
-export default function RitualLaunchVideo({ onComplete }: RitualLaunchVideoProps) {
+const SLOW_LOAD_MS = 5000;
+
+export default function RitualLaunchVideo({ src, poster, onEnded, onSkip }: RitualLaunchVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const completedRef = useRef(false);
-  const videoSrc = getRitualLaunchVideoSrc();
-  const [needsUserPlay, setNeedsUserPlay] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const finishedRef = useRef(false);
+  const playAttemptedRef = useRef(false);
+
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
+  const [showSoundButton, setShowSoundButton] = useState(false);
+  const [showSlowMessage, setShowSlowMessage] = useState(false);
+  const [showContinue, setShowContinue] = useState(false);
 
-  const finish = useCallback(() => {
-    if (completedRef.current) {
-      return;
-    }
-    completedRef.current = true;
-    onComplete();
-  }, [onComplete]);
+  const finish = useCallback(
+    (handler: () => void) => {
+      if (finishedRef.current) {
+        return;
+      }
+      finishedRef.current = true;
+      videoRef.current?.pause();
+      handler();
+    },
+    [],
+  );
 
-  const attemptPlay = useCallback(async () => {
+  const handleSkip = useCallback(() => finish(onSkip), [finish, onSkip]);
+  const handleContinue = useCallback(() => finish(onEnded), [finish, onEnded]);
+
+  const attemptPlay = useCallback(async (preferSound = false) => {
     const video = videoRef.current;
-    if (!video || completedRef.current) {
+    if (!video || finishedRef.current || showContinue) {
       return;
     }
 
-    video.muted = true;
-    setIsMuted(true);
+    if (preferSound) {
+      video.muted = false;
+      try {
+        await video.play();
+        setIsMuted(false);
+        setHasStarted(true);
+        setIsBuffering(false);
+        setShowSoundButton(false);
+        return;
+      } catch {
+        video.muted = true;
+        setIsMuted(true);
+        setShowSoundButton(true);
+      }
+    } else {
+      video.muted = true;
+      setIsMuted(true);
+    }
 
     try {
       await video.play();
-      setIsPlaying(true);
-      setNeedsUserPlay(false);
-      setLoadError(false);
+      setHasStarted(true);
+      setIsBuffering(false);
     } catch {
-      setNeedsUserPlay(true);
-      setIsPlaying(false);
+      setShowSoundButton(true);
     }
-  }, []);
+  }, [showContinue]);
+
+  useLayoutEffect(() => {
+    if (playAttemptedRef.current) {
+      return;
+    }
+    playAttemptedRef.current = true;
+    void attemptPlay(true);
+  }, [attemptPlay]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!hasStarted && !hasError) {
+        setShowSlowMessage(true);
+      }
+    }, SLOW_LOAD_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [hasError, hasStarted]);
+
+  useEffect(() => {
+    if (!hasError) {
+      return;
+    }
+    const timer = window.setTimeout(() => handleSkip(), 400);
+    return () => window.clearTimeout(timer);
+  }, [handleSkip, hasError]);
+
+  const enableSound = useCallback(async () => {
     const video = videoRef.current;
     if (!video) {
       return;
     }
-
-    void attemptPlay();
-  }, [attemptPlay, videoSrc]);
+    video.muted = false;
+    setIsMuted(false);
+    setShowSoundButton(false);
+    try {
+      await video.play();
+      setHasStarted(true);
+      setIsBuffering(false);
+    } catch {
+      video.muted = true;
+      setIsMuted(true);
+      setShowSoundButton(true);
+    }
+  }, []);
 
   return (
-    <motion.div
-      className="ritual-launch-video-overlay"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, filter: "blur(10px)" }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
-      role="dialog"
-      aria-label="Vidéo d'ouverture du rituel"
-    >
+    <div className="ritual-launch-video-overlay" role="dialog" aria-label="Intro video">
+      <div className="ritual-launch-video-poster" aria-hidden="true">
+        {poster ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={poster} alt="" className="ritual-launch-video-poster-image" />
+        ) : null}
+      </div>
+
       <video
         ref={videoRef}
-        key={videoSrc}
         className="ritual-launch-video"
-        src={videoSrc}
-        muted
+        src={src}
+        poster={poster}
         playsInline
-        autoPlay
         preload="auto"
-        onCanPlay={() => void attemptPlay()}
-        onPlaying={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onEnded={finish}
+        controls={false}
+        muted={isMuted}
+        onLoadedMetadata={() => setIsBuffering(true)}
+        onCanPlay={() => void attemptPlay(false)}
+        onCanPlayThrough={() => setIsBuffering(false)}
+        onWaiting={() => setIsBuffering(true)}
+        onPlaying={() => {
+          setIsBuffering(false);
+          setHasStarted(true);
+          setShowSlowMessage(false);
+        }}
+        onEnded={() => {
+          setShowContinue(true);
+          setIsBuffering(false);
+        }}
         onError={() => {
-          setLoadError(true);
-          setNeedsUserPlay(true);
+          setHasError(true);
+          setIsBuffering(false);
         }}
       />
 
       <div className="ritual-launch-video-vignette" aria-hidden="true" />
 
-      {needsUserPlay && !isPlaying ? (
-        <div className="ritual-launch-video-prompt">
-          <p className="font-cover-title text-lg text-[#e8dcc8]/90">
-            {loadError ? "La vidéo n'a pas pu démarrer automatiquement." : "Votre légende commence…"}
-          </p>
-          <button type="button" onClick={() => void attemptPlay()} className="gold-button mt-4 rounded-full px-6 py-3 text-xs font-bold uppercase tracking-[0.24em]">
-            Lancer la vidéo
+      {isBuffering && !hasError && !showContinue ? (
+        <div className="ritual-launch-video-loader" aria-live="polite">
+          <span className="ritual-launch-video-spinner" />
+        </div>
+      ) : null}
+
+      {showSlowMessage && !hasStarted && !hasError ? (
+        <p className="ritual-launch-video-slow-message font-cover-title">
+          The archive is taking longer than expected…
+        </p>
+      ) : null}
+
+      {showSoundButton && isMuted && !showContinue ? (
+        <button type="button" onClick={() => void enableSound()} className="ritual-launch-video-sound">
+          Tap for sound
+        </button>
+      ) : null}
+
+      {showContinue ? (
+        <div className="ritual-launch-video-continue-wrap">
+          <button type="button" onClick={handleContinue} className="gold-button ritual-launch-video-continue">
+            Continue
           </button>
         </div>
       ) : null}
 
-      <div className="ritual-launch-video-controls">
-        <button type="button" onClick={finish} className="ritual-launch-video-skip">
-          Passer
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const video = videoRef.current;
-            if (!video) {
-              return;
-            }
-            const nextMuted = !video.muted;
-            video.muted = nextMuted;
-            setIsMuted(nextMuted);
-          }}
-          className="ritual-launch-video-mute"
-        >
-          {isMuted ? "Son" : "Muet"}
-        </button>
-      </div>
-    </motion.div>
+      <button type="button" onClick={handleSkip} className="ritual-launch-video-skip-top">
+        Skip intro
+      </button>
+    </div>
   );
 }
