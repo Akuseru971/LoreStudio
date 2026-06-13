@@ -6,12 +6,14 @@ import CharacterReveal from "@/components/CharacterReveal";
 import FinalQuoteChoice from "@/components/FinalQuoteChoice";
 import LegendRevealSequence from "@/components/LegendRevealSequence";
 import MagicalRitualBackground from "@/components/MagicalRitualBackground";
+import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import PagePreviewRitual from "@/components/PagePreviewRitual";
 import RelicChoice from "@/components/RelicChoice";
 import RitualPhase from "@/components/RitualPhase";
 import RitualProgress from "@/components/RitualProgress";
 import VideoBindingChecklist from "@/components/VideoBindingChecklist";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { RITUAL_LAUNCH_VIDEO_PATH } from "@/lib/video-config";
 import {
   PHASE_MESSAGES,
   computeTargetProgress,
@@ -107,8 +109,13 @@ export default function CreationRitual({
   const [characterRevealed, setCharacterRevealed] = useState(false);
   const [legendRevealDone, setLegendRevealDone] = useState(false);
   const [postRevealMessage, setPostRevealMessage] = useState(false);
+  const [launchVideoDone, setLaunchVideoDone] = useState(false);
+  const [launchVideoAvailable, setLaunchVideoAvailable] = useState(false);
   const characterTimerRef = useRef<number | undefined>(undefined);
   const revealSessionRef = useRef<string | null>(null);
+  const launchSessionRef = useRef<string | null>(null);
+
+  const showLaunchVideo = launchVideoAvailable && !launchVideoDone && !error;
 
   const phase = status.phase;
   const messages = PHASE_MESSAGES[phase];
@@ -151,6 +158,38 @@ export default function CreationRitual({
       phase !== "archive" &&
       phase !== "complete",
   );
+
+  useEffect(() => {
+    const sessionKey = formInput.name;
+    if (launchSessionRef.current !== sessionKey) {
+      launchSessionRef.current = sessionKey;
+      setLaunchVideoDone(false);
+    }
+  }, [formInput.name]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(RITUAL_LAUNCH_VIDEO_PATH, { method: "HEAD" })
+      .then((response) => {
+        if (!cancelled) {
+          setLaunchVideoAvailable(response.ok);
+          if (!response.ok) {
+            setLaunchVideoDone(true);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLaunchVideoAvailable(false);
+          setLaunchVideoDone(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!book || !status.loreReady) {
@@ -260,6 +299,12 @@ export default function CreationRitual({
       <MagicalRitualBackground phase={phase} />
 
       <AnimatePresence>
+        {showLaunchVideo ? (
+          <RitualLaunchVideo key="launch-video" onComplete={() => setLaunchVideoDone(true)} />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showLegendReveal && book ? (
           <LegendRevealSequence
             key="legend-reveal"
@@ -276,7 +321,7 @@ export default function CreationRitual({
       <div
         className={cn(
           "relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl flex-col transition-opacity duration-700",
-          showLegendReveal ? "pointer-events-none opacity-0" : "opacity-100",
+          showLaunchVideo || showLegendReveal ? "pointer-events-none opacity-0" : "opacity-100",
         )}
       >
         <header className="mb-6 text-center">
