@@ -6,6 +6,9 @@ export type RitualVideoPlayerHandle = {
   play: (preferSound?: boolean) => Promise<boolean>;
   enableSound: () => Promise<boolean>;
   pause: () => void;
+  togglePlay: () => Promise<void>;
+  toggleMute: () => void;
+  seek: (time: number) => void;
 };
 
 export type RitualVideoPlayerProps = {
@@ -15,6 +18,9 @@ export type RitualVideoPlayerProps = {
   onReady?: () => void;
   onBufferingChange?: (buffering: boolean) => void;
   onPlaying?: () => void;
+  onPause?: () => void;
+  onTimeUpdate?: (currentTime: number) => void;
+  onDurationChange?: (duration: number) => void;
   onEnded?: () => void;
   onError?: () => void;
   className?: string;
@@ -22,7 +28,20 @@ export type RitualVideoPlayerProps = {
 
 const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerProps>(
   function RitualVideoPlayer(
-    { src, poster, muted, onReady, onBufferingChange, onPlaying, onEnded, onError, className },
+    {
+      src,
+      poster,
+      muted,
+      onReady,
+      onBufferingChange,
+      onPlaying,
+      onPause,
+      onTimeUpdate,
+      onDurationChange,
+      onEnded,
+      onError,
+      className,
+    },
     ref,
   ) {
     const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -92,6 +111,31 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
       pause: () => {
         videoRef.current?.pause();
       },
+      togglePlay: async () => {
+        const video = videoRef.current;
+        if (!video) {
+          return;
+        }
+        if (video.paused) {
+          await video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      },
+      toggleMute: () => {
+        const video = videoRef.current;
+        if (!video) {
+          return;
+        }
+        video.muted = !video.muted;
+      },
+      seek: (time: number) => {
+        const video = videoRef.current;
+        if (!video) {
+          return;
+        }
+        video.currentTime = time;
+      },
     }));
 
     useEffect(() => {
@@ -125,9 +169,25 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
         disablePictureInPicture
         disableRemotePlayback
         onLoadedMetadata={() => {
+          const video = videoRef.current;
           if (!readyRef.current) {
             readyRef.current = true;
             onReady?.();
+          }
+          if (video && Number.isFinite(video.duration)) {
+            onDurationChange?.(video.duration);
+          }
+        }}
+        onDurationChange={() => {
+          const video = videoRef.current;
+          if (video && Number.isFinite(video.duration)) {
+            onDurationChange?.(video.duration);
+          }
+        }}
+        onTimeUpdate={() => {
+          const video = videoRef.current;
+          if (video) {
+            onTimeUpdate?.(video.currentTime);
           }
         }}
         onCanPlayThrough={() => setBuffering(false)}
@@ -136,6 +196,7 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
           setBuffering(false);
           onPlaying?.();
         }}
+        onPause={() => onPause?.()}
         onEnded={() => {
           setBuffering(false);
           onEnded?.();
