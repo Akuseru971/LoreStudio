@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import MagicalBackground from "@/components/MagicalBackground";
 import SequentialField from "@/components/SequentialField";
@@ -124,13 +124,57 @@ function FieldDiceButton({
   );
 }
 
+function SpeakerIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
+      <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 01-2.5 4.03V7.97A4.48 4.48 0 0116.5 12z" />
+    </svg>
+  );
+}
+
+function PronunciationButton({
+  loading,
+  playing,
+  disabled,
+  onClick,
+}: {
+  loading: boolean;
+  playing: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Écouter la prononciation du pseudo"
+      title="Écouter la prononciation"
+      className={`inline-flex h-[3.05rem] w-[3.05rem] shrink-0 items-center justify-center rounded-2xl border bg-[#07101c]/75 shadow-[0_0_18px_rgba(201,168,88,0.1)] transition hover:bg-[#0a1524]/90 disabled:cursor-not-allowed disabled:opacity-50 ${
+        playing
+          ? "border-[#c9a858]/55 text-[#f0ddb0] shadow-[0_0_24px_rgba(201,168,88,0.24)]"
+          : "border-[#c9a858]/28 text-[#d8c08e] hover:border-[#c9a858]/50 hover:text-[#f0ddb0] hover:shadow-[0_0_24px_rgba(201,168,88,0.2)]"
+      }`}
+    >
+      {loading ? (
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#c9a858]/25 border-t-[#c9a858]" />
+      ) : (
+        <SpeakerIcon className={`h-[1.2rem] w-[1.2rem] ${playing ? "animate-pulse" : ""}`} />
+      )}
+    </button>
+  );
+}
+
 export default function ProgressiveLoreForm({ onSubmit, disabled = false }: ProgressiveLoreFormProps) {
   const [values, setValues] = useState<FormValues>(initialValues);
   const [visibleCount, setVisibleCount] = useState(1);
   const [rollingField, setRollingField] = useState<RollableField | null>(null);
   const [glowingFields, setGlowingFields] = useState<Set<keyof BookFormInput>>(() => new Set());
+  const [pronunciationState, setPronunciationState] = useState<"idle" | "loading" | "playing">("idle");
 
   const glowTimerRef = useRef<number | undefined>(undefined);
+  const pronunciationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pronunciationCacheRef = useRef<{ name: string; audioUrl: string } | null>(null);
 
   const completedCount = useMemo(() => {
     let count = 0;
@@ -169,8 +213,73 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
       if (glowTimerRef.current) {
         window.clearTimeout(glowTimerRef.current);
       }
+      pronunciationAudioRef.current?.pause();
     };
   }, []);
+
+  useEffect(() => {
+    const trimmed = values.name.trim();
+    if (pronunciationCacheRef.current?.name !== trimmed) {
+      pronunciationCacheRef.current = null;
+      pronunciationAudioRef.current?.pause();
+      setPronunciationState("idle");
+    }
+  }, [values.name]);
+
+  const playPronunciation = useCallback(async (audioUrl: string) => {
+    if (!pronunciationAudioRef.current) {
+      pronunciationAudioRef.current = new Audio();
+    }
+
+    const audio = pronunciationAudioRef.current;
+    audio.pause();
+    audio.src = audioUrl;
+    audio.volume = 0.88;
+    audio.onended = () => setPronunciationState("idle");
+    audio.onerror = () => setPronunciationState("idle");
+
+    setPronunciationState("playing");
+
+    try {
+      await audio.play();
+    } catch {
+      setPronunciationState("idle");
+    }
+  }, []);
+
+  const handlePronounceName = useCallback(async () => {
+    const name = values.name.trim();
+    if (!isMeaningfulText(name) || disabled || pronunciationState === "loading") {
+      return;
+    }
+
+    const cached = pronunciationCacheRef.current;
+    if (cached?.name === name) {
+      await playPronunciation(cached.audioUrl);
+      return;
+    }
+
+    setPronunciationState("loading");
+
+    try {
+      const response = await fetch("/api/pronounce-pseudo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      const data = (await response.json()) as { audioUrl?: string | null };
+      if (!data.audioUrl) {
+        setPronunciationState("idle");
+        return;
+      }
+
+      pronunciationCacheRef.current = { name, audioUrl: data.audioUrl };
+      await playPronunciation(data.audioUrl);
+    } catch {
+      setPronunciationState("idle");
+    }
+  }, [disabled, playPronunciation, pronunciationState, values.name]);
 
   function updateValue(key: keyof BookFormInput, value: string) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -259,6 +368,12 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                     value={values.name}
                     placeholder="Aurel, Nyx, Marrow..."
                     maxLength={40}
+                    pronunciationLoading={pronunciationState === "loading"}
+                    pronunciationPlaying={pronunciationState === "playing"}
+                    pronunciationDisabled={
+                      disabled || !isMeaningfulText(values.name) || pronunciationState === "loading"
+                    }
+                    onPronounce={() => void handlePronounceName()}
                     onChange={(value) => updateValue("name", value)}
                   />
                 </SequentialField>
@@ -344,25 +459,46 @@ function TextInput({
   value,
   placeholder,
   maxLength,
+  pronunciationLoading = false,
+  pronunciationPlaying = false,
+  pronunciationDisabled = false,
+  onPronounce,
   onChange,
 }: {
   label: string;
   value: string;
   placeholder: string;
   maxLength: number;
+  pronunciationLoading?: boolean;
+  pronunciationPlaying?: boolean;
+  pronunciationDisabled?: boolean;
+  onPronounce: () => void;
   onChange: (value: string) => void;
 }) {
   return (
-    <label>
+    <div>
       <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-[#7eb6ff]">{label}</span>
-      <input
-        value={value}
-        maxLength={maxLength}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-[#f8ecd0] outline-none transition placeholder:text-[#6f8198] focus:border-[#7eb6ff]/65 focus:bg-black/50 focus:shadow-[0_0_28px_rgba(71,132,211,0.14)]"
-      />
-    </label>
+      <div className="flex items-stretch gap-2">
+        <input
+          value={value}
+          maxLength={maxLength}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          className={`min-w-0 flex-1 rounded-2xl border bg-black/35 px-4 py-3 text-[#f8ecd0] outline-none transition placeholder:text-[#6f8198] focus:border-[#7eb6ff]/65 focus:bg-black/50 focus:shadow-[0_0_28px_rgba(71,132,211,0.14)] ${
+            pronunciationPlaying ? "border-[#c9a858]/45 shadow-[0_0_22px_rgba(201,168,88,0.16)]" : "border-white/10"
+          }`}
+        />
+        <PronunciationButton
+          loading={pronunciationLoading}
+          playing={pronunciationPlaying}
+          disabled={pronunciationDisabled}
+          onClick={onPronounce}
+        />
+      </div>
+      <p className="mt-2 text-[0.68rem] leading-5 text-[#c9a858]/65">
+        Écoutez comment votre pseudo résonne dans la voix du conteur.
+      </p>
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 import { dataUrlFromBase64, sanitizeText } from "@/lib/utils";
 
-const DEFAULT_ELEVENLABS_VOICE_ID = "32RJn1LZiXZZLVacVQoD";
+const DEFAULT_ELEVENLABS_VOICE_ID = "t9VKj6QDu6evrQNoV6Ij";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";
 
 export async function generateNarrationAudio(text: string) {
