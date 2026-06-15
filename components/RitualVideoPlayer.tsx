@@ -191,6 +191,7 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
           }
         }}
         onCanPlayThrough={() => setBuffering(false)}
+        onCanPlay={() => setBuffering(false)}
         onWaiting={() => setBuffering(true)}
         onPlaying={() => {
           setBuffering(false);

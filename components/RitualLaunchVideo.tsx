@@ -107,37 +107,44 @@ export default function RitualLaunchVideo({ src, poster, onEnded, onSkip }: Ritu
 
   return (
     <div className="ritual-launch-video-overlay" role="dialog" aria-label="Ritual intro video">
-      <div className="ritual-launch-video-stage" data-playing={hasStarted ? "true" : "false"}>
-        {!hasStarted ? (
-          <div className="ritual-launch-video-poster">
-            {poster ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={poster} alt="" className="ritual-launch-video-poster-image" decoding="async" />
-            ) : null}
-          </div>
-        ) : null}
+      <div className="ritual-launch-video-backdrop" aria-hidden="true">
+        <div className="ritual-launch-video-backdrop-glow" />
+        <div className="ritual-launch-video-backdrop-smoke" />
+      </div>
 
-        <RitualVideoPlayer
-          ref={playerRef}
-          src={src}
-          poster={poster}
-          muted={isMuted}
-          className="ritual-launch-video"
-          onBufferingChange={setIsBuffering}
-          onPlaying={() => {
-            setHasStarted(true);
-            setIsBuffering(false);
-            setShowSlowMessage(false);
-          }}
-          onEnded={() => {
-            setShowContinue(true);
-            setIsBuffering(false);
-          }}
-          onError={() => {
-            setHasError(true);
-            setIsBuffering(false);
-          }}
-        />
+      <div className="ritual-launch-video-stage" data-playing={hasStarted ? "true" : "false"}>
+        <div className="ritual-launch-video-viewport">
+          {!hasStarted ? (
+            <div className="ritual-launch-video-poster">
+              {poster ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={poster} alt="" className="ritual-launch-video-poster-image" decoding="async" />
+              ) : null}
+            </div>
+          ) : null}
+
+          <RitualVideoPlayer
+            ref={playerRef}
+            src={src}
+            poster={poster}
+            muted={isMuted}
+            className="ritual-launch-video"
+            onBufferingChange={setIsBuffering}
+            onPlaying={() => {
+              setHasStarted(true);
+              setIsBuffering(false);
+              setShowSlowMessage(false);
+            }}
+            onEnded={() => {
+              setShowContinue(true);
+              setIsBuffering(false);
+            }}
+            onError={() => {
+              setHasError(true);
+              setIsBuffering(false);
+            }}
+          />
+        </div>
       </div>
 
       <div className="ritual-launch-video-vignette" aria-hidden="true" />

@@ -25,7 +25,7 @@ export function getRitualLaunchVideoSrc(): string | null {
   return "/api/ritual-video";
 }
 
-/** Précharge la vidéo dans le cache navigateur avant le clic Generate */
+/** @deprecated Use RitualVideoPreloader during the form step instead */
 export function prefetchRitualLaunchVideo() {
   if (typeof window === "undefined" || !isRitualLaunchVideoConfigured()) {
     return () => {};

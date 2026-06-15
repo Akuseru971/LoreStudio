@@ -11,6 +11,7 @@ import LegendRevealSequence from "@/components/LegendRevealSequence";
 import MysticalStartTransition from "@/components/MysticalStartTransition";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
+import RitualVideoPreloader from "@/components/RitualVideoPreloader";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import {
   readAmbientMusicMutedPreference,
@@ -27,7 +28,6 @@ import {
 import {
   getRitualLaunchVideoSrc,
   isRitualLaunchVideoConfigured,
-  prefetchRitualLaunchVideo,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
@@ -129,14 +129,6 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (step !== "form" || !isRitualLaunchVideoConfigured()) {
-      return;
-    }
-
-    return prefetchRitualLaunchVideo();
-  }, [step]);
 
   useEffect(() => {
     if (step !== "creationRitual" && step !== "ritualVideo") {
@@ -434,6 +426,8 @@ export default function Home() {
   return (
     <>
       <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} />
+
+      {step === "form" ? <RitualVideoPreloader /> : null}
 
       {step === "form" ? (
         <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
