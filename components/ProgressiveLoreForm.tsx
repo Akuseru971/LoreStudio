@@ -75,13 +75,26 @@ function rollRandomItem<T extends string>(items: readonly T[], current?: string)
   return next;
 }
 
-function DiceIcon({ className }: { className?: string }) {
+function RandomDiceIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
-      <path
-        d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm2.2 4.4a1.1 1.1 0 110 2.2 1.1 1.1 0 010-2.2zm5.3 3.1a1.1 1.1 0 110 2.2 1.1 1.1 0 010-2.2zm4.5 4.5a1.1 1.1 0 110 2.2 1.1 1.1 0 010-2.2zM7.3 14.9a1.1 1.1 0 110 2.2 1.1 1.1 0 010-2.2z"
+      <rect
+        x="3.5"
+        y="3.5"
+        width="17"
+        height="17"
+        rx="3.5"
         fill="currentColor"
+        fillOpacity="0.12"
+        stroke="currentColor"
+        strokeWidth="1.6"
       />
+      <circle cx="8.25" cy="8.25" r="1.85" fill="currentColor" />
+      <circle cx="15.75" cy="8.25" r="1.85" fill="currentColor" />
+      <circle cx="8.25" cy="12" r="1.85" fill="currentColor" />
+      <circle cx="15.75" cy="12" r="1.85" fill="currentColor" />
+      <circle cx="8.25" cy="15.75" r="1.85" fill="currentColor" />
+      <circle cx="15.75" cy="15.75" r="1.85" fill="currentColor" />
     </svg>
   );
 }
@@ -106,7 +119,7 @@ function FieldDiceButton({
       title={`Lancer le dé — ${label}`}
       className="inline-flex h-[3.05rem] w-[3.05rem] shrink-0 items-center justify-center rounded-2xl border border-[#7eb6ff]/28 bg-[#07101c]/75 text-[#9ec8ff] shadow-[0_0_18px_rgba(71,132,211,0.1)] transition hover:border-[#7eb6ff]/50 hover:bg-[#0a1524]/90 hover:text-[#d8ecff] hover:shadow-[0_0_24px_rgba(71,132,211,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
     >
-      <DiceIcon className={`h-[1.15rem] w-[1.15rem] ${rolling ? "animate-[spin_0.42s_ease-in-out]" : ""}`} />
+      <RandomDiceIcon className={`h-[1.35rem] w-[1.35rem] ${rolling ? "animate-[spin_0.42s_ease-in-out]" : ""}`} />
     </button>
   );
 }
