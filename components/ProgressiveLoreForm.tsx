@@ -14,7 +14,7 @@ type ProgressiveLoreFormProps = {
 
 type FormValues = Record<keyof BookFormInput, string>;
 
-type RandomizedFields = Pick<FormValues, "gender" | "characterType" | "runeterraRegion">;
+type RollableField = "gender" | "characterType" | "runeterraRegion";
 
 const initialValues: FormValues = {
   name: "",
@@ -30,9 +30,14 @@ const fieldOrder: Array<keyof BookFormInput> = [
   "runeterraRegion",
 ];
 
-const ROLL_ANIMATION_MS = 620;
-const GLOW_DURATION_MS = 1400;
-const FATE_MESSAGE_MS = 2600;
+const fieldOptions: Record<RollableField, readonly string[]> = {
+  gender: genders,
+  characterType: characterTypes,
+  runeterraRegion: runeterraRegions,
+};
+
+const ROLL_ANIMATION_MS = 420;
+const GLOW_DURATION_MS = 1200;
 
 function labelize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -54,29 +59,16 @@ function getRandomItem<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)]!;
 }
 
-function rollRandomFields(previous?: RandomizedFields | null): RandomizedFields {
-  let next: RandomizedFields = {
-    gender: getRandomItem(genders),
-    characterType: getRandomItem(characterTypes),
-    runeterraRegion: getRandomItem(runeterraRegions),
-  };
-
-  if (!previous) {
-    return next;
+function rollRandomItem<T extends string>(items: readonly T[], current?: string): T {
+  if (items.length <= 1) {
+    return items[0]!;
   }
 
+  let next = getRandomItem(items);
   let attempts = 0;
-  while (
-    attempts < 16 &&
-    next.gender === previous.gender &&
-    next.characterType === previous.characterType &&
-    next.runeterraRegion === previous.runeterraRegion
-  ) {
-    next = {
-      gender: getRandomItem(genders),
-      characterType: getRandomItem(characterTypes),
-      runeterraRegion: getRandomItem(runeterraRegions),
-    };
+
+  while (current && next === current && attempts < 12) {
+    next = getRandomItem(items);
     attempts += 1;
   }
 
@@ -94,17 +86,38 @@ function DiceIcon({ className }: { className?: string }) {
   );
 }
 
+function FieldDiceButton({
+  label,
+  rolling,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  rolling: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={`Randomiser ${label}`}
+      title={`Lancer le dé — ${label}`}
+      className="inline-flex h-[3.05rem] w-[3.05rem] shrink-0 items-center justify-center rounded-2xl border border-[#7eb6ff]/28 bg-[#07101c]/75 text-[#9ec8ff] shadow-[0_0_18px_rgba(71,132,211,0.1)] transition hover:border-[#7eb6ff]/50 hover:bg-[#0a1524]/90 hover:text-[#d8ecff] hover:shadow-[0_0_24px_rgba(71,132,211,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <DiceIcon className={`h-[1.15rem] w-[1.15rem] ${rolling ? "animate-[spin_0.42s_ease-in-out]" : ""}`} />
+    </button>
+  );
+}
+
 export default function ProgressiveLoreForm({ onSubmit, disabled = false }: ProgressiveLoreFormProps) {
   const [values, setValues] = useState<FormValues>(initialValues);
   const [visibleCount, setVisibleCount] = useState(1);
-  const [hasRandomized, setHasRandomized] = useState(false);
-  const [isRolling, setIsRolling] = useState(false);
-  const [fateMessage, setFateMessage] = useState("");
+  const [rollingField, setRollingField] = useState<RollableField | null>(null);
   const [glowingFields, setGlowingFields] = useState<Set<keyof BookFormInput>>(() => new Set());
 
-  const lastRollRef = useRef<RandomizedFields | null>(null);
   const glowTimerRef = useRef<number | undefined>(undefined);
-  const fateTimerRef = useRef<number | undefined>(undefined);
 
   const completedCount = useMemo(() => {
     let count = 0;
@@ -117,14 +130,7 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
     return count;
   }, [values]);
 
-  const targetVisibleCount = useMemo(() => {
-    if (hasRandomized) {
-      return isFieldComplete("name", values) ? fieldOrder.length + 1 : fieldOrder.length;
-    }
-
-    return Math.min(fieldOrder.length + 1, completedCount + 1);
-  }, [completedCount, hasRandomized, values]);
-
+  const targetVisibleCount = Math.min(fieldOrder.length + 1, completedCount + 1);
   const allComplete = completedCount === fieldOrder.length;
 
   useEffect(() => {
@@ -150,9 +156,6 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
       if (glowTimerRef.current) {
         window.clearTimeout(glowTimerRef.current);
       }
-      if (fateTimerRef.current) {
-        window.clearTimeout(fateTimerRef.current);
-      }
     };
   }, []);
 
@@ -160,44 +163,33 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
     setValues((current) => ({ ...current, [key]: value }));
   }
 
-  function handleRollFate() {
-    if (disabled || isRolling) {
+  function pulseFieldGlow(key: RollableField) {
+    setGlowingFields(new Set([key]));
+
+    if (glowTimerRef.current) {
+      window.clearTimeout(glowTimerRef.current);
+    }
+
+    glowTimerRef.current = window.setTimeout(() => {
+      setGlowingFields(new Set());
+    }, GLOW_DURATION_MS);
+  }
+
+  function handleRollField(key: RollableField) {
+    if (disabled || rollingField) {
       return;
     }
 
-    setIsRolling(true);
-    setFateMessage("");
+    setRollingField(key);
 
     window.setTimeout(() => {
-      const rolled = rollRandomFields(lastRollRef.current);
-      lastRollRef.current = rolled;
-
       setValues((current) => ({
         ...current,
-        name: current.name,
-        gender: rolled.gender,
-        characterType: rolled.characterType,
-        runeterraRegion: rolled.runeterraRegion,
+        [key]: rollRandomItem(fieldOptions[key], current[key]),
       }));
 
-      setHasRandomized(true);
-      setGlowingFields(new Set(["gender", "characterType", "runeterraRegion"]));
-      setFateMessage("Fate has chosen…");
-      setIsRolling(false);
-
-      if (glowTimerRef.current) {
-        window.clearTimeout(glowTimerRef.current);
-      }
-      glowTimerRef.current = window.setTimeout(() => {
-        setGlowingFields(new Set());
-      }, GLOW_DURATION_MS);
-
-      if (fateTimerRef.current) {
-        window.clearTimeout(fateTimerRef.current);
-      }
-      fateTimerRef.current = window.setTimeout(() => {
-        setFateMessage("");
-      }, FATE_MESSAGE_MS);
+      pulseFieldGlow(key);
+      setRollingField(null);
     }, ROLL_ANIMATION_MS);
   }
 
@@ -240,43 +232,9 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-[#b8c9dd]">
               Enter your name. Let the myth unfold.
             </p>
-
-            <div className="mt-6 flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={handleRollFate}
-                disabled={disabled || isRolling}
-                aria-label="Roll fate to randomize character fields"
-                className="group inline-flex items-center gap-2 rounded-full border border-[#7eb6ff]/30 bg-[#07101c]/70 px-4 py-2 text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-[#d8e8ff] shadow-[0_0_22px_rgba(71,132,211,0.12)] backdrop-blur-sm transition hover:border-[#7eb6ff]/55 hover:bg-[#0a1524]/85 hover:text-[#f4f8ff] hover:shadow-[0_0_28px_rgba(71,132,211,0.22)] disabled:cursor-not-allowed disabled:opacity-55"
-              >
-                <span
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#7eb6ff]/25 bg-[#0b1422]/80 text-[#9ec8ff] transition group-hover:border-[#7eb6ff]/45 group-hover:text-[#d8ecff] ${
-                    isRolling ? "animate-[spin_0.62s_ease-in-out]" : "group-hover:scale-105"
-                  }`}
-                >
-                  <DiceIcon className="h-4 w-4" />
-                </span>
-                Roll fate
-              </button>
-              <p className="max-w-xs text-xs leading-5 text-[#7eb6ff]/65">
-                Let fate choose your path through Runeterra.
-              </p>
-            </div>
-
-            <AnimatePresence>
-              {fateMessage ? (
-                <motion.p
-                  key="fate-message"
-                  initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, y: -6, filter: "blur(6px)" }}
-                  transition={{ duration: 0.35, ease: "easeOut" }}
-                  className="mt-4 font-title text-sm tracking-[0.18em] text-[#c9a858]"
-                >
-                  {fateMessage}
-                </motion.p>
-              ) : null}
-            </AnimatePresence>
+            <p className="mx-auto mt-3 max-w-md text-xs leading-5 text-[#7eb6ff]/60">
+              Lancez le dé à côté d&apos;un champ pour laisser le hasard décider.
+            </p>
           </div>
 
           <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -303,7 +261,10 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                     value={values.gender}
                     options={genders}
                     glowing={isFieldGlowing("gender")}
+                    rolling={rollingField === "gender"}
+                    rollDisabled={disabled || Boolean(rollingField)}
                     onChange={(value) => updateValue("gender", value)}
+                    onRoll={() => handleRollField("gender")}
                   />
                 </SequentialField>
               ) : null}
@@ -318,7 +279,10 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                     value={values.characterType}
                     options={characterTypes}
                     glowing={isFieldGlowing("characterType")}
+                    rolling={rollingField === "characterType"}
+                    rollDisabled={disabled || Boolean(rollingField)}
                     onChange={(value) => updateValue("characterType", value)}
+                    onRoll={() => handleRollField("characterType")}
                   />
                 </SequentialField>
               ) : null}
@@ -333,7 +297,10 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                     value={values.runeterraRegion}
                     options={runeterraRegions}
                     glowing={isFieldGlowing("runeterraRegion")}
+                    rolling={rollingField === "runeterraRegion"}
+                    rollDisabled={disabled || Boolean(rollingField)}
                     onChange={(value) => updateValue("runeterraRegion", value)}
+                    onRoll={() => handleRollField("runeterraRegion")}
                   />
                 </SequentialField>
               ) : null}
@@ -391,35 +358,44 @@ function SelectInput<T extends readonly string[]>({
   value,
   options,
   glowing = false,
+  rolling = false,
+  rollDisabled = false,
   onChange,
+  onRoll,
 }: {
   label: string;
   value: string;
   options: T;
   glowing?: boolean;
+  rolling?: boolean;
+  rollDisabled?: boolean;
   onChange: (value: string) => void;
+  onRoll: () => void;
 }) {
   return (
-    <label>
+    <div>
       <span className="mb-2 block text-xs uppercase tracking-[0.24em] text-[#7eb6ff]">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`w-full rounded-2xl border bg-black/35 px-4 py-3 text-[#f8ecd0] outline-none transition focus:border-[#7eb6ff]/65 focus:bg-black/50 focus:shadow-[0_0_28px_rgba(71,132,211,0.14)] ${
-          glowing
-            ? "border-[#c9a858]/55 shadow-[0_0_26px_rgba(201,168,88,0.22)] animate-pulse"
-            : "border-white/10"
-        }`}
-      >
-        <option value="" disabled className="bg-[#090d16] text-[#9baabd]">
-          Choose...
-        </option>
-        {options.map((option) => (
-          <option key={option} value={option} className="bg-[#090d16] text-[#f8ecd0]">
-            {labelize(option)}
+      <div className="flex items-stretch gap-2">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={`min-w-0 flex-1 rounded-2xl border bg-black/35 px-4 py-3 text-[#f8ecd0] outline-none transition focus:border-[#7eb6ff]/65 focus:bg-black/50 focus:shadow-[0_0_28px_rgba(71,132,211,0.14)] ${
+            glowing
+              ? "border-[#c9a858]/55 shadow-[0_0_26px_rgba(201,168,88,0.22)] animate-pulse"
+              : "border-white/10"
+          }`}
+        >
+          <option value="" disabled className="bg-[#090d16] text-[#9baabd]">
+            Choose...
           </option>
-        ))}
-      </select>
-    </label>
+          {options.map((option) => (
+            <option key={option} value={option} className="bg-[#090d16] text-[#f8ecd0]">
+              {labelize(option)}
+            </option>
+          ))}
+        </select>
+        <FieldDiceButton label={label} rolling={rolling} disabled={rollDisabled} onClick={onRoll} />
+      </div>
+    </div>
   );
 }
