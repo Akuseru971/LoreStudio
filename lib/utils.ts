@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from "clsx";
+import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export const genders = ["man", "woman", "creature", "unknown"] as const;
@@ -321,6 +322,8 @@ function rewriteImagePromptFromVisualDirection(
     `Key objects: ${visualDirection.keyObjects.join(", ")}.`,
     `Mood: ${visualDirection.mood}.`,
     `Lighting: ${visualDirection.lighting}.`,
-    "No repeated portrait composition, no repeated background, no repeated camera angle, no generic character standing pose, no simple bust shot, no text, no logo, no watermark.",
+    IMAGE_STYLE_LOCK,
+    IMAGE_STYLE_AVOIDANCES,
+    "No repeated portrait composition, no repeated background, no repeated camera angle, no generic character standing pose, no simple bust shot.",
   ].join(" ");
 }
