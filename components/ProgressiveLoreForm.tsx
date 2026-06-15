@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import MagicalBackground from "@/components/MagicalBackground";
+import { CharacterTypeLorePreview, RegionLorePreview } from "@/components/FormLorePreview";
 import SequentialField from "@/components/SequentialField";
 import type { BookFormInput } from "@/lib/types";
 import { characterTypes, genders, runeterraRegions } from "@/lib/utils";
@@ -115,8 +116,8 @@ function FieldDiceButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={`Randomiser ${label}`}
-      title={`Lancer le dé — ${label}`}
+      aria-label={`Randomize ${label}`}
+      title={`Roll the dice — ${label}`}
       className="inline-flex h-[3.05rem] w-[3.05rem] shrink-0 items-center justify-center rounded-2xl border border-[#7eb6ff]/28 bg-[#07101c]/75 text-[#9ec8ff] shadow-[0_0_18px_rgba(71,132,211,0.1)] transition hover:border-[#7eb6ff]/50 hover:bg-[#0a1524]/90 hover:text-[#d8ecff] hover:shadow-[0_0_24px_rgba(71,132,211,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RandomDiceIcon className={`h-[1.35rem] w-[1.35rem] ${rolling ? "animate-[spin_0.42s_ease-in-out]" : ""}`} />
@@ -148,8 +149,8 @@ function PronunciationButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label="Écouter la prononciation du pseudo"
-      title="Écouter la prononciation"
+      aria-label="Hear how your name sounds"
+      title="Hear pronunciation"
       className={`inline-flex h-[3.05rem] w-[3.05rem] shrink-0 items-center justify-center rounded-2xl border bg-[#07101c]/75 shadow-[0_0_18px_rgba(201,168,88,0.1)] transition hover:bg-[#0a1524]/90 disabled:cursor-not-allowed disabled:opacity-50 ${
         playing
           ? "border-[#c9a858]/55 text-[#f0ddb0] shadow-[0_0_24px_rgba(201,168,88,0.24)]"
@@ -355,7 +356,7 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
               Enter your name. Let the myth unfold.
             </p>
             <p className="mx-auto mt-3 max-w-md text-xs leading-5 text-[#7eb6ff]/60">
-              Lancez le dé à côté d&apos;un champ pour laisser le hasard décider.
+              Roll the dice beside any field to let fate decide.
             </p>
           </div>
 
@@ -412,6 +413,7 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                     onChange={(value) => updateValue("characterType", value)}
                     onRoll={() => handleRollField("characterType")}
                   />
+                  <CharacterTypeLorePreview characterType={values.characterType} />
                 </SequentialField>
               ) : null}
 
@@ -430,6 +432,7 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                     onChange={(value) => updateValue("runeterraRegion", value)}
                     onRoll={() => handleRollField("runeterraRegion")}
                   />
+                  <RegionLorePreview region={values.runeterraRegion} />
                 </SequentialField>
               ) : null}
               {visibleCount >= 5 ? (
@@ -496,7 +499,7 @@ function TextInput({
         />
       </div>
       <p className="mt-2 text-[0.68rem] leading-5 text-[#c9a858]/65">
-        Écoutez comment votre pseudo résonne dans la voix du conteur.
+        Hear how your name sounds in the narrator&apos;s voice.
       </p>
     </div>
   );
