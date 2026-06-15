@@ -110,7 +110,6 @@ export default function RitualLaunchVideo({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
-  const [showTapForSound, setShowTapForSound] = useState(false);
   const [showSlowMessage, setShowSlowMessage] = useState(false);
   const [showContinue, setShowContinue] = useState(false);
 
@@ -135,13 +134,13 @@ export default function RitualLaunchVideo({
       if (hideControlsTimerRef.current) {
         window.clearTimeout(hideControlsTimerRef.current);
       }
-      if (autoHide && isPlaying && !showPlayPrompt && !showTapForSound) {
+      if (autoHide && isPlaying && !showPlayPrompt) {
         hideControlsTimerRef.current = window.setTimeout(() => {
           setControlsVisible(false);
         }, CONTROLS_HIDE_MS);
       }
     },
-    [isPlaying, showPlayPrompt, showTapForSound],
+    [isPlaying, showPlayPrompt],
   );
 
   const attemptPlay = useCallback(async () => {
@@ -159,7 +158,6 @@ export default function RitualLaunchVideo({
       setIsPlaying(true);
       setIsBuffering(false);
       setShowPlayPrompt(false);
-      setShowTapForSound(false);
       return;
     }
 
@@ -169,7 +167,6 @@ export default function RitualLaunchVideo({
       setHasStarted(true);
       setIsPlaying(true);
       setIsBuffering(false);
-      setShowTapForSound(true);
       setShowPlayPrompt(false);
       return;
     }
@@ -180,13 +177,11 @@ export default function RitualLaunchVideo({
       setHasStarted(true);
       setIsPlaying(true);
       setIsBuffering(false);
-      setShowTapForSound(true);
       setShowPlayPrompt(false);
       return;
     }
 
     setShowPlayPrompt(true);
-    setShowTapForSound(false);
   }, [showContinue]);
 
   const handlePlayIntro = useCallback(async () => {
@@ -195,7 +190,6 @@ export default function RitualLaunchVideo({
     }
 
     setShowPlayPrompt(false);
-    setShowTapForSound(false);
     setVolume(DEFAULT_VOLUME);
     playerRef.current.setVolume(DEFAULT_VOLUME);
 
@@ -213,24 +207,6 @@ export default function RitualLaunchVideo({
       setIsMuted(true);
       setHasStarted(true);
       setIsPlaying(true);
-      setShowTapForSound(true);
-    }
-  }, []);
-
-  const handleTapForSound = useCallback(async () => {
-    if (!playerRef.current) {
-      return;
-    }
-
-    setVolume(DEFAULT_VOLUME);
-    playerRef.current.setVolume(DEFAULT_VOLUME);
-    const ok = await playerRef.current.unmuteWithVolume(DEFAULT_VOLUME);
-    if (ok) {
-      setIsMuted(false);
-      setShowTapForSound(false);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
     }
   }, []);
 
@@ -399,7 +375,6 @@ export default function RitualLaunchVideo({
               const video = playerRef.current?.getVideoElement();
               if (video?.muted) {
                 setIsMuted(true);
-                setShowTapForSound(true);
               }
             }}
             onPause={() => setIsPlaying(false)}
@@ -448,15 +423,6 @@ export default function RitualLaunchVideo({
               >
                 Play intro
               </button>
-            </div>
-          ) : null}
-
-          {showTapForSound && isMuted && !showPlayPrompt && !showContinue && !hasError ? (
-            <div className="ritual-launch-video-sound-wrap">
-              <button type="button" onClick={() => void handleTapForSound()} className="ritual-launch-video-sound">
-                Tap for sound
-              </button>
-              <p className="ritual-launch-video-sound-sub">Your legend has a voice.</p>
             </div>
           ) : null}
 
