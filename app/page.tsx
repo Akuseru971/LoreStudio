@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
+import AmbientMusicToggle from "@/components/AmbientMusicToggle";
 import IntroGate from "@/components/IntroGate";
 import InteractiveBook from "@/components/InteractiveBook";
 import LoadingRitual from "@/components/LoadingRitual";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import {
+  readAmbientMusicMutedPreference,
+  writeAmbientMusicMutedPreference,
+} from "@/lib/ambient-music-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
 
 type ViewState = "intro" | "form" | "loading" | "book" | "error";
@@ -80,6 +86,13 @@ export default function Home() {
   const [view, setView] = useState<ViewState>("intro");
   const [book, setBook] = useState<LoreBook | null>(null);
   const [error, setError] = useState("The archives refused to open. Try again.");
+  const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
+
+  const shouldPlayAmbientMusic = view === "form" && !ambientMuted;
+
+  useEffect(() => {
+    writeAmbientMusicMutedPreference(ambientMuted);
+  }, [ambientMuted]);
 
   async function handleSubmit(input: BookFormInput) {
     setView("loading");
@@ -112,7 +125,14 @@ export default function Home() {
   }
 
   return (
-    <AnimatePresence mode="wait">
+    <>
+      <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} />
+
+      {view === "form" ? (
+        <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
+      ) : null}
+
+      <AnimatePresence mode="wait">
       {view === "intro" ? (
         <motion.div key="intro" exit={{ opacity: 0, filter: "blur(18px)" }} transition={{ duration: 0.7 }}>
           <IntroGate onStart={() => setView("form")} />
@@ -162,5 +182,6 @@ export default function Home() {
         </motion.main>
       ) : null}
     </AnimatePresence>
+    </>
   );
 }
