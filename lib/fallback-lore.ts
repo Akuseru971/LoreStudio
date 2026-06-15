@@ -1,3 +1,4 @@
+import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 const chapters = [
@@ -371,6 +372,7 @@ function buildFallbackImagePrompt(
     `Lighting: ${visualDirection.lighting}.`,
     `Consistent original protagonist: ${input.name}, ${input.gender}, ${input.characterType}, social role: ${profile.socialRole}, symbolic object: ${profile.distinctiveHook}.`,
     `Runeterra region: ${region}. Lore-compatible regional anchor: ${anchor}.`,
-    "Cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium storybook art, dramatic lighting, coherent character design, no repeated portrait composition, no generic cloaked standing figure, no text, no logo, no watermark.",
+    `${IMAGE_STYLE_LOCK} Runeterra atmosphere, coherent character design, no repeated portrait composition, no generic cloaked standing figure.`,
+    IMAGE_STYLE_AVOIDANCES,
   ].join(" ");
 }

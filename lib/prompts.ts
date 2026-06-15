@@ -1,5 +1,11 @@
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
+export const IMAGE_STYLE_LOCK =
+  "Cinematic League of Legends-inspired fantasy illustration, premium illustrated storybook art, high-end digital painting, refined character design, rich environment detail, dramatic but elegant lighting, atmospheric depth, painterly realism, sharp focal point, beautiful composition, high production value, no text, no logo, no watermark.";
+
+export const IMAGE_STYLE_AVOIDANCES =
+  "Avoid cheap AI fantasy look, blurry faces, generic armor, overused black-purple glowing villain style, flat backgrounds, repetitive portraits, plastic-looking characters, and oversaturated neon colors.";
+
 export function buildLorePrompt(input: BookFormInput) {
   const system = `You are a master narrative designer specialized in League of Legends lore and the world of Runeterra.
 You create original characters who could plausibly exist in Runeterra.
@@ -147,7 +153,8 @@ Rules:
 - The imagePrompt for each page must describe a full-page illustration.
 - The imagePrompt must visually represent that page's exact life phase and event: birth, childhood, wound, omen, power awakening, enemy, transformation, or prophecy.
 - Every imagePrompt must include the same characterBible details to keep visual consistency.
-- Every imagePrompt must include: cinematic League of Legends-inspired fantasy illustration, Runeterra atmosphere, premium storybook art, dramatic lighting, coherent character design, no text, no logos, no watermark.
+- Every imagePrompt must include: ${IMAGE_STYLE_LOCK}
+- ${IMAGE_STYLE_AVOIDANCES}
 - The imagePrompt must avoid asking for written text inside the image.
 
 IMAGE STORYTELLING RULES:
@@ -238,7 +245,10 @@ No logo.
 No watermark.
 
 Art style:
-Cinematic League of Legends-inspired fantasy illustration, premium illustrated storybook art, painterly realism, dramatic lighting, atmospheric depth, elegant composition, high detail.`;
+${IMAGE_STYLE_LOCK}
+
+${IMAGE_STYLE_AVOIDANCES}
+Every image must feel like a polished storybook illustration, not a random AI portrait.`;
 }
 
 function summarizeForImage(text: string) {
