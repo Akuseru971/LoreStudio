@@ -1510,17 +1510,36 @@ button {
 }
 
 .ritual-launch-video-stage {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 1;
-  isolation: isolate;
-  transform: translateZ(0);
-  contain: layout style paint;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 1rem;
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
 }
 
-.ritual-launch-video-viewport {
-  position: absolute;
-  inset: 0;
+.ritual-launch-video-frame {
+  position: relative;
+  width: min(1100px, 92vw);
+  height: min(86vh, 720px);
+  border-radius: 1.1rem;
+  overflow: hidden;
+  background: #020617;
+  box-shadow:
+    0 0 0 1px rgba(126, 182, 255, 0.1),
+    0 25px 80px rgba(0, 0, 0, 0.55);
+  isolation: isolate;
+}
+
+.ritual-launch-video-frame-fs {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
 }
 
 .ritual-launch-video {
@@ -1557,14 +1576,14 @@ button {
   z-index: 2;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(3, 4, 10, 0.35) 0%, transparent 22%, transparent 78%, rgba(3, 4, 10, 0.55) 100%),
-    radial-gradient(ellipse at center, transparent 55%, rgba(3, 4, 10, 0.45) 100%);
+    linear-gradient(180deg, rgba(3, 4, 10, 0.28) 0%, transparent 20%, transparent 72%, rgba(3, 4, 10, 0.42) 100%),
+    radial-gradient(ellipse at center, transparent 58%, rgba(3, 4, 10, 0.35) 100%);
 }
 
 .ritual-launch-video-loader {
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 12;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1585,7 +1604,7 @@ button {
   position: absolute;
   left: 50%;
   top: 50%;
-  z-index: 4;
+  z-index: 14;
   max-width: 18rem;
   transform: translate(-50%, -50%);
   padding: 0 1.25rem;
@@ -1598,7 +1617,7 @@ button {
 .ritual-launch-video-prompt-wrap {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 14;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1617,33 +1636,35 @@ button {
 
 .ritual-launch-video-controls {
   position: absolute;
-  left: 50%;
-  bottom: 1.25rem;
-  z-index: 6;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 20;
   display: grid;
   grid-template-columns: auto auto 1fr auto auto auto minmax(4rem, 5.5rem) auto;
   align-items: center;
   gap: 0.55rem;
-  width: min(92vw, 52rem);
-  padding: 0.65rem 0.85rem;
+  padding: 0.65rem 0.75rem;
   border: 1px solid rgba(159, 184, 216, 0.16);
-  border-radius: 1rem;
-  background: rgba(6, 10, 18, 0.72);
+  border-radius: 0.85rem;
+  background: rgba(6, 10, 18, 0.78);
   backdrop-filter: blur(10px);
-  transform: translateX(-50%) translateY(12px);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.28s ease, transform 0.28s ease;
+  transform: translateY(8px);
 }
 
 .ritual-launch-video-controls.is-visible {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
   pointer-events: auto;
 }
 
-.ritual-launch-video-overlay-fs .ritual-launch-video-controls {
-  bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+.ritual-launch-video-frame-fs .ritual-launch-video-controls {
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
 }
 
 .ritual-player-btn {
@@ -1734,26 +1755,34 @@ button {
 
 .ritual-launch-video-slow-message {
   position: absolute;
-  bottom: 5.5rem;
+  bottom: 5rem;
   left: 50%;
-  z-index: 4;
-  max-width: 18rem;
+  z-index: 13;
+  max-width: 16rem;
   transform: translateX(-50%);
-  padding: 0 1.25rem;
+  padding: 0 1rem;
   text-align: center;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   line-height: 1.5;
   color: rgba(216, 196, 152, 0.82);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
 }
 
-.ritual-launch-video-sound {
+.ritual-launch-video-sound-wrap {
   position: absolute;
-  bottom: 2rem;
-  left: 50%;
-  z-index: 4;
-  transform: translateX(-50%);
-  padding: 0.6rem 1.25rem;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  pointer-events: none;
+}
+
+.ritual-launch-video-sound {
+  pointer-events: auto;
+  padding: 0.7rem 1.25rem;
   border: 1px solid rgba(201, 168, 88, 0.35);
   border-radius: 999px;
   background: rgba(8, 12, 20, 0.92);
@@ -1764,14 +1793,22 @@ button {
   text-transform: uppercase;
 }
 
+.ritual-launch-video-sound-sub {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: rgba(186, 214, 255, 0.72);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+
 .ritual-launch-video-continue-wrap {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 15;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 3rem;
+  padding-bottom: 4.5rem;
   pointer-events: none;
 }
 
@@ -1787,10 +1824,10 @@ button {
 
 .ritual-launch-video-skip-top {
   position: absolute;
-  top: 1.25rem;
-  right: 1.25rem;
-  z-index: 5;
-  padding: 0.55rem 1.1rem;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  z-index: 22;
+  padding: 0.55rem 1rem;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.72);
@@ -1808,72 +1845,32 @@ button {
 
 @media (max-width: 768px) {
   .ritual-launch-video-stage {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 3.75rem 0.85rem 5rem;
+    padding: 1rem;
   }
 
-  .ritual-launch-video-viewport {
-    position: relative;
+  .ritual-launch-video-frame {
     width: 100%;
-    max-width: 100%;
-    max-height: min(72vh, calc(100vw * 9 / 16));
-    aspect-ratio: 16 / 9;
-    border-radius: 0.4rem;
-    overflow: hidden;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
-    background: #020617;
+    max-width: 430px;
+    height: auto;
+    aspect-ratio: 9 / 16;
+    max-height: min(78dvh, 820px);
+    border-radius: 1.125rem;
   }
 
-  .ritual-launch-video-stage .ritual-launch-video-poster {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    overflow: hidden;
-  }
-
-  .ritual-launch-video {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    max-height: none;
-    aspect-ratio: auto;
-    object-fit: contain;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
+  .ritual-launch-video,
   .ritual-launch-video-poster-image {
     object-fit: contain;
   }
 
-  .ritual-launch-video-vignette {
-    background: linear-gradient(
-      180deg,
-      rgba(2, 6, 23, 0.42) 0%,
-      transparent 18%,
-      transparent 82%,
-      rgba(2, 6, 23, 0.5) 100%
-    );
-  }
-
-  .ritual-launch-video-slow-message {
-    bottom: 6.25rem;
-    font-size: 0.88rem;
-  }
-
-  .ritual-launch-video-skip-top {
-    top: max(1rem, env(safe-area-inset-top, 0px));
-    right: max(1rem, env(safe-area-inset-right, 0px));
+  .ritual-launch-video-poster {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 45%, rgba(28, 36, 52, 0.55) 0%, transparent 70%),
+      #020617;
   }
 
   .ritual-launch-video-controls {
     grid-template-columns: auto auto 1fr auto auto auto;
-    width: min(96vw, 100%);
-    bottom: max(1rem, env(safe-area-inset-bottom, 0px));
-    padding: 0.75rem 0.7rem;
+    padding: 0.7rem 0.65rem;
     gap: 0.5rem;
   }
 
@@ -1882,7 +1879,8 @@ button {
     height: 2.45rem;
   }
 
-  .ritual-player-volume {
+  .ritual-player-volume,
+  .ritual-player-time:last-of-type {
     display: none;
   }
 
@@ -1891,7 +1889,8 @@ button {
     grid-row: 2;
   }
 
-  .ritual-player-time:last-of-type {
-    display: none;
+  .ritual-launch-video-slow-message {
+    bottom: 4.75rem;
+    font-size: 0.82rem;
   }
 }

@@ -14,7 +14,7 @@ export type RitualLaunchVideoProps = {
 
 const SLOW_LOAD_MS = 5000;
 const CONTROLS_HIDE_MS = 2500;
-const DEFAULT_VOLUME = 0.85;
+const DEFAULT_VOLUME = 0.9;
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) {
@@ -92,7 +92,7 @@ export default function RitualLaunchVideo({
   onSkip,
   useNativeControlsOnMobile = false,
 }: RitualLaunchVideoProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<RitualVideoPlayerHandle | null>(null);
   const finishedRef = useRef(false);
   const playAttemptedRef = useRef(false);
@@ -103,7 +103,7 @@ export default function RitualLaunchVideo({
   const [isBuffering, setIsBuffering] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -135,19 +135,22 @@ export default function RitualLaunchVideo({
       if (hideControlsTimerRef.current) {
         window.clearTimeout(hideControlsTimerRef.current);
       }
-      if (autoHide && isPlaying && !showPlayPrompt) {
+      if (autoHide && isPlaying && !showPlayPrompt && !showTapForSound) {
         hideControlsTimerRef.current = window.setTimeout(() => {
           setControlsVisible(false);
         }, CONTROLS_HIDE_MS);
       }
     },
-    [isPlaying, showPlayPrompt],
+    [isPlaying, showPlayPrompt, showTapForSound],
   );
 
   const attemptPlay = useCallback(async () => {
     if (finishedRef.current || showContinue || !playerRef.current) {
       return;
     }
+
+    playerRef.current.setVolume(DEFAULT_VOLUME);
+    setVolume(DEFAULT_VOLUME);
 
     const withSound = await playerRef.current.play(true);
     if (withSound) {
@@ -160,10 +163,20 @@ export default function RitualLaunchVideo({
       return;
     }
 
-    setIsMuted(true);
+    const video = playerRef.current.getVideoElement();
+    if (video && !video.paused) {
+      setIsMuted(true);
+      setHasStarted(true);
+      setIsPlaying(true);
+      setIsBuffering(false);
+      setShowTapForSound(true);
+      setShowPlayPrompt(false);
+      return;
+    }
 
     const mutedPlay = await playerRef.current.play(false);
     if (mutedPlay) {
+      setIsMuted(true);
       setHasStarted(true);
       setIsPlaying(true);
       setIsBuffering(false);
@@ -183,7 +196,10 @@ export default function RitualLaunchVideo({
 
     setShowPlayPrompt(false);
     setShowTapForSound(false);
-    const ok = await playerRef.current.enableSound();
+    setVolume(DEFAULT_VOLUME);
+    playerRef.current.setVolume(DEFAULT_VOLUME);
+
+    const ok = await playerRef.current.unmuteWithVolume(DEFAULT_VOLUME);
     if (ok) {
       setIsMuted(false);
       setHasStarted(true);
@@ -192,10 +208,30 @@ export default function RitualLaunchVideo({
       return;
     }
 
-    await playerRef.current.play(false);
-    setIsMuted(true);
-    setHasStarted(true);
-    setIsPlaying(true);
+    const mutedOk = await playerRef.current.play(false);
+    if (mutedOk) {
+      setIsMuted(true);
+      setHasStarted(true);
+      setIsPlaying(true);
+      setShowTapForSound(true);
+    }
+  }, []);
+
+  const handleTapForSound = useCallback(async () => {
+    if (!playerRef.current) {
+      return;
+    }
+
+    setVolume(DEFAULT_VOLUME);
+    playerRef.current.setVolume(DEFAULT_VOLUME);
+    const ok = await playerRef.current.unmuteWithVolume(DEFAULT_VOLUME);
+    if (ok) {
+      setIsMuted(false);
+      setShowTapForSound(false);
+      setHasStarted(true);
+      setIsPlaying(true);
+      setIsBuffering(false);
+    }
   }, []);
 
   const handleTogglePlay = useCallback(async () => {
@@ -233,7 +269,7 @@ export default function RitualLaunchVideo({
   );
 
   const toggleFullscreen = useCallback(async () => {
-    const container = containerRef.current;
+    const frame = frameRef.current;
     const video = playerRef.current?.getVideoElement();
 
     try {
@@ -242,8 +278,8 @@ export default function RitualLaunchVideo({
         return;
       }
 
-      if (container?.requestFullscreen) {
-        await container.requestFullscreen();
+      if (frame?.requestFullscreen) {
+        await frame.requestFullscreen();
         return;
       }
 
@@ -292,7 +328,8 @@ export default function RitualLaunchVideo({
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const frame = frameRef.current;
+      setIsFullscreen(Boolean(frame && document.fullscreenElement === frame));
     };
 
     document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -317,7 +354,6 @@ export default function RitualLaunchVideo({
 
   return (
     <div
-      ref={containerRef}
       className={cn("ritual-launch-video-overlay", isFullscreen && "ritual-launch-video-overlay-fs")}
       role="dialog"
       aria-label="Ritual intro video"
@@ -328,12 +364,14 @@ export default function RitualLaunchVideo({
         <div className="ritual-launch-video-backdrop-smoke" />
       </div>
 
-      <div
-        className="ritual-launch-video-stage"
-        data-playing={hasStarted ? "true" : "false"}
-        onClick={() => revealControls()}
-      >
-        <div className="ritual-launch-video-viewport">
+      <div className="ritual-launch-video-stage">
+        <div
+          ref={frameRef}
+          className={cn("ritual-launch-video-frame", isFullscreen && "ritual-launch-video-frame-fs")}
+          onClick={() => revealControls()}
+        >
+          <div className="ritual-launch-video-vignette" aria-hidden="true" />
+
           {!hasStarted ? (
             <div className="ritual-launch-video-poster">
               {poster ? (
@@ -358,7 +396,11 @@ export default function RitualLaunchVideo({
               setIsBuffering(false);
               setShowSlowMessage(false);
               setShowPlayPrompt(false);
-              setShowTapForSound(false);
+              const video = playerRef.current?.getVideoElement();
+              if (video?.muted) {
+                setIsMuted(true);
+                setShowTapForSound(true);
+              }
             }}
             onPause={() => setIsPlaying(false)}
             onTimeUpdate={setCurrentTime}
@@ -377,118 +419,123 @@ export default function RitualLaunchVideo({
               setIsPlaying(false);
             }}
           />
+
+          {isBuffering && !hasError && !showContinue ? (
+            <div className="ritual-launch-video-loader" aria-live="polite">
+              <span className="ritual-launch-video-spinner" />
+              <p className="ritual-launch-video-buffer-text">Loading the archive…</p>
+            </div>
+          ) : null}
+
+          {hasError ? (
+            <p className="ritual-launch-video-error-message font-cover-title">
+              The archive could not open this vision.
+            </p>
+          ) : null}
+
+          {showSlowMessage && !hasStarted && !hasError ? (
+            <p className="ritual-launch-video-slow-message font-cover-title">
+              The archive is taking longer than expected…
+            </p>
+          ) : null}
+
+          {showPlayPrompt && !showContinue && !hasError ? (
+            <div className="ritual-launch-video-prompt-wrap">
+              <button
+                type="button"
+                onClick={() => void handlePlayIntro()}
+                className="gold-button ritual-launch-video-prompt"
+              >
+                Play intro
+              </button>
+            </div>
+          ) : null}
+
+          {showTapForSound && isMuted && !showPlayPrompt && !showContinue && !hasError ? (
+            <div className="ritual-launch-video-sound-wrap">
+              <button type="button" onClick={() => void handleTapForSound()} className="ritual-launch-video-sound">
+                Tap for sound
+              </button>
+              <p className="ritual-launch-video-sound-sub">Your legend has a voice.</p>
+            </div>
+          ) : null}
+
+          {showContinue ? (
+            <div className="ritual-launch-video-continue-wrap">
+              <button type="button" onClick={handleContinue} className="gold-button ritual-launch-video-continue">
+                Continue
+              </button>
+            </div>
+          ) : null}
+
+          <button type="button" onClick={handleSkip} className="ritual-launch-video-skip-top">
+            Skip intro
+          </button>
+
+          {!useNativeControls && !showContinue ? (
+            <div
+              className={cn("ritual-launch-video-controls", controlsVisible && "is-visible")}
+              onClick={(event) => event.stopPropagation()}
+              onMouseMove={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="ritual-player-btn"
+                onClick={() => void handleTogglePlay()}
+                aria-label={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? <PauseIcon /> : <PlayIcon />}
+              </button>
+
+              <span className="ritual-player-time">{formatTime(currentTime)}</span>
+
+              <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={currentTime}
+                onChange={(event) => handleSeek(Number(event.target.value))}
+                className="ritual-player-progress"
+                aria-label="Video progress"
+                style={{ "--progress": `${progress}%` } as CSSProperties}
+              />
+
+              <span className="ritual-player-time">{formatTime(duration)}</span>
+
+              <button
+                type="button"
+                className="ritual-player-btn"
+                onClick={handleToggleMute}
+                aria-label={isMuted ? "Unmute" : "Mute"}
+              >
+                <VolumeIcon muted={isMuted} />
+              </button>
+
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={isMuted ? 0 : volume}
+                onChange={(event) => handleVolumeChange(Number(event.target.value))}
+                className="ritual-player-volume"
+                aria-label="Volume"
+                style={{ "--progress": `${(isMuted ? 0 : volume) * 100}%` } as CSSProperties}
+              />
+
+              <button
+                type="button"
+                className="ritual-player-btn"
+                onClick={() => void toggleFullscreen()}
+                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                <FullscreenIcon active={isFullscreen} />
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
-
-      <div className="ritual-launch-video-vignette" aria-hidden="true" />
-
-      {isBuffering && !hasError && !showContinue ? (
-        <div className="ritual-launch-video-loader" aria-live="polite">
-          <span className="ritual-launch-video-spinner" />
-          <p className="ritual-launch-video-buffer-text">Loading the archive…</p>
-        </div>
-      ) : null}
-
-      {hasError ? (
-        <p className="ritual-launch-video-error-message font-cover-title">
-          The archive could not open this vision.
-        </p>
-      ) : null}
-
-      {showSlowMessage && !hasStarted && !hasError ? (
-        <p className="ritual-launch-video-slow-message font-cover-title">
-          The archive is taking longer than expected…
-        </p>
-      ) : null}
-
-      {showPlayPrompt && !showContinue && !hasError ? (
-        <div className="ritual-launch-video-prompt-wrap">
-          <button type="button" onClick={() => void handlePlayIntro()} className="gold-button ritual-launch-video-prompt">
-            Play intro
-          </button>
-        </div>
-      ) : null}
-
-      {showTapForSound && isMuted && !showPlayPrompt && !showContinue && !hasError ? (
-        <button type="button" onClick={() => void handlePlayIntro()} className="ritual-launch-video-sound">
-          Tap for sound
-        </button>
-      ) : null}
-
-      {showContinue ? (
-        <div className="ritual-launch-video-continue-wrap">
-          <button type="button" onClick={handleContinue} className="gold-button ritual-launch-video-continue">
-            Continue
-          </button>
-        </div>
-      ) : null}
-
-      <button type="button" onClick={handleSkip} className="ritual-launch-video-skip-top">
-        Skip intro
-      </button>
-
-      {!useNativeControls && !showContinue ? (
-        <div
-          className={cn("ritual-launch-video-controls", controlsVisible && "is-visible")}
-          onClick={(event) => event.stopPropagation()}
-          onMouseMove={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="ritual-player-btn"
-            onClick={() => void handleTogglePlay()}
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? <PauseIcon /> : <PlayIcon />}
-          </button>
-
-          <span className="ritual-player-time">{formatTime(currentTime)}</span>
-
-          <input
-            type="range"
-            min={0}
-            max={duration || 0}
-            step={0.1}
-            value={currentTime}
-            onChange={(event) => handleSeek(Number(event.target.value))}
-            className="ritual-player-progress"
-            aria-label="Video progress"
-            style={{ "--progress": `${progress}%` } as CSSProperties}
-          />
-
-          <span className="ritual-player-time">{formatTime(duration)}</span>
-
-          <button
-            type="button"
-            className="ritual-player-btn"
-            onClick={handleToggleMute}
-            aria-label={isMuted ? "Unmute" : "Mute"}
-          >
-            <VolumeIcon muted={isMuted} />
-          </button>
-
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={isMuted ? 0 : volume}
-            onChange={(event) => handleVolumeChange(Number(event.target.value))}
-            className="ritual-player-volume"
-            aria-label="Volume"
-            style={{ "--progress": `${(isMuted ? 0 : volume) * 100}%` } as CSSProperties}
-          />
-
-          <button
-            type="button"
-            className="ritual-player-btn"
-            onClick={() => void toggleFullscreen()}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            <FullscreenIcon active={isFullscreen} />
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

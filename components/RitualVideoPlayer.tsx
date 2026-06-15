@@ -11,6 +11,7 @@ export type RitualVideoPlayerHandle = {
   seek: (time: number) => void;
   setVolume: (volume: number) => void;
   getVideoElement: () => HTMLVideoElement | null;
+  unmuteWithVolume: (volume: number) => Promise<boolean>;
 };
 
 export type RitualVideoPlayerProps = {
@@ -82,20 +83,30 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
         return false;
       }
 
+      video.volume = volume;
+
       if (preferSound) {
         video.muted = false;
         try {
           await video.play();
+          onMutedChange?.(false);
           return true;
         } catch {
           video.muted = true;
+          try {
+            await video.play();
+            onMutedChange?.(true);
+            return false;
+          } catch {
+            return false;
+          }
         }
-      } else {
-        video.muted = true;
       }
 
+      video.muted = true;
       try {
         await video.play();
+        onMutedChange?.(true);
         return true;
       } catch {
         return false;
@@ -110,11 +121,33 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
           return false;
         }
         video.muted = false;
+        video.volume = volume;
+        try {
+          await video.play();
+          onMutedChange?.(false);
+          onVolumeChange?.(video.volume);
+          return true;
+        } catch {
+          video.muted = true;
+          onMutedChange?.(true);
+          return false;
+        }
+      },
+      unmuteWithVolume: async (targetVolume: number) => {
+        const video = videoRef.current;
+        if (!video) {
+          return false;
+        }
+        video.muted = false;
+        video.volume = Math.min(1, Math.max(0, targetVolume));
+        onVolumeChange?.(video.volume);
+        onMutedChange?.(false);
         try {
           await video.play();
           return true;
         } catch {
           video.muted = true;
+          onMutedChange?.(true);
           return false;
         }
       },
@@ -176,6 +209,14 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
       }
       video.volume = volume;
     }, [volume]);
+
+    useEffect(() => {
+      const video = videoRef.current;
+      if (!video) {
+        return;
+      }
+      video.muted = muted;
+    }, [muted]);
 
     useEffect(() => {
       return () => {
