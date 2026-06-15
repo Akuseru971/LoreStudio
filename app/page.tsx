@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
 import IntroGate from "@/components/IntroGate";
+import MysticalStartTransition from "@/components/MysticalStartTransition";
 import InteractiveBook from "@/components/InteractiveBook";
 import LoadingRitual from "@/components/LoadingRitual";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
@@ -15,7 +16,7 @@ import {
 } from "@/lib/ambient-music-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
 
-type ViewState = "intro" | "form" | "loading" | "book" | "error";
+type ViewState = "intro" | "transition" | "form" | "loading" | "book" | "error";
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const rawText = await response.text();
@@ -134,8 +135,20 @@ export default function Home() {
 
       <AnimatePresence mode="wait">
       {view === "intro" ? (
-        <motion.div key="intro" exit={{ opacity: 0, filter: "blur(18px)" }} transition={{ duration: 0.7 }}>
-          <IntroGate onStart={() => setView("form")} />
+        <motion.div key="intro" exit={{ opacity: 0, filter: "blur(14px)" }} transition={{ duration: 0.55 }}>
+          <IntroGate onStart={() => setView("transition")} />
+        </motion.div>
+      ) : null}
+
+      {view === "transition" ? (
+        <motion.div
+          key="transition"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, filter: "blur(10px)" }}
+          transition={{ duration: 0.45 }}
+        >
+          <MysticalStartTransition onComplete={() => setView("form")} />
         </motion.div>
       ) : null}
 

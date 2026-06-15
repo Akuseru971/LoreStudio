@@ -866,3 +866,136 @@ button {
   width: 1rem;
   height: 1rem;
 }
+
+/* ── Mystical start transition ── */
+
+.mystical-start-transition {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(28, 52, 92, 0.22), transparent 34rem),
+    linear-gradient(180deg, #02030a 0%, #050914 48%, #03040a 100%);
+}
+
+.mystical-start-transition-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 4, 10, 0.42);
+  pointer-events: none;
+}
+
+.mystical-start-transition-smoke {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(92vw, 42rem);
+  height: min(72vh, 34rem);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  filter: blur(34px);
+  pointer-events: none;
+}
+
+.mystical-start-transition-smoke-a {
+  background: radial-gradient(circle, rgba(71, 132, 211, 0.24) 0%, rgba(32, 65, 122, 0.12) 42%, transparent 72%);
+}
+
+.mystical-start-transition-smoke-b {
+  width: min(78vw, 34rem);
+  height: min(58vh, 28rem);
+  background: radial-gradient(circle, rgba(126, 182, 255, 0.16) 0%, transparent 68%);
+  mix-blend-mode: screen;
+}
+
+.mystical-start-transition-smoke-c {
+  width: min(56vw, 24rem);
+  height: min(42vh, 18rem);
+  background: radial-gradient(circle, rgba(159, 184, 216, 0.14) 0%, transparent 70%);
+}
+
+.mystical-start-transition-core {
+  position: relative;
+  z-index: 2;
+  width: min(88vw, 28rem);
+  height: min(88vw, 28rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mystical-start-transition-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: -1px;
+  margin-top: -1px;
+  border-radius: 999px;
+  background: rgba(186, 214, 255, 0.92);
+  box-shadow:
+    0 0 10px rgba(126, 182, 255, 0.85),
+    0 0 22px rgba(71, 132, 211, 0.45);
+}
+
+.mystical-start-transition-burst {
+  position: absolute;
+  width: 12rem;
+  height: 12rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(159, 198, 255, 0.34) 0%, rgba(71, 132, 211, 0.08) 42%, transparent 72%);
+  filter: blur(8px);
+}
+
+.mystical-start-transition-seal {
+  position: absolute;
+  width: 11.5rem;
+  height: 11.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mystical-start-transition-seal-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(126, 182, 255, 0.22);
+}
+
+.mystical-start-transition-seal-ring-outer {
+  inset: 0;
+  box-shadow:
+    inset 0 0 36px rgba(71, 132, 211, 0.12),
+    0 0 48px rgba(71, 132, 211, 0.14);
+  background:
+    conic-gradient(from 18deg, transparent, rgba(126, 182, 255, 0.1), transparent 30%, rgba(126, 182, 255, 0.07), transparent 62%),
+    radial-gradient(circle, transparent 0 54%, rgba(126, 182, 255, 0.1) 55%, transparent 57%);
+}
+
+.mystical-start-transition-seal-ring-inner {
+  inset: 1.35rem;
+  opacity: 0.75;
+  border-color: rgba(159, 184, 216, 0.16);
+  background: radial-gradient(circle, rgba(71, 132, 211, 0.08) 0%, transparent 68%);
+}
+
+.mystical-start-transition-seal-glyph {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 50%;
+  border: 1px solid rgba(186, 214, 255, 0.18);
+  background:
+    radial-gradient(circle at 50% 38%, rgba(186, 214, 255, 0.16), transparent 58%),
+    radial-gradient(circle, rgba(12, 22, 38, 0.4) 0%, rgba(8, 14, 26, 0.82) 100%);
+  box-shadow: 0 0 28px rgba(126, 182, 255, 0.16);
+}
+
+.mystical-start-transition-message {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 8.5rem);
+  z-index: 3;
+  max-width: 18rem;
+  transform: translateX(-50%);
+  text-align: center;
+  font-size: clamp(1.05rem, 2.4vw, 1.35rem);
+  letter-spacing: 0.08em;
+  color: rgba(220, 236, 255, 0.86);
+  text-shadow: 0 0 24px rgba(126, 182, 255, 0.28);
+}
