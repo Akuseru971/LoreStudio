@@ -13,11 +13,8 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
     return options.fallbackOnFailure ? buildFallbackIllustration(book, page) : undefined;
   }
 
-  // gpt-image-1-mini is the MVP default for faster Vercel-friendly image generation.
-  // For the premium version, set OPENAI_IMAGE_MODEL to a higher-quality image model.
-  const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1-mini";
-  const requestedModel = imageModel;
-  const models = Array.from(new Set([requestedModel, "gpt-image-1"]));
+  const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+  const models = [imageModel];
   const requestedSize = process.env.OPENAI_IMAGE_SIZE || "1024x1536";
   const sizes = Array.from(new Set([requestedSize, "1024x1024"]));
   const attempts = sizes.flatMap((size) => models.map((model) => ({ model, size })));
