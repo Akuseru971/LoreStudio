@@ -38,6 +38,13 @@ export type BookPage = {
   audioUrl?: string | null;
 };
 
+export type ChampionConnection = {
+  championName: string;
+  connectionType: string;
+  connectionSummary: string;
+  canonSafetyNote: string;
+};
+
 export type LoreBook = {
   title: string;
   subtitle: string;
@@ -47,6 +54,7 @@ export type LoreBook = {
   coreConflict: string;
   distinctiveHook: string;
   narratorIntro: string;
+  championConnection?: ChampionConnection;
   characterBible: {
     name: string;
     gender: string;
