@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
-import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
+import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
+import type { BookFormInput, BookPage, ChampionConnection, LoreBook } from "@/lib/types";
 
 export const genders = ["man", "woman", "creature", "unknown"] as const;
 
@@ -97,16 +98,6 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
 }
 
 export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
-  const expectedChapters = [
-    "The Name",
-    "Origin",
-    "The Wound",
-    "The Sign",
-    "The Trial",
-    "The Enemy",
-    "The Transformation",
-    "The Final Prophecy",
-  ];
   const bible = book.characterBible || {
     name: "The Unnamed",
     gender: "unknown",
@@ -124,20 +115,24 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     runeterraLoreAnchor: "An original Runeterran legend compatible with known regional conflicts.",
   };
   const mainRegion = sanitizeText(book.mainRegion, 80) || sanitizeText(bible.region, 80) || "Runeterra";
+  const championConnection = normalizeChampionConnection(book.championConnection);
 
-  const pages = expectedChapters.map((chapter, index) => {
+  const pages = Array.from({ length: 8 }, (_, index) => {
     const page = book.pages?.[index];
     const visualDirection = normalizeVisualDirection(page, index + 1, mainRegion);
+    const generatedTitle = sanitizeText(page?.title, 80);
+    const generatedChapter = sanitizeText(page?.chapter, 80);
+    const storyLabel = generatedChapter || generatedTitle || `Part ${index + 1}`;
 
     return {
       pageNumber: index + 1,
-      chapter,
-      title: sanitizeText(page?.title, 80) || chapter,
+      chapter: storyLabel,
+      title: generatedTitle || storyLabel,
       text: sanitizeText(page?.text, 700) || "The page remains veiled, waiting for the ink to return.",
       visualDirection,
       imagePrompt:
         sanitizeText(page?.imagePrompt, 1800) ||
-        rewriteImagePromptFromVisualDirection(index + 1, chapter, chapter, visualDirection),
+        rewriteImagePromptFromVisualDirection(index + 1, storyLabel, generatedTitle || storyLabel, visualDirection),
       imageUrl: page?.imageUrl,
       audioUrl: page?.audioUrl,
     };
@@ -148,6 +143,7 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     title: sanitizeText(book.title, 120) || "The Book of the Unwritten Legend",
     subtitle: sanitizeText(book.subtitle, 180) || "A dark fantasy chronicle recovered from a silent archive.",
     mainRegion,
+    championConnection,
     storyEngine:
       sanitizeText(book.storyEngine, 240) ||
       "A specific local duty pulls an ordinary Runeterran into a regional conflict.",
@@ -228,40 +224,40 @@ function defaultVisualDirection(pageNumber: number, region: string): BookPage["v
       lighting: "soft dawn or misty morning light",
     },
     3: {
-      sceneType: "intimate emotional wound scene",
-      cameraShot: "medium environmental shot focused on body language and symbolic loss",
-      characterAction: "the protagonist confronts loss, shame, obligation, cost, or conflict through action",
-      environment: `a ruined, empty, or abandoned place in ${region} tied to the wound`,
-      keyObjects: ["broken object", "empty room", "long shadow"],
-      mood: "grieving, tense, vulnerable",
-      lighting: "low side light with heavy shadows",
+      sceneType: "champion connection scene",
+      cameraShot: "medium environmental shot with indirect lore details",
+      characterAction: "the protagonist reacts to a champion's influence through rumor, memory, object, or regional aftermath",
+      environment: `a lived-in location in ${region} shaped by known Runeterra history and local consequence`,
+      keyObjects: ["faction symbol", "rumor object", "regional clue", "distant banner"],
+      mood: "attached, weighted, lore-rooted",
+      lighting: "story-specific regional light with a subtle heroic or ominous echo",
     },
     4: {
-      sceneType: "supernatural discovery scene",
-      cameraShot: "over-the-shoulder or medium-wide shot focused on the omen",
-      characterAction: "the protagonist discovers a sign, relic, omen, spirit, rune, vision, or forbidden symbol",
-      environment: `a hidden or sacred location in ${region} where regional magic manifests`,
-      keyObjects: ["glowing omen", "ancient relic", "reacting environment"],
-      mood: "mysterious, awed, dangerous",
-      lighting: "strange supernatural glow cutting through darkness",
+      sceneType: "rising conflict scene",
+      cameraShot: "medium-wide shot focused on mounting stakes",
+      characterAction: "the protagonist realizes the personal conflict can no longer be avoided",
+      environment: `a charged everyday or sacred place in ${region} where the problem becomes personal`,
+      keyObjects: ["proof object", "witness", "closing path"],
+      mood: "tense, inevitable, personal",
+      lighting: "closing shadows with a sharp point of focus",
     },
     5: {
-      sceneType: "dynamic action trial scene",
-      cameraShot: "dramatic medium-wide action shot with motion and perspective",
-      characterAction: "the protagonist survives danger, crosses a battlefield, escapes, climbs, fights, or endures a trial",
-      environment: `a hazardous trial ground in ${region}, filled with movement and regional danger`,
-      keyObjects: ["weapon or relic", "storm or debris", "non-canon creature or hazard"],
-      mood: "urgent, kinetic, perilous",
-      lighting: "high contrast battle light with sparks, storm, or magical flare",
+      sceneType: "cliffhanger suspense scene",
+      cameraShot: "dramatic medium-wide shot frozen at the moment of revelation",
+      characterAction: "the protagonist reaches the shocking beat that halts the story before continuation",
+      environment: `a specific ${region} setting that makes the cliffhanger visually unmistakable`,
+      keyObjects: ["revealed clue", "opened threshold", "impossible detail", "champion-linked symbol"],
+      mood: "urgent, suspended, breathless",
+      lighting: "high-contrast suspense light cutting through darkness at the final beat",
     },
     6: {
-      sceneType: "enemy confrontation scene",
-      cameraShot: "wide confrontation shot with protagonist and original enemy both visible",
-      characterAction: "the protagonist faces an original lore-compatible threat across tense distance",
-      environment: `a confrontation site in ${region} with opposing silhouettes and regional stakes`,
-      keyObjects: ["enemy silhouette", "dividing light", "threat symbol"],
-      mood: "tense, threatening, monumental",
-      lighting: "opposing light sources separating hero and enemy",
+      sceneType: "consequence scene",
+      cameraShot: "wide aftermath shot showing immediate fallout",
+      characterAction: "the protagonist faces what the cliffhanger unleashed or exposed",
+      environment: `a confrontation or revelation site in ${region} altered by the previous page's shock`,
+      keyObjects: ["aftermath evidence", "new threat", "changed environment"],
+      mood: "volatile, exposed, consequential",
+      lighting: "unstable light with strong directional contrast",
     },
     7: {
       sceneType: "visual transformation scene",
@@ -284,6 +280,19 @@ function defaultVisualDirection(pageNumber: number, region: string): BookPage["v
   };
 
   return directions[pageNumber] || directions[8];
+}
+
+function normalizeChampionConnection(connection?: Partial<ChampionConnection>): ChampionConnection {
+  return {
+    championName: sanitizeText(connection?.championName, 80) || "Unknown Champion",
+    connectionType: sanitizeText(connection?.connectionType, 80) || "shared_region",
+    connectionSummary:
+      sanitizeText(connection?.connectionSummary, 320) ||
+      "The protagonist's early life was quietly shaped by a known Runeterra legend without altering official canon.",
+    canonSafetyNote:
+      sanitizeText(connection?.canonSafetyNote, 320) ||
+      "The connection is indirect, minor, and does not change the champion's established story.",
+  };
 }
 
 function enforceImagePromptVariety(pages: BookPage[]) {
@@ -321,6 +330,8 @@ function rewriteImagePromptFromVisualDirection(
     `Key objects: ${visualDirection.keyObjects.join(", ")}.`,
     `Mood: ${visualDirection.mood}.`,
     `Lighting: ${visualDirection.lighting}.`,
-    "No repeated portrait composition, no repeated background, no repeated camera angle, no generic character standing pose, no simple bust shot, no text, no logo, no watermark.",
+    IMAGE_STYLE_LOCK,
+    IMAGE_STYLE_AVOIDANCES,
+    "No repeated portrait composition, no repeated background, no repeated camera angle, no generic character standing pose, no simple bust shot.",
   ].join(" ");
 }

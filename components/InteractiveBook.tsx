@@ -10,6 +10,8 @@ import ResultActions from "@/components/ResultActions";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
 
+const MOBILE_BREAKPOINT = 768;
+
 type PageFlipHandle = {
   pageFlip: () => {
     flipPrev: () => void;
@@ -61,6 +63,20 @@ type InteractiveBookProps = {
   onReset: () => void;
 };
 
+function useIsMobileBook() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
+}
+
 export default function InteractiveBook({ book, onReset }: InteractiveBookProps) {
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
   const [activePageIndex, setActivePageIndex] = useState(0);
@@ -74,24 +90,20 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   );
   const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
   const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
-  const [revealedPages, setRevealedPages] = useState<Record<number, boolean>>({});
-  const [audioDurations, setAudioDurations] = useState<Record<number, number>>({});
-  const [highestReachedIndex, setHighestReachedIndex] = useState(0);
-  const [hasCompletedFirstListen, setHasCompletedFirstListen] = useState(false);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [settings, setSettings] = useState<AudioSettings>({
     musicEnabled: true,
     voiceEnabled: true,
   });
 
+  const isMobile = useIsMobileBook();
   const flipRef = useRef<PageFlipHandle | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
-  const autoAdvanceTimerRef = useRef<number | undefined>(undefined);
-  const highestReachedRef = useRef(0);
-  const hasCompletedFirstListenRef = useRef(false);
+  const touchStartX = useRef<number | null>(null);
+
   const pagesWithImages = useMemo(
     () =>
       book.pages.map((page) => ({
@@ -104,22 +116,10 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const activePage = illustratedPages[activePageIndex] || illustratedPages[0];
   const isOpen = bookState === "open";
   const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
-  const isGuidedFirstListen = isOpen && !hasCompletedFirstListen;
-  const canLookBack = hasCompletedFirstListen || highestReachedIndex >= 4;
-  const canGoPrevious = activePageIndex > 0 && canLookBack;
-  const canGoNext = hasCompletedFirstListen
-    ? activePageIndex < illustratedPages.length - 1
-    : canLookBack && activePageIndex < highestReachedIndex;
+  const canGoPrevious = activePageIndex > 0;
+  const canGoNext = activePageIndex < illustratedPages.length - 1;
 
   const coverMarks = useMemo(() => ["I", "II", "III", "IV"], []);
-
-  useEffect(() => {
-    highestReachedRef.current = highestReachedIndex;
-  }, [highestReachedIndex]);
-
-  useEffect(() => {
-    hasCompletedFirstListenRef.current = hasCompletedFirstListen;
-  }, [hasCompletedFirstListen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,9 +223,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
 
   useEffect(() => {
     return () => {
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
-      }
       voiceRef.current?.pause();
     };
   }, []);
@@ -234,80 +231,18 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     (pageIndex: number) => {
       const nextIndex = Math.min(Math.max(pageIndex, 0), illustratedPages.length - 1);
       setActivePageIndex(nextIndex);
-      flipRef.current?.pageFlip()?.flip(nextIndex * 2, "top");
-    },
-    [illustratedPages.length],
-  );
-
-  const estimateReadingDuration = useCallback((text: string) => {
-    const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-    return Math.min(14000, Math.max(6500, wordCount * 360));
-  }, []);
-
-  const getAudioDuration = useCallback(
-    async (audio: HTMLAudioElement, fallbackText: string) =>
-      new Promise<number>((resolve) => {
-        const fallback = estimateReadingDuration(fallbackText);
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          resolve(audio.duration * 1000);
-          return;
-        }
-
-        const timeout = window.setTimeout(() => {
-          cleanup();
-          resolve(fallback);
-        }, 900);
-
-        function cleanup() {
-          window.clearTimeout(timeout);
-          audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-          audio.removeEventListener("durationchange", onLoadedMetadata);
-        }
-
-        function onLoadedMetadata() {
-          if (Number.isFinite(audio.duration) && audio.duration > 0) {
-            cleanup();
-            resolve(audio.duration * 1000);
-          }
-        }
-
-        audio.addEventListener("loadedmetadata", onLoadedMetadata);
-        audio.addEventListener("durationchange", onLoadedMetadata);
-      }),
-    [estimateReadingDuration],
-  );
-
-  const completeGuidedPage = useCallback(
-    (pageIndex: number) => {
-      if (!isOpen || hasCompletedFirstListenRef.current || pageIndex !== highestReachedRef.current) {
-        return;
+      if (!isMobile) {
+        flipRef.current?.pageFlip()?.flip(nextIndex * 2, "top");
       }
-
-      if (pageIndex >= illustratedPages.length - 1) {
-        hasCompletedFirstListenRef.current = true;
-        setHasCompletedFirstListen(true);
-        return;
-      }
-
-      const nextIndex = pageIndex + 1;
-      highestReachedRef.current = Math.max(highestReachedRef.current, nextIndex);
-      setHighestReachedIndex((current) => Math.max(current, nextIndex));
-      autoAdvanceTimerRef.current = window.setTimeout(() => {
-        goToSpread(nextIndex);
-      }, 900);
     },
-    [goToSpread, illustratedPages.length, isOpen],
+    [illustratedPages.length, isMobile],
   );
 
   const startPageNarration = useCallback(
-    async (pageIndex: number, options: { autoAdvance: boolean }) => {
+    async (pageIndex: number) => {
       const page = illustratedPages[pageIndex];
       if (!page) {
         return;
-      }
-
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
       }
 
       narrationRunRef.current += 1;
@@ -315,16 +250,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       voiceRef.current?.pause();
 
       if (!settings.voiceEnabled) {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
         return;
       }
 
@@ -334,16 +259,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       }
 
       if (!audioUrl) {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
         return;
       }
 
@@ -355,54 +270,16 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       voice.pause();
       voice.src = audioUrl;
       voice.volume = 0.82;
-      const revealDuration = await getAudioDuration(voice, page.text);
-      if (narrationRunRef.current !== runId) {
-        return;
-      }
-      setAudioDurations((current) => ({ ...current, [page.pageNumber]: revealDuration / 1000 }));
-      voice.onended = () => {
-        if (narrationRunRef.current !== runId) {
-          return;
-        }
-        if (options.autoAdvance) {
-          completeGuidedPage(pageIndex);
-        }
-      };
-      voice.onerror = () => {
-        if (narrationRunRef.current !== runId) {
-          return;
-        }
-        if (options.autoAdvance) {
-          completeGuidedPage(pageIndex);
-        }
-      };
+      voice.onended = null;
+      voice.onerror = null;
 
       try {
         await voice.play();
-        if (narrationRunRef.current === runId) {
-          setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        }
       } catch {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
+        voiceRef.current?.pause();
       }
     },
-    [
-      completeGuidedPage,
-      estimateReadingDuration,
-      fetchAudioForPage,
-      getAudioDuration,
-      illustratedPages,
-      settings.voiceEnabled,
-    ],
+    [fetchAudioForPage, illustratedPages, settings.voiceEnabled],
   );
 
   useEffect(() => {
@@ -427,23 +304,18 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   }, [isOpen, pauseMusic, playMusic, settings.musicEnabled]);
 
   useEffect(() => {
-    let timer: number | undefined;
-    if (isOpen && settings.voiceEnabled) {
-      timer = window.setTimeout(() => {
-        void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
-      }, 0);
-    } else if (isOpen && !settings.voiceEnabled) {
-      timer = window.setTimeout(() => {
-        void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
-      }, 0);
+    if (!isOpen) {
+      return;
     }
 
+    const timer = window.setTimeout(() => {
+      void startPageNarration(activePageIndex);
+    }, 0);
+
     return () => {
-      if (timer) {
-        window.clearTimeout(timer);
-      }
+      window.clearTimeout(timer);
     };
-  }, [activePageIndex, hasCompletedFirstListen, isOpen, settings.voiceEnabled, startPageNarration]);
+  }, [activePageIndex, isOpen, startPageNarration]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -491,16 +363,24 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     };
   }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
+  const goToPage = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= illustratedPages.length) {
+        return;
+      }
+
+      narrationRunRef.current += 1;
+      voiceRef.current?.pause();
+      goToSpread(pageIndex);
+    },
+    [goToSpread, illustratedPages.length],
+  );
+
   function handleOpen() {
     if (bookState !== "closed") {
       return;
     }
     narrationRunRef.current += 1;
-    highestReachedRef.current = 0;
-    hasCompletedFirstListenRef.current = false;
-    setHighestReachedIndex(0);
-    setHasCompletedFirstListen(false);
-    setRevealedPages({});
     setBookState("opening");
     setActivePageIndex(0);
     void playMusic();
@@ -512,30 +392,55 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   function handleFlip(event: { data?: number }) {
     const physicalPage = typeof event.data === "number" ? event.data : 0;
     const nextIndex = Math.floor(Math.max(physicalPage, 0) / 2);
-    const maxAllowedIndex = hasCompletedFirstListen ? illustratedPages.length - 1 : highestReachedRef.current;
-    const minAllowedIndex = hasCompletedFirstListen || canLookBack ? 0 : highestReachedRef.current;
-    const boundedIndex = Math.min(Math.max(nextIndex, minAllowedIndex), maxAllowedIndex);
-    setActivePageIndex(boundedIndex);
-    if (boundedIndex !== nextIndex) {
-      window.setTimeout(() => goToSpread(boundedIndex), 0);
+    if (nextIndex === activePageIndex) {
+      return;
     }
+
+    narrationRunRef.current += 1;
+    voiceRef.current?.pause();
+    setActivePageIndex(nextIndex);
   }
 
   function flipPrevious() {
     if (!canGoPrevious) {
       return;
     }
-    const previousSpread = Math.max(activePageIndex - 1, 0);
-    flipRef.current?.pageFlip()?.flip(previousSpread * 2, "top");
+    goToPage(activePageIndex - 1);
   }
 
   function flipNext() {
     if (!canGoNext) {
       return;
     }
-    const nextSpread = Math.min(activePageIndex + 1, illustratedPages.length - 1);
-    flipRef.current?.pageFlip()?.flip(nextSpread * 2, "top");
+    goToPage(activePageIndex + 1);
   }
+
+  const handleMobileTouchStart = useCallback((event: React.TouchEvent) => {
+    touchStartX.current = event.touches[0]?.clientX ?? null;
+  }, []);
+
+  const handleMobileTouchEnd = useCallback(
+    (event: React.TouchEvent) => {
+      const startX = touchStartX.current;
+      touchStartX.current = null;
+      if (startX === null) {
+        return;
+      }
+
+      const endX = event.changedTouches[0]?.clientX ?? startX;
+      const delta = endX - startX;
+      if (Math.abs(delta) < 48) {
+        return;
+      }
+
+      if (delta < 0 && canGoNext) {
+        goToPage(activePageIndex + 1);
+      } else if (delta > 0 && canGoPrevious) {
+        goToPage(activePageIndex - 1);
+      }
+    },
+    [activePageIndex, canGoNext, canGoPrevious, goToPage],
+  );
 
   function toggleMusic() {
     setSettings((current) => {
@@ -551,7 +456,10 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     setSettings((current) => {
       const next = { ...current, voiceEnabled: !current.voiceEnabled };
       if (!next.voiceEnabled) {
+        narrationRunRef.current += 1;
         voiceRef.current?.pause();
+      } else if (isOpen) {
+        void startPageNarration(activePageIndex);
       }
       return next;
     });
@@ -652,58 +560,96 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                 <h1 className="font-title mt-2 text-3xl text-[#f7ebce] sm:text-4xl">{book.title}</h1>
               </div>
 
-              <div className="book-scene mx-auto flex w-full max-w-6xl justify-center overflow-visible">
-                <HTMLFlipBook
-                  ref={flipRef}
-                  className="pageflip-root"
-                  style={{}}
-                  startPage={0}
-                  size="stretch"
-                  width={420}
-                  height={640}
-                  minWidth={300}
-                  maxWidth={460}
-                  minHeight={500}
-                  maxHeight={700}
-                  drawShadow
-                  flippingTime={950}
-                  usePortrait
-                  startZIndex={0}
-                  autoSize
-                  maxShadowOpacity={0.55}
-                  showCover={false}
-                  mobileScrollSupport
-                  clickEventForward
-                  useMouseEvents={!isGuidedFirstListen}
-                  swipeDistance={30}
-                  showPageCorners
-                  disableFlipByClick={isGuidedFirstListen}
-                  onFlip={handleFlip}
-                >
-                  {illustratedPages.flatMap((page, index) => [
-                    <div key={`${page.pageNumber}-image`} className="page">
-                      <BookPage
-                        page={page}
-                        side="image"
-                        isActive={index === activePageIndex}
-                        isImageLoading={Boolean(loadingImages[page.pageNumber])}
-                        isTextRevealed={Boolean(revealedPages[page.pageNumber])}
-                      />
-                    </div>,
-                    <div key={`${page.pageNumber}-text`} className="page">
-                      <BookPage
-                        page={page}
-                        side="text"
-                        isActive={index === activePageIndex}
-                        isTextRevealed={Boolean(revealedPages[page.pageNumber])}
-                        audioDuration={audioDurations[page.pageNumber]}
-                      />
-                    </div>,
-                  ])}
-                </HTMLFlipBook>
-              </div>
+              {isMobile ? (
+                <div className="mobile-book-shell mx-auto flex w-full flex-col items-center gap-4">
+                  <div
+                    className="mobile-book-page"
+                    onTouchStart={handleMobileTouchStart}
+                    onTouchEnd={handleMobileTouchEnd}
+                  >
+                    <BookPage
+                      page={activePage}
+                      side="combined"
+                      isActive
+                      isImageLoading={Boolean(loadingImages[activePage.pageNumber])}
+                    />
+                  </div>
 
-              <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
+                  <nav className="mobile-book-nav" aria-label="Book page navigation">
+                    <button
+                      type="button"
+                      className="mobile-book-nav-btn"
+                      onClick={flipPrevious}
+                      disabled={!canGoPrevious}
+                      aria-label="Previous page"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="mobile-book-nav-indicator" aria-live="polite">
+                      Page {activePageIndex + 1} / {illustratedPages.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="mobile-book-nav-btn"
+                      onClick={flipNext}
+                      disabled={!canGoNext}
+                      aria-label="Next page"
+                    >
+                      Next →
+                    </button>
+                  </nav>
+                </div>
+              ) : (
+                <div className="book-scene mx-auto flex w-full max-w-6xl justify-center overflow-visible">
+                  <HTMLFlipBook
+                    ref={flipRef}
+                    className="pageflip-root"
+                    style={{}}
+                    startPage={0}
+                    size="stretch"
+                    width={420}
+                    height={640}
+                    minWidth={300}
+                    maxWidth={460}
+                    minHeight={500}
+                    maxHeight={700}
+                    drawShadow
+                    flippingTime={950}
+                    usePortrait
+                    startZIndex={0}
+                    autoSize
+                    maxShadowOpacity={0.55}
+                    showCover={false}
+                    mobileScrollSupport
+                    clickEventForward
+                    useMouseEvents
+                    swipeDistance={30}
+                    showPageCorners
+                    disableFlipByClick={false}
+                    onFlip={handleFlip}
+                  >
+                    {illustratedPages.flatMap((page, index) => [
+                      <div key={`${page.pageNumber}-image`} className="page">
+                        <BookPage
+                          page={page}
+                          side="image"
+                          isActive={index === activePageIndex}
+                          isImageLoading={Boolean(loadingImages[page.pageNumber])}
+                        />
+                      </div>,
+                      <div key={`${page.pageNumber}-text`} className="page">
+                        <BookPage
+                          page={page}
+                          side="text"
+                          isActive={index === activePageIndex}
+                        />
+                      </div>,
+                    ])}
+                  </HTMLFlipBook>
+                </div>
+              )}
+
+              <div className="mx-auto mt-5 hidden max-w-3xl items-center justify-center gap-3 md:flex">
                 <button
                   type="button"
                   onClick={flipPrevious}
@@ -712,6 +658,9 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                 >
                   Previous
                 </button>
+                <span className="text-xs uppercase tracking-[0.18em] text-[#9baabd]">
+                  Page {activePageIndex + 1} / {illustratedPages.length}
+                </span>
                 <button
                   type="button"
                   onClick={flipNext}
@@ -722,21 +671,13 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                 </button>
               </div>
 
-              {isGuidedFirstListen ? (
-                <p className="mx-auto mt-3 max-w-2xl text-center text-xs uppercase tracking-[0.22em] text-[#9baabd]">
-                  {highestReachedIndex < 4
-                    ? "First listening in progress - pages turn with the narrator."
-                    : "You may now look back, but the prophecy still unfolds forward with the voice."}
-                </p>
-              ) : null}
-
               <AudioControls
                 settings={settings}
                 musicAvailable={musicAvailable}
                 isLoadingVoice={isLoadingVoice}
                 onToggleMusic={toggleMusic}
                 onToggleVoice={toggleVoice}
-                onReplayVoice={() => void startPageNarration(activePageIndex, { autoAdvance: false })}
+                onReplayVoice={() => void startPageNarration(activePageIndex)}
               />
 
               {isFinalPage ? <ResultActions onReset={onReset} /> : null}
