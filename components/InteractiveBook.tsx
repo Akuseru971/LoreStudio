@@ -5,13 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AudioControls from "@/components/AudioControls";
-import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
-import MagicalBookCover from "@/components/MagicalBookCover";
 import ResultActions from "@/components/ResultActions";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
-import { cn } from "@/lib/utils";
+
+const MOBILE_BREAKPOINT = 768;
 
 type PageFlipHandle = {
   pageFlip: () => {
@@ -64,8 +63,19 @@ type InteractiveBookProps = {
   onReset: () => void;
 };
 
-const OPENING_DURATION_MS = 2100;
-const NARRATION_START_DELAY_MS = 900;
+function useIsMobileBook() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
+}
 
 export default function InteractiveBook({ book, onReset }: InteractiveBookProps) {
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
@@ -80,24 +90,20 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   );
   const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
   const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
-  const [revealedPages, setRevealedPages] = useState<Record<number, boolean>>({});
-  const [audioDurations, setAudioDurations] = useState<Record<number, number>>({});
-  const [highestReachedIndex, setHighestReachedIndex] = useState(0);
-  const [hasCompletedFirstListen, setHasCompletedFirstListen] = useState(false);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [settings, setSettings] = useState<AudioSettings>({
     musicEnabled: true,
     voiceEnabled: true,
   });
 
+  const isMobile = useIsMobileBook();
   const flipRef = useRef<PageFlipHandle | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
-  const autoAdvanceTimerRef = useRef<number | undefined>(undefined);
-  const highestReachedRef = useRef(0);
-  const hasCompletedFirstListenRef = useRef(false);
+  const touchStartX = useRef<number | null>(null);
+
   const pagesWithImages = useMemo(
     () =>
       book.pages.map((page) => ({
@@ -110,34 +116,10 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const activePage = illustratedPages[activePageIndex] || illustratedPages[0];
   const isOpen = bookState === "open";
   const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
-  const isGuidedFirstListen = isOpen && !hasCompletedFirstListen;
-  const canLookBack = hasCompletedFirstListen || highestReachedIndex >= 4;
-  const canGoPrevious = activePageIndex > 0 && canLookBack;
-  const canGoNext = hasCompletedFirstListen
-    ? activePageIndex < illustratedPages.length - 1
-    : canLookBack && activePageIndex < highestReachedIndex;
+  const canGoPrevious = activePageIndex > 0;
+  const canGoNext = activePageIndex < illustratedPages.length - 1;
 
-  const escapeParticles = useMemo(
-    () =>
-      Array.from({ length: 6 }, (_, index) => ({
-        id: index,
-        left: `${20 + ((index * 19) % 60)}%`,
-        top: `${25 + ((index * 21) % 50)}%`,
-      })),
-    [],
-  );
-
-  const characterName = book.characterBible.name;
-  const showCover = bookState !== "open";
-  const showOpenBook = bookState === "opening" || bookState === "open";
-
-  useEffect(() => {
-    highestReachedRef.current = highestReachedIndex;
-  }, [highestReachedIndex]);
-
-  useEffect(() => {
-    hasCompletedFirstListenRef.current = hasCompletedFirstListen;
-  }, [hasCompletedFirstListen]);
+  const coverMarks = useMemo(() => ["I", "II", "III", "IV"], []);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,9 +223,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
 
   useEffect(() => {
     return () => {
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
-      }
       voiceRef.current?.pause();
     };
   }, []);
@@ -252,80 +231,18 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     (pageIndex: number) => {
       const nextIndex = Math.min(Math.max(pageIndex, 0), illustratedPages.length - 1);
       setActivePageIndex(nextIndex);
-      flipRef.current?.pageFlip()?.flip(nextIndex * 2, "top");
-    },
-    [illustratedPages.length],
-  );
-
-  const estimateReadingDuration = useCallback((text: string) => {
-    const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-    return Math.min(14000, Math.max(6500, wordCount * 360));
-  }, []);
-
-  const getAudioDuration = useCallback(
-    async (audio: HTMLAudioElement, fallbackText: string) =>
-      new Promise<number>((resolve) => {
-        const fallback = estimateReadingDuration(fallbackText);
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          resolve(audio.duration * 1000);
-          return;
-        }
-
-        const timeout = window.setTimeout(() => {
-          cleanup();
-          resolve(fallback);
-        }, 900);
-
-        function cleanup() {
-          window.clearTimeout(timeout);
-          audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-          audio.removeEventListener("durationchange", onLoadedMetadata);
-        }
-
-        function onLoadedMetadata() {
-          if (Number.isFinite(audio.duration) && audio.duration > 0) {
-            cleanup();
-            resolve(audio.duration * 1000);
-          }
-        }
-
-        audio.addEventListener("loadedmetadata", onLoadedMetadata);
-        audio.addEventListener("durationchange", onLoadedMetadata);
-      }),
-    [estimateReadingDuration],
-  );
-
-  const completeGuidedPage = useCallback(
-    (pageIndex: number) => {
-      if (!isOpen || hasCompletedFirstListenRef.current || pageIndex !== highestReachedRef.current) {
-        return;
+      if (!isMobile) {
+        flipRef.current?.pageFlip()?.flip(nextIndex * 2, "top");
       }
-
-      if (pageIndex >= illustratedPages.length - 1) {
-        hasCompletedFirstListenRef.current = true;
-        setHasCompletedFirstListen(true);
-        return;
-      }
-
-      const nextIndex = pageIndex + 1;
-      highestReachedRef.current = Math.max(highestReachedRef.current, nextIndex);
-      setHighestReachedIndex((current) => Math.max(current, nextIndex));
-      autoAdvanceTimerRef.current = window.setTimeout(() => {
-        goToSpread(nextIndex);
-      }, 900);
     },
-    [goToSpread, illustratedPages.length, isOpen],
+    [illustratedPages.length, isMobile],
   );
 
   const startPageNarration = useCallback(
-    async (pageIndex: number, options: { autoAdvance: boolean }) => {
+    async (pageIndex: number) => {
       const page = illustratedPages[pageIndex];
       if (!page) {
         return;
-      }
-
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
       }
 
       narrationRunRef.current += 1;
@@ -333,16 +250,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       voiceRef.current?.pause();
 
       if (!settings.voiceEnabled) {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
         return;
       }
 
@@ -352,16 +259,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       }
 
       if (!audioUrl) {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
         return;
       }
 
@@ -373,54 +270,16 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       voice.pause();
       voice.src = audioUrl;
       voice.volume = 0.82;
-      const revealDuration = await getAudioDuration(voice, page.text);
-      if (narrationRunRef.current !== runId) {
-        return;
-      }
-      setAudioDurations((current) => ({ ...current, [page.pageNumber]: revealDuration / 1000 }));
-      voice.onended = () => {
-        if (narrationRunRef.current !== runId) {
-          return;
-        }
-        if (options.autoAdvance) {
-          completeGuidedPage(pageIndex);
-        }
-      };
-      voice.onerror = () => {
-        if (narrationRunRef.current !== runId) {
-          return;
-        }
-        if (options.autoAdvance) {
-          completeGuidedPage(pageIndex);
-        }
-      };
+      voice.onended = null;
+      voice.onerror = null;
 
       try {
         await voice.play();
-        if (narrationRunRef.current === runId) {
-          setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        }
       } catch {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
+        voiceRef.current?.pause();
       }
     },
-    [
-      completeGuidedPage,
-      estimateReadingDuration,
-      fetchAudioForPage,
-      getAudioDuration,
-      illustratedPages,
-      settings.voiceEnabled,
-    ],
+    [fetchAudioForPage, illustratedPages, settings.voiceEnabled],
   );
 
   useEffect(() => {
@@ -450,13 +309,13 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     }
 
     const timer = window.setTimeout(() => {
-      void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
-    }, NARRATION_START_DELAY_MS);
+      void startPageNarration(activePageIndex);
+    }, 0);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activePageIndex, hasCompletedFirstListen, isOpen, startPageNarration]);
+  }, [activePageIndex, isOpen, startPageNarration]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -504,51 +363,84 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     };
   }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
+  const goToPage = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= illustratedPages.length) {
+        return;
+      }
+
+      narrationRunRef.current += 1;
+      voiceRef.current?.pause();
+      goToSpread(pageIndex);
+    },
+    [goToSpread, illustratedPages.length],
+  );
+
   function handleOpen() {
     if (bookState !== "closed") {
       return;
     }
     narrationRunRef.current += 1;
-    highestReachedRef.current = 0;
-    hasCompletedFirstListenRef.current = false;
-    setHighestReachedIndex(0);
-    setHasCompletedFirstListen(false);
-    setRevealedPages({});
     setBookState("opening");
     setActivePageIndex(0);
     void playMusic();
     window.setTimeout(() => {
       setBookState("open");
-    }, OPENING_DURATION_MS);
+    }, 1700);
   }
 
   function handleFlip(event: { data?: number }) {
     const physicalPage = typeof event.data === "number" ? event.data : 0;
     const nextIndex = Math.floor(Math.max(physicalPage, 0) / 2);
-    const maxAllowedIndex = hasCompletedFirstListen ? illustratedPages.length - 1 : highestReachedRef.current;
-    const minAllowedIndex = hasCompletedFirstListen || canLookBack ? 0 : highestReachedRef.current;
-    const boundedIndex = Math.min(Math.max(nextIndex, minAllowedIndex), maxAllowedIndex);
-    setActivePageIndex(boundedIndex);
-    if (boundedIndex !== nextIndex) {
-      window.setTimeout(() => goToSpread(boundedIndex), 0);
+    if (nextIndex === activePageIndex) {
+      return;
     }
+
+    narrationRunRef.current += 1;
+    voiceRef.current?.pause();
+    setActivePageIndex(nextIndex);
   }
 
   function flipPrevious() {
     if (!canGoPrevious) {
       return;
     }
-    const previousSpread = Math.max(activePageIndex - 1, 0);
-    flipRef.current?.pageFlip()?.flip(previousSpread * 2, "top");
+    goToPage(activePageIndex - 1);
   }
 
   function flipNext() {
     if (!canGoNext) {
       return;
     }
-    const nextSpread = Math.min(activePageIndex + 1, illustratedPages.length - 1);
-    flipRef.current?.pageFlip()?.flip(nextSpread * 2, "top");
+    goToPage(activePageIndex + 1);
   }
+
+  const handleMobileTouchStart = useCallback((event: React.TouchEvent) => {
+    touchStartX.current = event.touches[0]?.clientX ?? null;
+  }, []);
+
+  const handleMobileTouchEnd = useCallback(
+    (event: React.TouchEvent) => {
+      const startX = touchStartX.current;
+      touchStartX.current = null;
+      if (startX === null) {
+        return;
+      }
+
+      const endX = event.changedTouches[0]?.clientX ?? startX;
+      const delta = endX - startX;
+      if (Math.abs(delta) < 48) {
+        return;
+      }
+
+      if (delta < 0 && canGoNext) {
+        goToPage(activePageIndex + 1);
+      } else if (delta > 0 && canGoPrevious) {
+        goToPage(activePageIndex - 1);
+      }
+    },
+    [activePageIndex, canGoNext, canGoPrevious, goToPage],
+  );
 
   function toggleMusic() {
     setSettings((current) => {
@@ -564,7 +456,10 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     setSettings((current) => {
       const next = { ...current, voiceEnabled: !current.voiceEnabled };
       if (!next.voiceEnabled) {
+        narrationRunRef.current += 1;
         voiceRef.current?.pause();
+      } else if (isOpen) {
+        void startPageNarration(activePageIndex);
       }
       return next;
     });
@@ -575,41 +470,137 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       {musicAvailable ? <audio ref={musicRef} src="/audio/mysterious-theme.mp3" loop preload="auto" /> : null}
 
       <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col items-center justify-center">
-        <div className="book-scene relative w-full">
-          {showOpenBook && bookState === "open" ? (
-            <div className="pointer-events-none absolute inset-0 z-0 flex justify-center">
-              <div className="relative h-full w-full max-w-4xl">
-                <BookAtmosphere intensity="open" />
-              </div>
-            </div>
-          ) : null}
-
-          <AnimatePresence>
-            {showOpenBook ? (
-              <motion.section
-                key="pages"
-                initial={{ opacity: 0, y: 28, scale: 0.94 }}
+        <AnimatePresence mode="wait">
+          {!isOpen ? (
+            <motion.section
+              key="cover"
+              initial={{ opacity: 0, y: 38, rotateX: 8 }}
+              animate={
+                bookState === "opening"
+                  ? { opacity: 1, y: -10, rotateX: 0, scale: 1.07 }
+                  : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
+              }
+              exit={{ opacity: 0, scale: 0.96, filter: "blur(10px)" }}
+              transition={{ duration: bookState === "opening" ? 1.45 : 0.85, ease: "easeOut" }}
+              className="book-scene flex w-full justify-center"
+            >
+              <motion.button
+                type="button"
+                onClick={handleOpen}
+                disabled={bookState === "opening"}
                 animate={
                   bookState === "opening"
-                    ? { opacity: 0.2, y: 8, scale: 0.98 }
-                    : { opacity: 1, y: 0, scale: 1 }
+                    ? {
+                        rotateY: -13,
+                        boxShadow:
+                          "0 65px 140px rgba(0,0,0,0.82), 0 0 90px rgba(71,132,211,0.22), inset -24px 0 38px rgba(0,0,0,0.58)",
+                      }
+                    : { rotateY: 0 }
                 }
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: bookState === "opening" ? 1.6 : 0.85, ease: "easeOut" }}
-                className={cn(
-                  "w-full",
-                  bookState === "opening" ? "pointer-events-none absolute inset-x-0 top-0" : "relative",
-                )}
-                aria-hidden={bookState === "opening"}
+                transition={{ duration: 1.7, ease: [0.22, 1, 0.36, 1] }}
+                className="leather-surface manuscript-cover group relative min-h-[34rem] w-full max-w-[26rem] overflow-hidden rounded-[2rem] border border-[#d9bd78]/25 p-8 text-center shadow-[0_45px_100px_rgba(0,0,0,0.68)] transition duration-700 hover:-translate-y-2 hover:shadow-[0_55px_120px_rgba(0,0,0,0.78)] sm:min-h-[39rem]"
               >
-                <div className="mb-5 text-center">
-                  <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
-                    {activePage.chapter}
-                  </p>
-                  <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{characterName}</h1>
-                </div>
+                <motion.div
+                  className="pointer-events-none absolute inset-y-8 right-0 z-20 w-10 bg-[#7eb6ff]/20 blur-xl"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: bookState === "opening" ? [0, 0.95, 0.4] : 0 }}
+                  transition={{ duration: 1.45, ease: "easeInOut" }}
+                />
+                <motion.div
+                  className="pointer-events-none absolute inset-0 z-20 bg-[radial-gradient(circle_at_70%_50%,rgba(126,182,255,0.22),transparent_34%)]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: bookState === "opening" ? 1 : 0 }}
+                  transition={{ duration: 1.2 }}
+                />
+                <div className="absolute inset-y-0 left-8 w-2 bg-gradient-to-b from-transparent via-[#d9bd78]/45 to-transparent" />
+                <div className="absolute inset-5 rounded-[1.5rem] border border-[#d9bd78]/30" />
+                <div className="absolute inset-9 rounded-[1.1rem] border border-[#d9bd78]/15" />
+                <div className="absolute left-1/2 top-[18%] h-24 w-24 -translate-x-1/2 rounded-full border border-[#d9bd78]/35 bg-black/20 shadow-[inset_0_4px_14px_rgba(255,240,180,0.16),0_18px_35px_rgba(0,0,0,0.45)]" />
+                <div className="absolute left-1/2 top-[18%] h-10 w-10 -translate-x-1/2 translate-y-7 rotate-45 border border-[#d9bd78]/40 bg-[#d9bd78]/10 shadow-[0_0_30px_rgba(217,189,120,0.16)]" />
+                <div className="relative z-10 flex h-full min-h-[29rem] flex-col items-center justify-between sm:min-h-[34rem]">
+                  <div className="flex gap-3">
+                    {coverMarks.map((mark) => (
+                      <span
+                        key={mark}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d9bd78]/30 text-xs text-[#d9bd78]/80"
+                      >
+                        {mark}
+                      </span>
+                    ))}
+                  </div>
 
-                <div className="mx-auto flex w-full max-w-6xl justify-center overflow-visible">
+                  <div>
+                    <p className="font-title text-xs uppercase tracking-[0.42em] text-[#d9bd78]/80">Personal myth</p>
+                    <h1 className="font-title mt-6 text-4xl leading-tight text-[#f8e8c5] sm:text-5xl">{book.title}</h1>
+                    <p className="mx-auto mt-5 max-w-xs text-sm leading-7 text-[#bfc8d4]">{book.subtitle}</p>
+                  </div>
+
+                  <div>
+                    <p className="mx-auto mb-5 max-w-xs text-sm italic leading-7 text-[#b6a481]">{book.narratorIntro}</p>
+                    <span className="gold-button inline-flex rounded-full px-6 py-3 text-xs font-bold uppercase tracking-[0.24em]">
+                      {bookState === "opening" ? "The archive awakens" : "Open the book"}
+                    </span>
+                  </div>
+                </div>
+              </motion.button>
+            </motion.section>
+          ) : (
+            <motion.section
+              key="pages"
+              initial={{ opacity: 0, y: 32, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.75, ease: "easeOut" }}
+              className="w-full"
+            >
+              <div className="mb-5 text-center">
+                <p className="font-title text-xs uppercase tracking-[0.36em] text-[#d9bd78]">
+                  {activePage.chapter}
+                </p>
+                <h1 className="font-title mt-2 text-3xl text-[#f7ebce] sm:text-4xl">{book.title}</h1>
+              </div>
+
+              {isMobile ? (
+                <div className="mobile-book-shell mx-auto flex w-full flex-col items-center gap-4">
+                  <div
+                    className="mobile-book-page"
+                    onTouchStart={handleMobileTouchStart}
+                    onTouchEnd={handleMobileTouchEnd}
+                  >
+                    <BookPage
+                      page={activePage}
+                      side="combined"
+                      isActive
+                      isImageLoading={Boolean(loadingImages[activePage.pageNumber])}
+                    />
+                  </div>
+
+                  <nav className="mobile-book-nav" aria-label="Book page navigation">
+                    <button
+                      type="button"
+                      className="mobile-book-nav-btn"
+                      onClick={flipPrevious}
+                      disabled={!canGoPrevious}
+                      aria-label="Previous page"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="mobile-book-nav-indicator" aria-live="polite">
+                      Page {activePageIndex + 1} / {illustratedPages.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="mobile-book-nav-btn"
+                      onClick={flipNext}
+                      disabled={!canGoNext}
+                      aria-label="Next page"
+                    >
+                      Next →
+                    </button>
+                  </nav>
+                </div>
+              ) : (
+                <div className="book-scene mx-auto flex w-full max-w-6xl justify-center overflow-visible">
                   <HTMLFlipBook
                     ref={flipRef}
                     className="pageflip-root"
@@ -631,10 +622,10 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                     showCover={false}
                     mobileScrollSupport
                     clickEventForward
-                    useMouseEvents={!isGuidedFirstListen}
+                    useMouseEvents
                     swipeDistance={30}
                     showPageCorners
-                    disableFlipByClick={isGuidedFirstListen}
+                    disableFlipByClick={false}
                     onFlip={handleFlip}
                   >
                     {illustratedPages.flatMap((page, index) => [
@@ -644,7 +635,6 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                           side="image"
                           isActive={index === activePageIndex}
                           isImageLoading={Boolean(loadingImages[page.pageNumber])}
-                          isTextRevealed={Boolean(revealedPages[page.pageNumber])}
                         />
                       </div>,
                       <div key={`${page.pageNumber}-text`} className="page">
@@ -652,83 +642,48 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                           page={page}
                           side="text"
                           isActive={index === activePageIndex}
-                          isTextRevealed={Boolean(revealedPages[page.pageNumber])}
-                          audioDuration={audioDurations[page.pageNumber]}
                         />
                       </div>,
                     ])}
                   </HTMLFlipBook>
                 </div>
+              )}
 
-                {isOpen ? (
-                  <>
-                    <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
-                      <button
-                        type="button"
-                        onClick={flipPrevious}
-                        disabled={!canGoPrevious}
-                        className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
-                      >
-                        Previous
-                      </button>
-                      <button
-                        type="button"
-                        onClick={flipNext}
-                        disabled={!canGoNext}
-                        className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
-                      >
-                        Next page
-                      </button>
-                    </div>
+              <div className="mx-auto mt-5 hidden max-w-3xl items-center justify-center gap-3 md:flex">
+                <button
+                  type="button"
+                  onClick={flipPrevious}
+                  disabled={!canGoPrevious}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#d9bd78]/45 hover:text-[#f7ebce] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  Previous
+                </button>
+                <span className="text-xs uppercase tracking-[0.18em] text-[#9baabd]">
+                  Page {activePageIndex + 1} / {illustratedPages.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={flipNext}
+                  disabled={!canGoNext}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#d9bd78]/45 hover:text-[#f7ebce] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  Next page
+                </button>
+              </div>
 
-                    {isGuidedFirstListen ? (
-                      <p className="mx-auto mt-3 max-w-2xl text-center text-xs uppercase tracking-[0.22em] text-[#8a9aad]">
-                        {highestReachedIndex < 4
-                          ? "First listening in progress - pages turn with the narrator."
-                          : "You may now look back, but the prophecy still unfolds forward with the voice."}
-                      </p>
-                    ) : null}
+              <AudioControls
+                settings={settings}
+                musicAvailable={musicAvailable}
+                isLoadingVoice={isLoadingVoice}
+                onToggleMusic={toggleMusic}
+                onToggleVoice={toggleVoice}
+                onReplayVoice={() => void startPageNarration(activePageIndex)}
+              />
 
-                    <AudioControls
-                      settings={settings}
-                      musicAvailable={musicAvailable}
-                      isLoadingVoice={isLoadingVoice}
-                      onToggleMusic={toggleMusic}
-                      onToggleVoice={toggleVoice}
-                      onReplayVoice={() => void startPageNarration(activePageIndex, { autoAdvance: false })}
-                    />
-
-                    {isFinalPage ? <ResultActions onReset={onReset} /> : null}
-                  </>
-                ) : null}
-              </motion.section>
-            ) : null}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {showCover ? (
-              <motion.section
-                key="cover"
-                initial={{ opacity: 0, y: 36, rotateX: 8 }}
-                animate={
-                  bookState === "opening"
-                    ? { opacity: 1, y: -16, rotateX: 0, scale: 1.06 }
-                    : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
-                }
-                exit={{ opacity: 0, scale: 1.02, filter: "blur(10px)" }}
-                transition={{ duration: bookState === "opening" ? 1.9 : 0.95, ease: "easeOut" }}
-                className="relative z-10 flex w-full justify-center"
-              >
-                <MagicalBookCover
-                  bookState={bookState}
-                  openingDurationMs={OPENING_DURATION_MS}
-                  onOpen={handleOpen}
-                  escapeParticles={escapeParticles}
-                />
-              </motion.section>
-            ) : null}
-          </AnimatePresence>
-        </div>
+              {isFinalPage ? <ResultActions onReset={onReset} /> : null}
+            </motion.section>
+          )}
+        </AnimatePresence>
       </div>
     </main>
   );
