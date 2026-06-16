@@ -6,12 +6,27 @@ export const IMAGE_STYLE_LOCK =
 export const IMAGE_STYLE_AVOIDANCES =
   "Avoid cheap AI fantasy look, blurry faces, generic armor, overused black-purple glowing villain style, flat backgrounds, repetitive portraits, plastic-looking characters, and oversaturated neon colors.";
 
+const REGION_CHAMPION_POOL = `Demacia: Lux, Garen, Jarvan IV, Sylas, Fiora, Galio, Poppy, Vayne, Shyvana
+Noxus: Darius, Draven, Swain, Katarina, Talon, Riven, Samira, LeBlanc, Sion
+Ionia: Irelia, Yasuo, Yone, Ahri, Karma, Shen, Zed, Akali, Master Yi, Wukong, Sett, Syndra, Varus, Xayah, Rakan
+Piltover: Caitlyn, Vi, Jayce, Ezreal, Camille, Seraphine, Heimerdinger, Orianna
+Zaun: Jinx, Ekko, Viktor, Warwick, Singed, Twitch, Zac, Renata Glasc, Zeri, Dr. Mundo
+Shurima: Azir, Nasus, Renekton, Sivir, Taliyah, Xerath, Amumu, Rammus, Naafiri, K'Sante
+Freljord: Ashe, Sejuani, Lissandra, Braum, Tryndamere, Olaf, Anivia, Ornn, Volibear, Udyr, Nunu & Willump, Trundle
+Bilgewater: Miss Fortune, Gangplank, Twisted Fate, Graves, Illaoi, Pyke, Nautilus, Tahm Kench, Fizz
+Targon: Leona, Diana, Pantheon, Taric, Soraka, Zoe, Aurelion Sol, Aphelios
+Ixtal: Qiyana, Milio, Neeko, Nidalee, Zyra, Rengar, Malphite
+Shadow Isles: Viego, Thresh, Kalista, Hecarim, Karthus, Yorick, Gwen, Maokai, Vex, Elise
+Bandle City: Teemo, Tristana, Lulu, Veigar, Corki, Rumble, Yuumi, Kennen, Poppy, Vex
+The Void: Kai'Sa, Kassadin, Malzahar, Vel'Koz, Rek'Sai, Kha'Zix, Cho'Gath, Bel'Veth`;
+
 export function buildLorePrompt(input: BookFormInput) {
-  const system = `You are a master narrative designer specialized in League of Legends lore and the world of Runeterra.
+  const system = `You are a master narrative designer specialized in League of Legends lore and Runeterra.
 You create original characters who could plausibly exist in Runeterra.
-You write illustrated lore books with cinematic narration, emotional depth, and strong regional identity.
+You write personalized illustrated lore books with cinematic narration, regional identity, emotional depth, and chronological storytelling.
+You must connect the protagonist lightly but meaningfully to one existing League of Legends champion in a canon-safe way.
 You must avoid generic fantasy filler.
-You must avoid repeating the same tropes from one generation to another.
+You must avoid repetitive page structures.
 You output strict valid JSON only.`;
 
   const user = `Create a personalized illustrated lore book set in Runeterra.
@@ -20,10 +35,54 @@ User information:
 Name: ${input.name}
 Gender: ${input.gender}
 Character type: ${input.characterType}
-Runeterra Region: ${input.runeterraRegion}
+Runeterra region: ${input.runeterraRegion}
 
-You are not writing a generic dark fantasy story.
-You are writing a specific life inside Runeterra.
+If the region is "Auto", choose the most interesting Runeterra region and champion connection for this character type.
+If a region is selected, anchor the story in that region.
+
+The protagonist must be an original character in Runeterra.
+
+Champion connection requirement:
+- Choose one existing League of Legends champion connected to the protagonist's early story.
+- Select a champion that fits the chosen region and character type.
+- The connection must appear naturally between pages 1 and 3.
+- The connection must be meaningful but light-touch.
+- The champion must not dominate the story or solve the protagonist's arc.
+- Do not rewrite or contradict champion canon.
+- Do not make the protagonist defeat, kill, replace, marry, romance, or secretly belong to the champion's family.
+- Do not make the protagonist stronger than a champion in a canon-breaking way.
+- Do not invent major fake canon events involving champions.
+- Valid connection types include: witnessed, inspired_by, indirectly_affected, rumor, shared_region, faction_shadow, object_link, survived_event.
+- The connection should add lore attachment and emotional weight.
+
+Region champion pools for selection:
+${REGION_CHAMPION_POOL}
+
+Story structure:
+- Generate exactly 8 pages.
+- The story must unfold chronologically.
+- Do not use rigid labels like The Trial, The Enemy, The Transformation, The Final Prophecy, The Wound, or The Sign.
+- Each page chapter and title must be unique, concrete, and specific to this story.
+- Page 5 is the last free page before the paid continuation.
+- Page 5 must end on a strong, specific cliffhanger that makes the reader urgently want page 6.
+- Page 5 must not always be a fight or trial.
+- Page 5 suspense must be earned by pages 1–4.
+- Pages 6–8 resolve or deepen the cliffhanger and continue the character's fate.
+
+Hidden page logic (do not use these labels as chapter names):
+1. identity / place in Runeterra
+2. early life / region / social role
+3. champion connection or its first consequence
+4. rising personal conflict
+5. major suspense / cliffhanger / continuation trigger
+6. consequence of the cliffhanger
+7. transformation or decisive choice
+8. current fate / open-ended ending
+
+Canon rules:
+- Do not contradict official League of Legends lore.
+- Existing champions may be referenced only in canon-safe ways.
+- Do not mention Riot Games, AI, prompts, models, paywall, paid section, unlocking, or technical terms in the story.
 
 Every story must feel:
 - original
@@ -48,32 +107,6 @@ Avoid overused clichés unless absolutely necessary:
 - generic dark power
 - generic final boss transformation
 
-Official Runeterra regions:
-Demacia, Noxus, Ionia, Piltover, Zaun, Shurima, Freljord, Bilgewater, Targon, Ixtal, Shadow Isles, Bandle City, The Void.
-
-If the region is "Auto", choose the most interesting Runeterra region for the character type.
-If the user selected a specific region, the entire story must be anchored in that region.
-
-Canon rules:
-- The protagonist is an original character.
-- The story must not contradict official League of Legends lore.
-- Existing champions may be mentioned only lightly and only if it makes sense.
-- Do not make the protagonist defeat, replace, marry, kill, or become an existing champion.
-- Do not invent fake canon events involving existing champions.
-- Do not claim the protagonist is secretly related to an existing champion.
-- Do not mention Riot Games, AI, prompts, models, or technical terms.
-
-Originality rules:
-- Create a unique social role for the protagonist.
-- Create a specific regional problem.
-- Create a concrete motivation.
-- Create a distinctive object, duty, craft, secret, relationship, or burden.
-- Create a unique story engine.
-- Avoid generic dark fantasy abstractions.
-- Use grounded details from the region.
-- The story must not feel like "a cursed hero with a prophecy" unless the character type strongly fits it.
-- Every page must advance the story.
-
 Return a JSON object matching this exact schema:
 {
   "title": "string",
@@ -84,6 +117,12 @@ Return a JSON object matching this exact schema:
   "coreConflict": "string",
   "distinctiveHook": "string",
   "narratorIntro": "string",
+  "championConnection": {
+    "championName": "string",
+    "connectionType": "string",
+    "connectionSummary": "string",
+    "canonSafetyNote": "string"
+  },
   "characterBible": {
     "name": "string",
     "gender": "string",
@@ -103,9 +142,9 @@ Return a JSON object matching this exact schema:
   "pages": [
     {
       "pageNumber": 1,
-      "chapter": "The Name",
+      "chapter": "string",
       "title": "string",
-      "text": "string, 45 to 75 words",
+      "text": "string",
       "visualDirection": {
         "sceneType": "string",
         "cameraShot": "string",
@@ -120,77 +159,44 @@ Return a JSON object matching this exact schema:
   ]
 }
 
-Rules:
-- Return exactly 8 pages.
-- Page 1 chapter must be "The Name".
-- Page 2 chapter must be "Origin".
-- Page 3 chapter must be "The Wound".
-- Page 4 chapter must be "The Sign".
-- Page 5 chapter must be "The Trial".
-- Page 6 chapter must be "The Enemy".
-- Page 7 chapter must be "The Transformation".
-- Page 8 chapter must be "The Final Prophecy".
-- The 8 pages must form a chronological life arc for the protagonist:
-  1. Birth / naming: the protagonist's birth, first omen, and why their name matters.
-  2. Childhood / origin: where they grew up, what shaped them, and the first visible traits of their character type.
-  3. Wound / personal cost: the defining emotional cost, loss, mistake, obligation, or burden that follows them.
-  4. First sign: the first supernatural sign that destiny is watching them.
-  5. Awakening / powers: the trial where they obtain or awaken their powers, relic, weapon, or forbidden gift.
-  6. Enemy / conflict: the force opposing them, external and internal, tied to their regional problem.
-  7. Evolution / transformation: how they master the power and become a changed legendary figure.
-  8. Final prophecy: an open-ended mysterious destiny that suggests the next chapter without resolving everything.
-- Each page must clearly advance the protagonist's life and transformation. Do not write disconnected poetic fragments.
-- Each page text must mention a concrete event, choice, or change in the protagonist's journey.
-- Each page text must be 45 to 75 words.
-- Each page must contain concrete regional details.
-- Each page must avoid vague filler.
-- The story must have a beginning, progression, conflict, transformation, and mysterious ending.
-- The user must be the protagonist.
-- The writing must feel like an original Runeterra biography transformed into an illustrated book.
-- Create a unique personal arc every time.
-- Do not always create a tragic lone hero, warrior, chosen one, or final-boss figure.
-- Do not mention AI, prompt, generated, OpenAI, image model, or any technical term.
-- The imagePrompt for each page must describe a full-page illustration.
-- The imagePrompt must visually represent that page's exact life phase and event: birth, childhood, wound, omen, power awakening, enemy, transformation, or prophecy.
-- Every imagePrompt must include the same characterBible details to keep visual consistency.
+Page rules:
+- Return exactly 8 pages with pageNumber 1 through 8.
+- Each page text must be 45 to 90 words.
+- Each page must be concrete, chronological, emotionally engaging, and region-specific.
+- Each page must advance the story with a concrete event, choice, or change.
+- Pages 1–3 must establish character, region, stakes, and the champion connection.
+- Page 5 must end with a suspenseful final sentence that teases page 6.
+- Page 5 cliffhanger examples (do not reuse verbatim): a sealed door opening from the other side; a name written in ash that no one should know; a dead messenger whose letter begins to speak; footsteps behind the protagonist that are not human; a relic pointing at the protagonist instead of north.
+- Pages 6–8 must respond to the cliffhanger without mentioning payment or unlocking.
+- The user must remain the protagonist.
+
+Image prompt rules:
+- Each imagePrompt must describe a full-page illustration for that exact story moment.
+- Every imagePrompt must include the same characterBible details for visual consistency.
 - Every imagePrompt must include: ${IMAGE_STYLE_LOCK}
 - ${IMAGE_STYLE_AVOIDANCES}
 - The imagePrompt must avoid asking for written text inside the image.
+- Pages 1–3 may show champion influence indirectly through banner, rumor poster, aftermath, object, place, light, weapon mark, faction symbol, crowd reaction, or distant silhouette — not a direct champion portrait unless a distant silhouette is necessary.
+- Page 5 image must visually support the cliffhanger and create urgency to know what happens next.
+- The protagonist remains the visual focus; do not make every image about the champion.
 
-IMAGE STORYTELLING RULES:
-- The 8 images must work together as a sequential visual narrative.
-- Each page must show a different moment of the story.
-- Each page must have a different environment or visual focus.
-- Each page must use a different camera shot.
-- Avoid repeating close-up portraits.
-- Use cover shot, wide shot, intimate scene, discovery scene, action scene, confrontation scene, transformation scene, and final cinematic scene.
-- The protagonist must remain visually consistent, but the scene must change dramatically from page to page.
-- Illustrations should show events, not only character poses.
-- Every image prompt must clearly describe what is happening in the scene.
-- Every image prompt must mention the chosen Runeterra region and include region-specific environmental details.
-- The visual progression must match the chapter order.
-- Only one or two pages maximum may be portrait-like.
-- Most pages should show the character interacting with the world.
+Visual direction rules:
 - Add a unique visualDirection object for every page.
-- Page 1 visualDirection: iconic cover image; full-body or three-quarter figure; strong silhouette; symbolic background linked to the chosen Runeterra region; no simple face portrait.
-- Page 2 visualDirection: wide establishing shot; birthplace or origin environment; character small or medium; architecture, landscape, culture, or region-specific details.
-- Page 3 visualDirection: intimate emotional scene; show personal cost, loss, obligation, shame, or conflict through action/environment; use body language and symbolic objects.
-- Page 4 visualDirection: supernatural discovery scene; sign, relic, omen, spirit, rune, vision, prophecy, strange light, or forbidden symbol; focus on event.
-- Page 5 visualDirection: dynamic action scene; protagonist facing danger, escaping, climbing, fighting a non-canon creature, surviving a storm, or confronting a trial.
-- Page 6 visualDirection: confrontation scene; original lore-compatible enemy/threat visible; protagonist and enemy both in frame when possible; no existing champions as enemies.
-- Page 7 visualDirection: transformation scene; power awakening, armor changing, aura emerging, symbolic object activating, curse spreading, or destiny revealing itself.
-- Page 8 visualDirection: cinematic final scene; mysterious open ending; protagonist moving toward or standing before a legendary place, portal, battlefield, temple, sea, mountain, ruins, celestial gate, or shadowed horizon.
-- Explicit anti-repetition for every imagePrompt: no repeated portrait composition, no repeated background, no repeated camera angle, no generic character standing pose, no simple bust shot unless page specifically requires intimacy, no text, no logo, no watermark.
+- Page 1: iconic cover image; identity and place in Runeterra; full-body or three-quarter silhouette; regional backdrop.
+- Page 2: wide establishing shot; early life and social role in the region.
+- Page 3: champion connection or its first visible consequence; indirect lore details preferred over direct champion depiction.
+- Page 4: rising personal conflict becoming unavoidable.
+- Page 5: suspense cliffhanger scene; visually dramatize the final shocking beat; not a generic fight unless the story specifically demands it.
+- Page 6: immediate consequence of the cliffhanger.
+- Page 7: transformation or decisive choice.
+- Page 8: open-ended fate; cinematic but unresolved.
+- Avoid repeating portrait compositions, backgrounds, and camera angles across pages.
 
 Before returning the final JSON, internally check:
-- Is the story too generic?
-- Is the protagonist's role specific?
+- Is the champion connection canon-safe and light-touch?
 - Does the region truly shape the plot?
-- Is the conflict concrete?
-- Does the story avoid cliché motifs?
+- Is page 5 a unique cliffhanger rather than a generic trial?
 - Would this feel different from ten other generations?
-
-If the answer is not strong enough, rewrite the story before returning JSON.
 
 Return strict JSON only.`;
 
@@ -201,6 +207,21 @@ export function buildFinalImagePrompt(book: LoreBook, page: BookPage) {
   const bible = book.characterBible;
   const direction = page.visualDirection;
   const summary = summarizeForImage(page.text);
+  const champion = book.championConnection;
+
+  let championVisualNote = "";
+  if (champion?.championName) {
+    if (page.pageNumber <= 3) {
+      championVisualNote = `Champion connection (indirect visual only): ${champion.championName} — ${champion.connectionSummary}. Show influence through rumor, symbol, aftermath, object, place, light, weapon mark, faction symbol, crowd reaction, banner, or environmental hint. Avoid drawing ${champion.championName} as a clear portrait unless a distant silhouette is essential.`;
+    } else if (page.pageNumber === 5) {
+      championVisualNote = `This is the cliffhanger page before continuation. The image must dramatize the suspense ending and make the viewer want to know what happens next. Champion connection (${champion.championName}) may echo through a symbol or clue only if relevant to the cliffhanger.`;
+    }
+  }
+
+  const cliffhangerNote =
+    page.pageNumber === 5
+      ? "Prioritize the suspense beat and final shocking story moment. This image should feel like a story pause at the edge of revelation."
+      : "";
 
   return `Create a full-page illustrated storybook scene for Page ${page.pageNumber}: ${page.chapter} — ${page.title}.
 
@@ -227,6 +248,10 @@ ${direction.mood}
 
 Lighting:
 ${direction.lighting}
+
+${championVisualNote}
+
+${cliffhangerNote}
 
 Character consistency:
 The protagonist must remain consistent across the book: ${bible.visualIdentity}, ${bible.faceAndBody}, wearing ${bible.clothing}, aura: ${bible.aura}, symbolic object: ${bible.symbolicObject}, color palette: ${bible.colorPalette}.
