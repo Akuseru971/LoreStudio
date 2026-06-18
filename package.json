@@ -27,7 +27,8 @@
     "openai": "^6.42.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-pageflip": "^2.0.3"
+    "react-pageflip": "^2.0.3",
+    "stripe": "^22.2.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",

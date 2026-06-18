@@ -9,7 +9,8 @@ import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
 import MagicalBookCover from "@/components/MagicalBookCover";
 import ResultActions from "@/components/ResultActions";
-import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
+import { ILLUSTRATED_PAGE_COUNT, FREE_EXPERIENCE_LAST_PAGE_INDEX } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +90,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     musicEnabled: true,
     voiceEnabled: true,
   });
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
 
   const flipRef = useRef<PageFlipHandle | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
@@ -98,6 +100,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   const autoAdvanceTimerRef = useRef<number | undefined>(undefined);
   const highestReachedRef = useRef(0);
   const hasCompletedFirstListenRef = useRef(false);
+  const hasShownUnlockModalRef = useRef(false);
   const pagesWithImages = useMemo(
     () =>
       book.pages.map((page) => ({
@@ -504,6 +507,21 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     };
   }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || activePageIndex !== FREE_EXPERIENCE_LAST_PAGE_INDEX || hasShownUnlockModalRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      hasShownUnlockModalRef.current = true;
+      setShowUnlockModal(true);
+    }, 700);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [activePageIndex, isOpen]);
+
   function handleOpen() {
     if (bookState !== "closed") {
       return;
@@ -514,6 +532,8 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     setHighestReachedIndex(0);
     setHasCompletedFirstListen(false);
     setRevealedPages({});
+    hasShownUnlockModalRef.current = false;
+    setShowUnlockModal(false);
     setBookState("opening");
     setActivePageIndex(0);
     void playMusic();
@@ -730,6 +750,12 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
           </AnimatePresence>
         </div>
       </div>
+
+      <UnlockFullStoryModal
+        book={book}
+        isOpen={showUnlockModal}
+        onClose={() => setShowUnlockModal(false)}
+      />
     </main>
   );
 }
