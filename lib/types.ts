@@ -70,3 +70,25 @@ export type AudioSettings = {
   musicEnabled: boolean;
   voiceEnabled: boolean;
 };
+
+export type BookStatus = "free" | "checkout_started" | "paid" | "generating" | "ready" | "failed";
+
+export type StoredBook = {
+  id: string;
+  access_token: string;
+  email: string | null;
+  status: BookStatus;
+  form_input: BookFormInput;
+  free_book: LoreBook | null;
+  full_book: LoreBook | null;
+  free_pages: BookPage[] | null;
+  premium_pages: BookPage[] | null;
+  images: Record<string, string>;
+  audio: Record<string, string>;
+  pdf_url: string | null;
+  pdf_storage_path: string | null;
+  stripe_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  created_at: string;
+  updated_at: string;
+};

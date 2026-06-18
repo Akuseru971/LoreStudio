@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { getBookByAccessToken, saveStripeSession } from "@/lib/bookStore";
 import { getStripeClient } from "@/lib/stripe";
 
 type CheckoutRequestBody = {
-  bookTitle?: string;
-  characterName?: string;
+  accessToken?: string;
+  email?: string;
 };
 
 export async function POST(request: Request) {
@@ -25,7 +26,19 @@ export async function POST(request: Request) {
     body = {};
   }
 
+  if (!body.accessToken) {
+    return NextResponse.json({ error: "Missing book access token." }, { status: 400 });
+  }
+
   try {
+    const storedBook = await getBookByAccessToken(body.accessToken);
+    if (!storedBook) {
+      return NextResponse.json({ error: "Book not found." }, { status: 404 });
+    }
+
+    const characterName =
+      storedBook.free_book?.characterBible.name || storedBook.form_input.name || "your champion";
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
@@ -34,17 +47,21 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${appUrl}?checkout=success`,
+      success_url: `${appUrl}/success?token=${encodeURIComponent(storedBook.access_token)}`,
       cancel_url: `${appUrl}?checkout=cancelled`,
+      customer_email: body.email || storedBook.email || undefined,
       metadata: {
-        bookTitle: body.bookTitle?.slice(0, 120) || "",
-        characterName: body.characterName?.slice(0, 120) || "",
+        access_token: storedBook.access_token,
+        book_id: storedBook.id,
+        character_name: characterName.slice(0, 120),
       },
     });
 
     if (!session.url) {
       return NextResponse.json({ error: "Stripe did not return a checkout URL." }, { status: 500 });
     }
+
+    await saveStripeSession(storedBook.id, session.id, "checkout_started");
 
     return NextResponse.json({ url: session.url });
   } catch (error) {

@@ -8,9 +8,10 @@ import AudioControls from "@/components/AudioControls";
 import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
 import MagicalBookCover from "@/components/MagicalBookCover";
+import BookPremiumActions from "@/components/BookPremiumActions";
 import ResultActions from "@/components/ResultActions";
 import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
-import { ILLUSTRATED_PAGE_COUNT, FREE_EXPERIENCE_LAST_PAGE_INDEX } from "@/lib/book-config";
+import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT, FREE_EXPERIENCE_LAST_PAGE_INDEX } from "@/lib/book-config";
 import type { AudioSettings, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -63,12 +64,21 @@ const HTMLFlipBook = dynamic<PageFlipProps & RefAttributes<PageFlipHandle>>(
 type InteractiveBookProps = {
   book: LoreBook;
   onReset: () => void;
+  accessToken?: string;
+  isPremium?: boolean;
+  canDownloadPdf?: boolean;
 };
 
 const OPENING_DURATION_MS = 2100;
 const NARRATION_START_DELAY_MS = 900;
 
-export default function InteractiveBook({ book, onReset }: InteractiveBookProps) {
+export default function InteractiveBook({
+  book,
+  onReset,
+  accessToken,
+  isPremium = false,
+  canDownloadPdf = false,
+}: InteractiveBookProps) {
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [musicAvailable, setMusicAvailable] = useState(false);
@@ -109,14 +119,15 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       })),
     [book.pages, imageCache],
   );
-  const illustratedPages = useMemo(() => pagesWithImages.slice(0, ILLUSTRATED_PAGE_COUNT), [pagesWithImages]);
+  const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT;
+  const illustratedPages = useMemo(() => pagesWithImages.slice(0, pageLimit), [pagesWithImages, pageLimit]);
   const activePage = illustratedPages[activePageIndex] || illustratedPages[0];
   const isOpen = bookState === "open";
   const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
-  const isGuidedFirstListen = isOpen && !hasCompletedFirstListen;
-  const canLookBack = hasCompletedFirstListen || highestReachedIndex >= 4;
+  const isGuidedFirstListen = isOpen && !hasCompletedFirstListen && !isPremium;
+  const canLookBack = isPremium || hasCompletedFirstListen || highestReachedIndex >= 4;
   const canGoPrevious = activePageIndex > 0 && canLookBack;
-  const canGoNext = hasCompletedFirstListen
+  const canGoNext = isPremium || hasCompletedFirstListen
     ? activePageIndex < illustratedPages.length - 1
     : canLookBack && activePageIndex < highestReachedIndex;
 
@@ -508,7 +519,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
   }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
   useEffect(() => {
-    if (!isOpen || activePageIndex !== FREE_EXPERIENCE_LAST_PAGE_INDEX || hasShownUnlockModalRef.current) {
+    if (!isOpen || isPremium || activePageIndex !== FREE_EXPERIENCE_LAST_PAGE_INDEX || hasShownUnlockModalRef.current) {
       return;
     }
 
@@ -520,7 +531,7 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activePageIndex, isOpen]);
+  }, [activePageIndex, isOpen, isPremium]);
 
   function handleOpen() {
     if (bookState !== "closed") {
@@ -622,11 +633,16 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
                 )}
                 aria-hidden={bookState === "opening"}
               >
-                <div className="mb-5 text-center">
-                  <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
-                    {activePage.chapter}
-                  </p>
-                  <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{characterName}</h1>
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-4 text-center sm:text-left">
+                  <div className="mx-auto sm:mx-0">
+                    <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
+                      {activePage.chapter}
+                    </p>
+                    <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{characterName}</h1>
+                  </div>
+                  {isPremium && canDownloadPdf && accessToken ? (
+                    <BookPremiumActions accessToken={accessToken} className="mx-auto sm:mx-0" />
+                  ) : null}
                 </div>
 
                 <div className="mx-auto flex w-full max-w-6xl justify-center overflow-visible">
@@ -751,11 +767,14 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
         </div>
       </div>
 
-      <UnlockFullStoryModal
-        book={book}
-        isOpen={showUnlockModal}
-        onClose={() => setShowUnlockModal(false)}
-      />
+      {accessToken && !isPremium ? (
+        <UnlockFullStoryModal
+          book={book}
+          accessToken={accessToken}
+          isOpen={showUnlockModal}
+          onClose={() => setShowUnlockModal(false)}
+        />
+      ) : null}
     </main>
   );
 }

@@ -79,11 +79,13 @@ async function attachInitialAssets(book: LoreBook) {
 export default function Home() {
   const [view, setView] = useState<ViewState>("intro");
   const [book, setBook] = useState<LoreBook | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [error, setError] = useState("The archives refused to open. Try again.");
 
   async function handleSubmit(input: BookFormInput) {
     setView("loading");
     setError("The archives refused to open. Try again.");
+    setAccessToken(null);
 
     try {
       const response = await fetch("/api/generate-book", {
@@ -98,7 +100,19 @@ export default function Home() {
       }
 
       const preparedBook = await attachInitialAssets(data.book);
+
+      const saveResponse = await fetch("/api/books", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input, book: preparedBook }),
+      });
+      const saveData = await readJsonResponse<{ accessToken?: string; error?: string }>(saveResponse);
+      if (!saveResponse.ok || !saveData.accessToken) {
+        throw new Error(saveData.error || "The book could not be saved.");
+      }
+
       setBook(preparedBook);
+      setAccessToken(saveData.accessToken);
       setView("book");
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "The archives refused to open. Try again.");
@@ -108,6 +122,7 @@ export default function Home() {
 
   function reset() {
     setBook(null);
+    setAccessToken(null);
     setView("form");
   }
 
@@ -131,9 +146,9 @@ export default function Home() {
         </motion.div>
       ) : null}
 
-      {view === "book" && book ? (
+      {view === "book" && book && accessToken ? (
         <motion.div key="book" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
-          <InteractiveBook book={book} onReset={reset} />
+          <InteractiveBook book={book} accessToken={accessToken} onReset={reset} />
         </motion.div>
       ) : null}
 

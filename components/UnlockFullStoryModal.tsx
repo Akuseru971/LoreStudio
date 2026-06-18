@@ -6,11 +6,18 @@ import type { LoreBook } from "@/lib/types";
 
 type UnlockFullStoryModalProps = {
   book: LoreBook;
+  accessToken: string;
   isOpen: boolean;
   onClose: () => void;
 };
 
-export default function UnlockFullStoryModal({ book, isOpen, onClose }: UnlockFullStoryModalProps) {
+export default function UnlockFullStoryModal({
+  book,
+  accessToken,
+  isOpen,
+  onClose,
+}: UnlockFullStoryModalProps) {
+  const [email, setEmail] = useState("");
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,8 +30,8 @@ export default function UnlockFullStoryModal({ book, isOpen, onClose }: UnlockFu
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          bookTitle: book.title,
-          characterName: book.characterBible.name,
+          accessToken,
+          email: email.trim() || undefined,
         }),
       });
 
@@ -38,7 +45,7 @@ export default function UnlockFullStoryModal({ book, isOpen, onClose }: UnlockFu
       setError(checkoutError instanceof Error ? checkoutError.message : "Unable to open the payment page.");
       setIsRedirecting(false);
     }
-  }, [book.characterBible.name, book.title]);
+  }, [accessToken, email]);
 
   return (
     <AnimatePresence>
@@ -80,9 +87,28 @@ export default function UnlockFullStoryModal({ book, isOpen, onClose }: UnlockFu
                   Discover the rest of {book.characterBible.name}&apos;s legend
                 </h2>
                 <p id="unlock-full-story-description" className="mt-4 text-sm leading-7 text-[#b8c2d0]">
-                  You have reached the final free page. Unlock the full chronicle to reveal the remaining chapters,
-                  illustrations, and narrated pages of this personal myth.
+                  Unlock the full chronicle to receive the complete interactive book, final illustrated pages, full
+                  narration, a private access link by email, and a downloadable PDF version of your legend.
                 </p>
+
+                <ul className="mt-4 space-y-2 text-sm text-[#c9d3df]">
+                  <li>Complete interactive book</li>
+                  <li>Final illustrated pages</li>
+                  <li>Full narration</li>
+                  <li>Private access link by email</li>
+                  <li>Downloadable PDF version</li>
+                </ul>
+
+                <label className="mt-5 block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#9baabd]">Email for delivery</span>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-[#f7ebce] outline-none transition focus:border-[#d9bd78]/40"
+                  />
+                </label>
 
                 {error ? (
                   <p className="mt-4 rounded-xl border border-red-400/25 bg-red-950/30 px-4 py-3 text-sm text-red-200">
@@ -97,7 +123,7 @@ export default function UnlockFullStoryModal({ book, isOpen, onClose }: UnlockFu
                     disabled={isRedirecting}
                     className="gold-button rounded-2xl px-5 py-3.5 text-xs font-bold uppercase tracking-[0.22em] disabled:cursor-wait disabled:opacity-70"
                   >
-                    {isRedirecting ? "Opening secure checkout..." : "Unlock the full story"}
+                    {isRedirecting ? "Opening secure checkout..." : "Unlock full book"}
                   </button>
                   <button
                     type="button"
