@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const isReady = storedBook.status === "ready";
     const sourceBook = isReady ? storedBook.full_book : storedBook.free_book;
     const book = sourceBook
-      ? mergeBookAssets(sourceBook, storedBook.images, storedBook.audio)
+      ? await mergeBookAssets(sourceBook, storedBook.images, storedBook.audio)
       : null;
 
     return NextResponse.json({

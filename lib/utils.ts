@@ -190,6 +190,13 @@ export function dataUrlFromBase64(base64: string, mimeType: string) {
   return `data:${mimeType};base64,${base64}`;
 }
 
+export function stripBookAssets<T extends { pages: Array<{ imageUrl?: string; audioUrl?: string | null }> }>(book: T): T {
+  return {
+    ...book,
+    pages: book.pages.map(({ imageUrl: _imageUrl, audioUrl: _audioUrl, ...page }) => page),
+  };
+}
+
 function normalizeVisualDirection(page: Partial<BookPage> | undefined, pageNumber: number, region: string) {
   const fallback = defaultVisualDirection(pageNumber, region);
   const source = page?.visualDirection;

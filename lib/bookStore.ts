@@ -1,7 +1,9 @@
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
+import { persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
 import { BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
 import type { BookFormInput, BookPage, BookStatus, LoreBook, StoredBook } from "@/lib/types";
+import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
 
@@ -60,8 +62,8 @@ function buildAssetMaps(book: LoreBook) {
 export async function createFreeBook(formInput: BookFormInput, book: LoreBook) {
   const supabase = requireSupabase();
   const accessToken = generateAccessToken();
-  const { freePages, premiumPages } = splitFreeAndPremiumPages(book);
-  const { images, audio } = buildAssetMaps(book);
+  const leanBook = stripBookAssets(book);
+  const { freePages, premiumPages } = splitFreeAndPremiumPages(leanBook);
 
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
@@ -69,17 +71,59 @@ export async function createFreeBook(formInput: BookFormInput, book: LoreBook) {
       access_token: accessToken,
       status: "free",
       form_input: formInput,
-      free_book: book,
+      free_book: leanBook,
       free_pages: freePages,
       premium_pages: premiumPages,
-      images,
-      audio,
+      images: {},
+      audio: {},
     })
     .select("*")
     .single();
 
   if (error || !data) {
     throw new Error(error?.message || "Unable to save the free book.");
+  }
+
+  return mapRow(data);
+}
+
+export async function saveBookAsset(
+  accessToken: string,
+  pageNumber: number,
+  assetType: "image" | "audio",
+  assetRef: string,
+) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookByAccessToken(accessToken);
+  if (!storedBook) {
+    throw new Error("Book not found.");
+  }
+
+  const storagePath = await persistAssetMap(
+    storedBook.id,
+    { [String(pageNumber)]: assetRef },
+    assetType,
+  );
+  const persistedRef = storagePath[String(pageNumber)];
+  if (!persistedRef) {
+    throw new Error("Unable to persist book asset.");
+  }
+
+  const column = assetType === "image" ? "images" : "audio";
+  const nextAssets = {
+    ...storedBook[column],
+    [String(pageNumber)]: persistedRef,
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ [column]: nextAssets })
+    .eq("id", storedBook.id)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to save book asset.");
   }
 
   return mapRow(data);
@@ -154,16 +198,23 @@ export async function saveFullBook(
   assets?: { images?: Record<string, string>; audio?: Record<string, string> },
 ) {
   const supabase = requireSupabase();
-  const { premiumPages } = splitFreeAndPremiumPages(fullBook);
-  const { images, audio } = buildAssetMaps(fullBook);
+  const leanBook = stripBookAssets(fullBook);
+  const { premiumPages } = splitFreeAndPremiumPages(leanBook);
+  const generatedAssets = buildAssetMaps(fullBook);
+  const uploadedImages = await persistAssetMap(bookId, { ...generatedAssets.images, ...(assets?.images ?? {}) }, "image");
+  const uploadedAudio = await persistAssetMap(bookId, { ...generatedAssets.audio, ...(assets?.audio ?? {}) }, "audio");
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    throw new Error("Book not found.");
+  }
 
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
     .update({
-      full_book: fullBook,
+      full_book: leanBook,
       premium_pages: premiumPages,
-      images: { ...images, ...(assets?.images ?? {}) },
-      audio: { ...audio, ...(assets?.audio ?? {}) },
+      images: { ...storedBook.images, ...uploadedImages },
+      audio: { ...storedBook.audio, ...uploadedAudio },
     })
     .eq("id", bookId)
     .select("*")
@@ -285,13 +336,19 @@ export async function createSignedPdfUrl(pdfStoragePath: string, expiresInSecond
   return data.signedUrl;
 }
 
-export function mergeBookAssets(book: LoreBook, images: Record<string, string>, audio: Record<string, string>): LoreBook {
+export async function mergeBookAssets(
+  book: LoreBook,
+  images: Record<string, string>,
+  audio: Record<string, string>,
+): Promise<LoreBook> {
+  const [resolvedImages, resolvedAudio] = await Promise.all([resolveAssetMap(images), resolveAssetMap(audio)]);
+
   return {
     ...book,
     pages: book.pages.map((page) => ({
       ...page,
-      imageUrl: images[String(page.pageNumber)] || page.imageUrl,
-      audioUrl: audio[String(page.pageNumber)] ?? page.audioUrl ?? null,
+      imageUrl: resolvedImages[String(page.pageNumber)] || page.imageUrl,
+      audioUrl: resolvedAudio[String(page.pageNumber)] ?? page.audioUrl ?? null,
     })),
   };
 }

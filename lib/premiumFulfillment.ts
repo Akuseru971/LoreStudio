@@ -79,7 +79,7 @@ export async function fulfillPremiumBook(accessToken: string) {
   await updateBookStatus(storedBook.id, "generating");
 
   try {
-    const baseBook = mergeBookAssets(storedBook.free_book, storedBook.images, storedBook.audio);
+    const baseBook = await mergeBookAssets(storedBook.free_book, storedBook.images, storedBook.audio);
     const { book: fullBook, images, audio } = await generatePremiumAssets(baseBook);
 
     await saveFullBook(storedBook.id, fullBook, { images, audio });

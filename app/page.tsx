@@ -22,6 +22,7 @@ import {
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
+import { stripBookAssets } from "@/lib/utils";
 
 type ViewState = "intro" | "startTransition" | "form" | "ritualVideo" | "loading" | "book" | "error";
 
@@ -90,6 +91,41 @@ async function attachInitialAssets(book: LoreBook) {
   };
 }
 
+async function uploadBookAsset(
+  accessToken: string,
+  pageNumber: number,
+  assetType: "image" | "audio",
+  assetRef: string,
+) {
+  const response = await fetch("/api/books/assets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accessToken, pageNumber, assetType, assetRef }),
+  });
+
+  const data = await readJsonResponse<{ ok?: boolean; error?: string }>(response);
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "The book assets could not be saved.");
+  }
+}
+
+async function persistInitialAssets(accessToken: string, book: LoreBook) {
+  const experiencePages = book.pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+
+  await Promise.all(
+    experiencePages.flatMap((page) => {
+      const uploads: Promise<void>[] = [];
+      if (page.imageUrl) {
+        uploads.push(uploadBookAsset(accessToken, page.pageNumber, "image", page.imageUrl));
+      }
+      if (page.audioUrl) {
+        uploads.push(uploadBookAsset(accessToken, page.pageNumber, "audio", page.audioUrl));
+      }
+      return uploads;
+    }),
+  );
+}
+
 export default function Home() {
   const [view, setView] = useState<ViewState>("intro");
   const [book, setBook] = useState<LoreBook | null>(null);
@@ -144,12 +180,18 @@ export default function Home() {
     const saveResponse = await fetch("/api/books", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input, book: preparedBook }),
+      body: JSON.stringify({ input, book: stripBookAssets(preparedBook) }),
     });
     const saveData = await readJsonResponse<{ accessToken?: string; error?: string }>(saveResponse);
     if (!saveResponse.ok || !saveData.accessToken) {
       throw new Error(saveData.error || "The book could not be saved.");
     }
+
+    if (generationRunRef.current !== runId) {
+      return;
+    }
+
+    await persistInitialAssets(saveData.accessToken, preparedBook);
 
     if (generationRunRef.current !== runId) {
       return;

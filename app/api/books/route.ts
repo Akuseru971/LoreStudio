@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createFreeBook } from "@/lib/bookStore";
 import type { BookFormInput, LoreBook } from "@/lib/types";
-import { normalizeLoreBook, validateBookInput } from "@/lib/utils";
+import { normalizeLoreBook, stripBookAssets, validateBookInput } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error || "Invalid book payload." }, { status: 400 });
     }
 
-    const book = normalizeLoreBook(body.book);
+    const book = stripBookAssets(normalizeLoreBook(body.book));
     const storedBook = await createFreeBook(input, book);
 
     return NextResponse.json({
