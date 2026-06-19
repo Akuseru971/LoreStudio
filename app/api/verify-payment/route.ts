@@ -37,9 +37,7 @@ export async function POST(request: Request) {
       accessToken: book.access_token,
       confirmationEmailSent: emailResult.sent,
       confirmationEmailSkipped: emailResult.skipped,
-      recoveryEmailAvailable: Boolean(
-        emailResult.recoveryEmailAvailable ?? emailResult.sent ?? emailResult.reason === "already_sent",
-      ),
+      recoveryEmailAvailable: Boolean(emailResult.recoveryEmailAvailable || emailResult.sent),
     });
   } catch (error) {
     console.error("Payment verification failed.", error);
