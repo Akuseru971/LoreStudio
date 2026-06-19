@@ -98,15 +98,15 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
 }
 
 export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
-  const expectedChapters = [
-    "The Name",
-    "Origin",
-    "The Wound",
-    "The Sign",
-    "The Trial",
-    "The Enemy",
-    "The Transformation",
-    "The Final Prophecy",
+  const fallbackChapterLabels = [
+    "A Name in the Ledger",
+    "The Work and the Ward",
+    "The Day the Pattern Broke",
+    "A Champion's Shadow",
+    "The Door That Would Not Stay Shut",
+    "What the Silence Left Behind",
+    "The Person They Had to Become",
+    "Where the Road Ends Now",
   ];
   const bible = book.characterBible || {
     name: "The Unnamed",
@@ -126,15 +126,17 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
   };
   const mainRegion = sanitizeText(book.mainRegion, 80) || sanitizeText(bible.region, 80) || "Runeterra";
 
-  const pages = expectedChapters.map((chapter, index) => {
+  const pages = fallbackChapterLabels.map((fallbackChapter, index) => {
     const page = book.pages?.[index];
     const visualDirection = normalizeVisualDirection(page, index + 1, mainRegion);
+    const chapter = sanitizeText(page?.chapter, 80) || fallbackChapter;
 
     return {
       pageNumber: index + 1,
       chapter,
       title: sanitizeText(page?.title, 80) || chapter,
       text: sanitizeText(page?.text, 700) || "The page remains veiled, waiting for the ink to return.",
+      continuityNote: sanitizeText(page?.continuityNote, 240) || undefined,
       visualDirection,
       imagePrompt:
         sanitizeText(page?.imagePrompt, 1800) ||
@@ -144,14 +146,47 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     };
   });
 
+  const sourceBiographyArc = book.biographyArc;
+  const biographyArc = {
+    startingSituation:
+      sanitizeText(sourceBiographyArc?.startingSituation, 300) ||
+      sanitizeText(book.protagonistRole, 240) ||
+      "An ordinary Runeterran with a clear local role.",
+    incitingEvent:
+      sanitizeText(sourceBiographyArc?.incitingEvent, 300) ||
+      sanitizeText(book.coreConflict, 240) ||
+      "A concrete event disrupts their daily life.",
+    championConnectionPage4:
+      sanitizeText(sourceBiographyArc?.championConnectionPage4, 300) ||
+      sanitizeText(book.championConnection?.connectionSummary, 300) ||
+      "A canon-safe connection to a regional champion shapes their path.",
+    page5Cliffhanger:
+      sanitizeText(sourceBiographyArc?.page5Cliffhanger, 300) || "A discovery forces an irreversible next step.",
+    finalState:
+      sanitizeText(sourceBiographyArc?.finalState, 300) ||
+      sanitizeText(book.distinctiveHook, 240) ||
+      "Their life has changed, but the road ahead remains open.",
+  };
+
+  const sourceChampionConnection = book.championConnection;
+  const championConnection = {
+    championName: sanitizeText(sourceChampionConnection?.championName, 80) || "A regional champion",
+    connectionType: sanitizeText(sourceChampionConnection?.connectionType, 160) || "indirect influence",
+    connectionSummary:
+      sanitizeText(sourceChampionConnection?.connectionSummary, 300) || biographyArc.championConnectionPage4,
+    canonSafetyNote:
+      sanitizeText(sourceChampionConnection?.canonSafetyNote, 300) ||
+      "The protagonist remains original and no major canon events were altered.",
+  };
+
   return {
     ...book,
     title: sanitizeText(book.title, 120) || "The Book of the Unwritten Legend",
-    subtitle: sanitizeText(book.subtitle, 180) || "A dark fantasy chronicle recovered from a silent archive.",
+    subtitle: sanitizeText(book.subtitle, 180) || "A Runeterra biography recovered from a silent archive.",
     mainRegion,
     storyEngine:
       sanitizeText(book.storyEngine, 240) ||
-      "A specific local duty pulls an ordinary Runeterran into a regional conflict.",
+      "A clear local duty pulls an ordinary Runeterran into a sequence of concrete events.",
     protagonistRole: sanitizeText(book.protagonistRole, 160) || sanitizeText(bible.socialRole, 160) || "local witness",
     coreConflict:
       sanitizeText(book.coreConflict, 240) ||
@@ -161,7 +196,20 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
       "A personal object, craft, or secret makes the protagonist's path distinct.",
     narratorIntro:
       sanitizeText(book.narratorIntro, 260) ||
-      "The archive opens with a low breath, and a forgotten name begins to glow.",
+      "The archive opens with a name, a place, and the first ordinary day that would not stay ordinary.",
+    biographyArc: {
+      startingSituation: biographyArc.startingSituation,
+      incitingEvent: biographyArc.incitingEvent,
+      championConnectionPage4: biographyArc.championConnectionPage4,
+      page5Cliffhanger: biographyArc.page5Cliffhanger,
+      finalState: biographyArc.finalState,
+    },
+    championConnection: {
+      championName: championConnection.championName,
+      connectionType: championConnection.connectionType,
+      connectionSummary: championConnection.connectionSummary,
+      canonSafetyNote: championConnection.canonSafetyNote,
+    },
     characterBible: {
       name: sanitizeText(bible.name, 80) || "The Unnamed",
       gender: sanitizeText(bible.gender, 40) || "unknown",
@@ -218,76 +266,76 @@ function normalizeVisualDirection(page: Partial<BookPage> | undefined, pageNumbe
 function defaultVisualDirection(pageNumber: number, region: string): BookPage["visualDirection"] {
   const directions: Record<number, BookPage["visualDirection"]> = {
     1: {
-      sceneType: "iconic cover image",
-      cameraShot: "low-angle full-body or three-quarter silhouette shot",
-      characterAction: "the protagonist stands before a symbolic regional backdrop as destiny gathers around them",
-      environment: `a dramatic symbolic landmark of ${region}, with region-specific architecture and atmosphere`,
-      keyObjects: ["symbolic relic", "regional landmark", "omens in the sky"],
-      mood: "legendary, ominous, introductory",
-      lighting: "strong rim light and dramatic dusk contrast",
+      sceneType: "biography introduction scene",
+      cameraShot: "medium-wide shot showing role and place",
+      characterAction: "the protagonist is shown in their starting situation, work, or community role",
+      environment: `a recognizable everyday location in ${region} tied to the protagonist's social role`,
+      keyObjects: ["work tools", "local architecture", "personal detail"],
+      mood: "clear, grounded, introductory",
+      lighting: "natural regional daylight with readable detail",
     },
     2: {
-      sceneType: "wide establishing origin scene",
-      cameraShot: "wide shot with the protagonist small or medium within the environment",
-      characterAction: "the young protagonist moves through their birthplace, shaped by local culture",
-      environment: `birthplace or origin environment in ${region}, showing architecture, landscape, and daily life`,
-      keyObjects: ["regional homes", "distant landmark", "childhood path"],
-      mood: "formative, atmospheric, rooted",
-      lighting: "soft dawn or misty morning light",
+      sceneType: "early life establishing scene",
+      cameraShot: "wide shot with the protagonist within daily life",
+      characterAction: "the protagonist moves through routine work, family, community, or duty",
+      environment: `homes, workshops, streets, fields, docks, or shrines of ${region}`,
+      keyObjects: ["community life", "daily tools", "regional landmarks"],
+      mood: "lived-in, observant, specific",
+      lighting: "soft morning or workday light",
     },
     3: {
-      sceneType: "intimate emotional wound scene",
-      cameraShot: "medium environmental shot focused on body language and symbolic loss",
-      characterAction: "the protagonist confronts loss, shame, obligation, cost, or conflict through action",
-      environment: `a ruined, empty, or abandoned place in ${region} tied to the wound`,
-      keyObjects: ["broken object", "empty room", "long shadow"],
-      mood: "grieving, tense, vulnerable",
-      lighting: "low side light with heavy shadows",
+      sceneType: "inciting event scene",
+      cameraShot: "medium-wide action or discovery shot",
+      characterAction: "the protagonist reacts to the first major event that changes their path",
+      environment: `a concrete location in ${region} where the turning point happens`,
+      keyObjects: ["broken object", "unexpected evidence", "changed environment"],
+      mood: "alert, consequential, tense",
+      lighting: "contrasty light emphasizing the incident",
     },
     4: {
-      sceneType: "supernatural discovery scene",
-      cameraShot: "over-the-shoulder or medium-wide shot focused on the omen",
-      characterAction: "the protagonist discovers a sign, relic, omen, spirit, rune, vision, or forbidden symbol",
-      environment: `a hidden or sacred location in ${region} where regional magic manifests`,
-      keyObjects: ["glowing omen", "ancient relic", "reacting environment"],
-      mood: "mysterious, awed, dangerous",
-      lighting: "strange supernatural glow cutting through darkness",
+      sceneType: "champion connection scene",
+      cameraShot: "medium-wide shot focused on evidence, place, or indirect reference",
+      characterAction: "the protagonist discovers or witnesses something tied to a known champion's influence",
+      environment: `a location in ${region} affected by a champion's known history or faction`,
+      keyObjects: ["faction symbol", "document", "aftermath", "distant banner or silhouette"],
+      mood: "revealing, consequential, grounded",
+      lighting: "clear light with one strong focal detail",
     },
     5: {
-      sceneType: "dynamic action trial scene",
-      cameraShot: "dramatic medium-wide action shot with motion and perspective",
-      characterAction: "the protagonist survives danger, crosses a battlefield, escapes, climbs, fights, or endures a trial",
-      environment: `a hazardous trial ground in ${region}, filled with movement and regional danger`,
-      keyObjects: ["weapon or relic", "storm or debris", "non-canon creature or hazard"],
-      mood: "urgent, kinetic, perilous",
-      lighting: "high contrast battle light with sparks, storm, or magical flare",
+      sceneType: "cliffhanger scene",
+      cameraShot: "dramatic medium-wide shot on the suspense moment",
+      characterAction: "the protagonist reaches the cliffhanger discovery, threat, or impossible choice",
+      environment: `the exact place in ${region} where the suspense peaks`,
+      keyObjects: ["activating object", "opened door", "missing witness", "returning clue"],
+      mood: "suspenseful, urgent, unresolved",
+      lighting: "high-contrast light on the cliffhanger detail",
     },
     6: {
-      sceneType: "enemy confrontation scene",
-      cameraShot: "wide confrontation shot with protagonist and original enemy both visible",
-      characterAction: "the protagonist faces an original lore-compatible threat across tense distance",
-      environment: `a confrontation site in ${region} with opposing silhouettes and regional stakes`,
-      keyObjects: ["enemy silhouette", "dividing light", "threat symbol"],
-      mood: "tense, threatening, monumental",
-      lighting: "opposing light sources separating hero and enemy",
+      sceneType: "immediate consequence scene",
+      cameraShot: "medium-wide shot showing fallout",
+      characterAction: "the protagonist deals with the direct result of the cliffhanger",
+      environment: `a changed or exposed location in ${region}`,
+      keyObjects: ["evidence of consequence", "new threat", "damaged place"],
+      mood: "strained, reactive, pressing",
+      lighting: "harsh or unstable light matching the fallout",
     },
     7: {
-      sceneType: "visual transformation scene",
-      cameraShot: "medium or wide shot showing full transformation context",
-      characterAction: "power awakens, armor changes, aura emerges, curse spreads, or destiny reveals itself",
-      environment: `a charged regional setting in ${region} reacting to the protagonist's transformation`,
-      keyObjects: ["activating symbolic object", "aura", "environmental reaction"],
-      mood: "revelatory, powerful, unstable",
-      lighting: "radiant power bloom with atmospheric depth",
+      sceneType: "personal change scene",
+      cameraShot: "medium-wide shot showing growth through action",
+      characterAction: "the protagonist acts differently because of what happened",
+      environment: `a meaningful place in ${region} where the change becomes visible`,
+      keyObjects: ["changed tool", "witnesses", "proof of growth"],
+      mood: "earned, resolute, human",
+      lighting: "warmer breakthrough light with depth",
     },
     8: {
-      sceneType: "cinematic final prophecy scene",
-      cameraShot: "epic wide shot from behind or distant side angle",
-      characterAction: "the protagonist walks toward, stands before, or disappears into a legendary threshold",
-      environment: `a prophetic horizon, portal, temple, mountain, ruins, sea, or shadowed place in ${region}`,
-      keyObjects: ["open threshold", "distant destination", "prophetic sky"],
-      mood: "mysterious, open-ended, cinematic",
-      lighting: "vast twilight, celestial beam, or horizon glow",
+      sceneType: "current fate scene",
+      cameraShot: "wide cinematic shot with open horizon",
+      characterAction: "the protagonist stands at their current place in life, facing an understandable open future",
+      environment: `a road, harbor, shrine, workshop, ruin, or threshold in ${region}`,
+      keyObjects: ["unfinished path", "personal object", "distant destination"],
+      mood: "open-ended, clear, forward-looking",
+      lighting: "twilight or horizon glow with readable atmosphere",
     },
   };
 

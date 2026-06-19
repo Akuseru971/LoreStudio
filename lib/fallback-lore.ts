@@ -1,34 +1,51 @@
 import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
-const chapters = [
-  "The Name",
-  "Origin",
-  "The Wound",
-  "The Sign",
-  "The Trial",
-  "The Enemy",
-  "The Transformation",
-  "The Final Prophecy",
+const fallbackChapterLabels = [
+  "A Name in the Ledger",
+  "The Work and the Ward",
+  "The Day the Pattern Broke",
+  "A Champion's Shadow",
+  "The Door That Would Not Stay Shut",
+  "What the Silence Left Behind",
+  "The Person They Had to Become",
+  "Where the Road Ends Now",
 ];
 
 export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
   const region = chooseRuneterraRegion(input);
   const profile = regionalProfile(region, input.characterType);
+  const champion = championForRegion(region);
   const legendaryTitle = `${input.name}, ${profile.title}`;
   const palette = paletteForRegion(region);
   const anchor = loreAnchorForRegion(region);
-  const visualDirectionPages = chapters.map((_, index) => visualDirectionForPage(input, index, region, profile));
+  const visualDirectionPages = fallbackChapterLabels.map((_, index) =>
+    visualDirectionForPage(input, index, region, profile, champion),
+  );
+  const pageTexts = buildPageTexts(input, region, profile, champion);
 
   return {
     title: `${input.name} and ${profile.distinctiveHook}`,
-    subtitle: `An original ${region} chronicle of ${profile.socialRole}, duty, and consequence.`,
+    subtitle: `A clear ${region} biography of ${profile.socialRole}.`,
     mainRegion: region,
     storyEngine: profile.storyEngine,
     protagonistRole: profile.socialRole,
     coreConflict: profile.coreConflict,
     distinctiveHook: profile.distinctiveHook,
-    narratorIntro: `${input.name} was never announced by prophecy. In ${region}, they were known first by a duty no one else wanted to carry.`,
+    narratorIntro: `This is the life of ${input.name}, told in order: where they began, what changed them, and why ${region} still remembers their name.`,
+    biographyArc: {
+      startingSituation: `${input.name} works as ${profile.socialRole} in ${region}.`,
+      incitingEvent: profile.coreConflict,
+      championConnectionPage4: champion.summary,
+      page5Cliffhanger: champion.cliffhanger,
+      finalState: `${input.name} survives the immediate crisis but must follow evidence that points beyond one solved problem.`,
+    },
+    championConnection: {
+      championName: champion.name,
+      connectionType: champion.connectionType,
+      connectionSummary: champion.summary,
+      canonSafetyNote: champion.canonNote,
+    },
     characterBible: {
       name: input.name,
       gender: input.gender,
@@ -36,29 +53,194 @@ export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
       legendaryTitle,
       region,
       socialRole: profile.socialRole,
-      visualIdentity: `${input.gender === "unknown" ? "enigmatic figure" : input.gender} with the bearing of a ${input.characterType}, visibly shaped by ${region}'s daily pressures`,
+      visualIdentity: `${input.gender === "unknown" ? "an observant figure" : input.gender} with the bearing of a ${input.characterType}, visibly shaped by ${region}'s daily pressures`,
       clothing: clothingForRegion(region, input.characterType),
-      faceAndBody: "watchful eyes, practical posture, weathered hands, and the quiet tension of someone carrying a local secret",
+      faceAndBody: "watchful eyes, practical posture, weathered hands, and the tension of someone responsible for local details",
       aura: auraForRegion(region),
       symbolicObject: profile.distinctiveHook,
       colorPalette: palette,
       worldRules: `${anchor} This is an original Runeterran life shaped by local stakes, not a change to known champion history.`,
       runeterraLoreAnchor: anchor,
     },
-    pages: chapters.map((chapter, index) => {
-      const title = titles(input, index, region, profile);
+    pages: fallbackChapterLabels.map((chapter, index) => {
+      const title = titles(input, index, region, profile, champion);
       const visualDirection = visualDirectionPages[index];
 
       return {
         pageNumber: index + 1,
         chapter,
         title,
-        text: pageText(input, index, region, profile),
+        text: pageTexts[index],
+        continuityNote: continuityNoteForPage(index, input.name),
         visualDirection,
-        imagePrompt: buildFallbackImagePrompt(index + 1, chapter, title, visualDirection, region, input, profile, anchor),
+        imagePrompt: buildFallbackImagePrompt(
+          index + 1,
+          chapter,
+          title,
+          visualDirection,
+          region,
+          input,
+          profile,
+          anchor,
+          champion,
+        ),
       };
     }),
   };
+}
+
+function championForRegion(region: string) {
+  const champions: Record<
+    string,
+    { name: string; connectionType: string; summary: string; canonNote: string; cliffhanger: string }
+  > = {
+    Zaun: {
+      name: "Ekko",
+      connectionType: "indirect rescue and rumor",
+      summary:
+        "Workers whisper that Ekko once delayed a sump collapse long enough for three repair crews to escape, and the protagonist finds his scratched time-gear mark on a sealed tunnel wall.",
+      canonNote: "Ekko is referenced through aftermath and rumor only; the protagonist does not meet him directly.",
+      cliffhanger: "A chemtech relay begins repeating the protagonist's name in Ekko's cadence.",
+    },
+    Demacia: {
+      name: "Lux",
+      connectionType: "fear of forbidden light",
+      summary:
+        "After border bells ring for hidden magic, the protagonist finds old pamphlets describing Lux's forbidden light and realizes neighbors now suspect anyone with a similar gift.",
+      canonNote: "Lux is referenced through public fear and documents, not a direct meeting.",
+      cliffhanger: "A petricite seal cracks when the protagonist speaks, and someone outside calls for the mageseekers.",
+    },
+    Noxus: {
+      name: "Swain",
+      connectionType: "political restructuring",
+      summary:
+        "A reassigned officer leaves orders signed with Swain's crow-mark, proving the protagonist's unit will be sent to hold a useless pass no map previously showed.",
+      canonNote: "Swain influences the plot through military orders already known to affect Noxian ranks.",
+      cliffhanger: "The new orders arrive before the messenger who was supposed to carry them.",
+    },
+    Ionia: {
+      name: "Irelia",
+      connectionType: "regional memory",
+      summary:
+        "Village elders still tell how Irelia's blades once defended a nearby crossing, and the protagonist finds a cloth banner from that day hidden beneath their shrine floor.",
+      canonNote: "Irelia appears only through memory, banner, and regional history.",
+      cliffhanger: "Footsteps cross the shrine roof at the hour the old defense story says Irelia once stood there.",
+    },
+    Piltover: {
+      name: "Vi",
+      connectionType: "enforcer aftermath",
+      summary:
+        "A busted workshop lock bears Enforcer markings linked to Vi's patrol route, and the missing inventor the protagonist was hired to find left a note about paying 'the gauntleted woman.'",
+      canonNote: "Vi is referenced through enforcement traces, not a direct confrontation.",
+      cliffhanger: "The note's ink is still wet, though the inventor vanished two days ago.",
+    },
+    Shurima: {
+      name: "Azir",
+      connectionType: "restored empire rumor",
+      summary:
+        "Caravan leaders argue over whether Azir's restored sun disc changed the meaning of a nearby ruin, and the protagonist uncovers trade records showing the oasis was hidden after his return.",
+      canonNote: "Azir's influence is historical and political, not a personal encounter.",
+      cliffhanger: "Sand slides away from a sealed door that should still be buried.",
+    },
+    Freljord: {
+      name: "Ashe",
+      connectionType: "tribal diplomacy",
+      summary:
+        "A frost-message wrapped in Ashe's crest arrives asking the protagonist's tribe to choose peace before winter, proving the Avarosan leader knows their scout route by name.",
+      canonNote: "Ashe appears through diplomacy and message, not direct dialogue in this story.",
+      cliffhanger: "The message is warm, as if it were written minutes ago in a heated tent.",
+    },
+    Bilgewater: {
+      name: "Miss Fortune",
+      connectionType: "dock war aftermath",
+      summary:
+        "Dock workers credit Miss Fortune's war against Gangplank with reopening a pier the protagonist depends on, but also left a crate of unclaimed guns under their loading berth.",
+      canonNote: "Miss Fortune shapes the environment through known dock conflict, not a personal alliance.",
+      cliffhanger: "One crate ticks softly when the tide turns.",
+    },
+    Targon: {
+      name: "Leona",
+      connectionType: "faith tension",
+      summary:
+        "A pilgrim guide shows the protagonist a sun-scorched prayer cloth said to have touched Leona's shield, reigniting old arguments between Solari and Lunari travelers on their path.",
+      canonNote: "Leona is referenced through relic and faith conflict only.",
+      cliffhanger: "Moonlight hits the cloth and reveals a second symbol beneath the sun.",
+    },
+    Ixtal: {
+      name: "Qiyana",
+      connectionType: "border authority",
+      summary:
+        "A border marker carved with Yun Tal imagery and a note about Qiyana's decree proves the jungle path the protagonist uses will be closed to outsiders within a week.",
+      canonNote: "Qiyana affects the plot through regional authority, not a direct duel.",
+      cliffhanger: "The marker has already been moved one mile closer to the village.",
+    },
+    "Shadow Isles": {
+      name: "Thresh",
+      connectionType: "mist fear",
+      summary:
+        "An old lantern keeper warns that chains like Thresh's were heard near the protagonist's relic shed after the last mist surge, and one name inside their ledger has been scratched out.",
+      canonNote: "Thresh is feared through mist lore and missing names, not a direct capture.",
+      cliffhanger: "The scratched name reappears, written in fresh soot on the lantern glass.",
+    },
+    "Bandle City": {
+      name: "Lulu",
+      connectionType: "impossible path",
+      summary:
+        "A letter delivered through a door that was not there yesterday bears playful writing travelers associate with Lulu, warning the protagonist not to take the left path twice.",
+      canonNote: "Lulu is referenced through yordle mischief and impossible delivery.",
+      cliffhanger: "Both paths now look exactly the same.",
+    },
+    "The Void": {
+      name: "Kai'Sa",
+      connectionType: "frontier warning",
+      summary:
+        "A survivor's charcoal sketch of Kai'Sa's shell is pinned beside the protagonist's specimen wall, matching a scratch pattern now appearing on their own jars.",
+      canonNote: "Kai'Sa is referenced through survivor testimony and evidence, not a direct meeting.",
+      cliffhanger: "One jar scratches back from the inside.",
+    },
+  };
+
+  return (
+    champions[region] || {
+      name: "A regional champion",
+      connectionType: "indirect influence",
+      summary: "A known champion's actions changed the place where the protagonist lives and works.",
+      canonNote: "The champion is referenced through local consequences only.",
+      cliffhanger: "A clue tied to that champion appears where it should not be.",
+    }
+  );
+}
+
+function buildPageTexts(
+  input: BookFormInput,
+  region: string,
+  profile: ReturnType<typeof regionalProfile>,
+  champion: ReturnType<typeof championForRegion>,
+) {
+  return [
+    `${input.name} was known in ${region} as ${profile.socialRole}, not as a hero. They kept local records, carried ${profile.distinctiveHook}, and lived inside ordinary duties until one missing detail made neighbors look at them for answers.`,
+    `Every day followed the same practical rhythm: work, routes, repairs, and the small favors that hold a community together. ${input.name} knew which doors stuck, which elders lied about their health, and which warnings people preferred not to hear. That knowledge made the first real problem impossible to ignore.`,
+    `The change began with ${profile.coreConflict}. Something failed that should have been preventable, and ${input.name} was the one person close enough to see the pattern before others admitted there was one. From that hour onward, the biography stopped being routine.`,
+    `Following the evidence led to ${champion.name}. ${champion.summary} For ${input.name}, the connection was not fame but consequence: a known champion's world had already touched theirs, and the proof was now in their hands.`,
+    `${input.name} traced the clue to a place no worker was meant to enter alone. The deeper they went, the more the evidence pointed back to choices made on page 3 and the name on page 4. Then ${champion.cliffhanger}`,
+    `The immediate aftermath left no time for poetry. People shouted, doors slammed, and the problem ${input.name} had uncovered could no longer stay private. Whatever happened in the sealed place, the community would demand an explanation before nightfall.`,
+    `${input.name} changed by acting with clearer purpose. The ${input.characterType} stopped waiting for permission and started using ${profile.distinctiveHook} as proof, guide, and responsibility. Neighbors who once saw only a local worker now saw someone willing to name the truth.`,
+    `Today ${input.name} stands at the edge of a solved crisis and a larger unanswered one. ${region} is safer than it was, but the last clue points beyond one street, one tunnel, one ledger. The biography does not end cleanly; it continues wherever the evidence goes next.`,
+  ];
+}
+
+function continuityNoteForPage(index: number, name: string) {
+  const notes = [
+    "Opening biography introduction.",
+    `Continues from ${name}'s established role and community position.`,
+    "Follows the daily routine established on page 2.",
+    "Results directly from the inciting event on page 3.",
+    "Builds on the champion connection established on page 4.",
+    "Immediate consequence of the page 5 cliffhanger.",
+    "Shows how the fallout from page 6 changes the protagonist.",
+    "Resolves the arc while leaving the future open.",
+  ];
+  return notes[index];
 }
 
 function chooseRuneterraRegion(input: BookFormInput) {
@@ -83,7 +265,10 @@ function chooseRuneterraRegion(input: BookFormInput) {
 }
 
 function regionalProfile(region: string, characterType: string) {
-  const profiles: Record<string, { socialRole: string; coreConflict: string; distinctiveHook: string; storyEngine: string; title: string }> = {
+  const profiles: Record<
+    string,
+    { socialRole: string; coreConflict: string; distinctiveHook: string; storyEngine: string; title: string }
+  > = {
     Demacia: {
       socialRole: `${characterType} serving as a bellkeeper and quiet courier between border villages`,
       coreConflict: "petricite bells begin ringing for children with hidden magic, forcing a choice between law and mercy",
@@ -240,32 +425,24 @@ function auraForRegion(region: string) {
   return auras[region] || "a subtle Runeterran aura";
 }
 
-function titles(input: BookFormInput, index: number, region: string, profile: ReturnType<typeof regionalProfile>) {
+function titles(
+  input: BookFormInput,
+  index: number,
+  region: string,
+  profile: ReturnType<typeof regionalProfile>,
+  champion: ReturnType<typeof championForRegion>,
+) {
   const list = [
     `The Name on the Local Ledger`,
     `A Life in ${region}`,
-    `The Cost of ${profile.distinctiveHook}`,
-    `The First Wrong Detail`,
-    `The Duty No One Wanted`,
-    `The Hand Behind the Problem`,
-    `What ${input.name} Chose to Become`,
-    `The Road the Archive Cannot Close`,
+    `When the Pattern Broke`,
+    `What ${champion.name} Left Behind`,
+    `Before the Door Opened`,
+    `The First Hour After`,
+    `What ${input.name} Chose to Do`,
+    `The Road Still Open`,
   ];
-  return list[index];
-}
-
-function pageText(input: BookFormInput, index: number, region: string, profile: ReturnType<typeof regionalProfile>) {
-  const pages = [
-    `${input.name}'s name first mattered on a small record, not a prophecy. In ${region}, the ${profile.socialRole} was known by a careful hand, a practical silence, and ${profile.distinctiveHook}. People remembered the work before they remembered the face, which made the first disappearance far more troubling.`,
-    `${input.name} grew inside the habits of ${region}: its arguments, tools, warnings, and narrow kindnesses. The work was ordinary until ordinary things began failing in the same pattern. A door unlatched, a route changed, a patient vanished, and the local problem found the one person trained to notice details.`,
-    `The wound was not grand enough for songs. It was a preventable loss tied to ${profile.coreConflict}. ${input.name} kept replaying the hour when a different choice might have saved someone. The guilt did not make them chosen; it made them precise, stubborn, and unwilling to let the next failure become routine.`,
-    `The first sign arrived as evidence. ${profile.distinctiveHook} reacted to something it should not know, pointing toward a hidden cause beneath ${region}'s familiar rules. ${input.name} followed the clue through local customs and private fears, discovering that the region itself had been warning anyone patient enough to listen.`,
-    `The trial forced ${input.name} to act before certainty arrived. Crossing a place shaped by ${region}'s dangers, they used craft instead of glory: a route, a tool, a remembered name, a risky mercy. The choice exposed them to blame, but it also proved the problem could be confronted by someone overlooked.`,
-    `The enemy was original, local, and painfully believable: a person, creature, cabal, accident, or hunger profiting from ${profile.coreConflict}. When ${input.name} finally saw its shape, the threat was not a throne of darkness. It was a system with hands, habits, and witnesses too frightened to speak.`,
-    `${input.name} changed by accepting a harder role, not by becoming untouchable. The ${input.characterType} learned to use ${profile.distinctiveHook} as proof, tool, and promise. In ${region}, transformation meant being seen by neighbors who now understood that quiet duties can become dangerous forms of courage.`,
-    `The ending stayed open because ${region} rarely rewards clean answers. ${input.name} solved one part of the trouble, but the last clue led somewhere wider than the first map allowed. The archive closes on a road, a door, or a tide still moving, with ${input.name} following because someone must.`,
-  ];
-  return pages[index];
+  return list[index] || profile.title;
 }
 
 function visualDirectionForPage(
@@ -273,79 +450,80 @@ function visualDirectionForPage(
   index: number,
   region: string,
   profile: ReturnType<typeof regionalProfile>,
+  champion: ReturnType<typeof championForRegion>,
 ): BookPage["visualDirection"] {
   const directions: BookPage["visualDirection"][] = [
     {
-      sceneType: "iconic cover image",
-      cameraShot: "low-angle full-body silhouette, no close-up portrait",
-      characterAction: `${input.name} stands with ${profile.distinctiveHook} against a symbolic ${region} backdrop`,
-      environment: `${region} landmark with local architecture, landscape, or cultural details`,
-      keyObjects: [profile.distinctiveHook, "regional landmark", "subtle local record"],
-      mood: "mysterious, grounded, inviting",
-      lighting: "blue-gold rim light with deep atmospheric contrast",
+      sceneType: "biography introduction scene",
+      cameraShot: "medium-wide shot showing role and place",
+      characterAction: `${input.name} is shown in their everyday role with ${profile.distinctiveHook}`,
+      environment: `a recognizable workplace or community location in ${region}`,
+      keyObjects: [profile.distinctiveHook, "local records", "regional architecture"],
+      mood: "clear, grounded, introductory",
+      lighting: "readable natural light",
     },
     {
-      sceneType: "wide establishing shot",
-      cameraShot: "wide shot with the protagonist small within the environment",
-      characterAction: `${input.name} performs their everyday role before the trouble begins`,
+      sceneType: "early life establishing scene",
+      cameraShot: "wide shot with the protagonist within daily life",
+      characterAction: `${input.name} performs routine work before the trouble begins`,
       environment: `busy lived-in ${region} location tied to ${profile.socialRole}`,
-      keyObjects: ["work tools", "local people", "regional architecture"],
-      mood: "immersive, specific, observant",
-      lighting: "soft regional morning or workday light",
+      keyObjects: ["work tools", "local people", "daily routes"],
+      mood: "specific, observant, lived-in",
+      lighting: "soft workday light",
     },
     {
-      sceneType: "intimate emotional scene",
-      cameraShot: "medium environmental shot focused on body language",
-      characterAction: `${input.name} confronts the preventable loss tied to ${profile.coreConflict}`,
-      environment: `quiet damaged place in ${region} where the cost becomes personal`,
-      keyObjects: ["abandoned tool", profile.distinctiveHook, "empty threshold"],
-      mood: "restrained grief, focus, guilt",
-      lighting: "low side light with soft smoke and long shadows",
+      sceneType: "inciting event scene",
+      cameraShot: "medium-wide shot focused on the incident",
+      characterAction: `${input.name} discovers the first major problem tied to ${profile.coreConflict}`,
+      environment: `concrete location in ${region} where the pattern breaks`,
+      keyObjects: ["broken evidence", profile.distinctiveHook, "witness detail"],
+      mood: "alert, consequential",
+      lighting: "contrasty incident light",
     },
     {
-      sceneType: "discovery scene",
-      cameraShot: "over-the-shoulder shot focused on evidence and clue",
-      characterAction: `${input.name} notices ${profile.distinctiveHook} revealing the first wrong detail`,
-      environment: `hidden corner of ${region} where local rules begin to bend`,
-      keyObjects: [profile.distinctiveHook, "regional clue", "reacting environment"],
-      mood: "curious, tense, uncanny",
-      lighting: "thin magical glow against practical darkness",
+      sceneType: "champion connection scene",
+      cameraShot: "over-the-shoulder shot focused on evidence tied to ${champion.name}",
+      characterAction: `${input.name} finds proof linking their problem to ${champion.name}'s known influence`,
+      environment: `${region} location affected by ${champion.name}'s history or faction`,
+      keyObjects: ["document", "symbol", "aftermath detail", "distant banner"],
+      mood: "revealing, grounded",
+      lighting: "clear focal light on the clue",
     },
     {
-      sceneType: "dynamic action scene",
-      cameraShot: "medium-wide action shot with motion and diagonal perspective",
-      characterAction: `${input.name} uses craft and courage to cross danger without becoming a generic warrior`,
-      environment: `hazardous ${region} setting shaped by the regional conflict`,
-      keyObjects: ["moving hazard", "work tool", profile.distinctiveHook],
-      mood: "urgent, kinetic, practical",
-      lighting: "dramatic contrast with sparks, mist, or regional flare",
+      sceneType: "cliffhanger scene",
+      cameraShot: "dramatic medium-wide shot on the suspense beat",
+      characterAction: `${input.name} reaches the moment of suspense: ${champion.cliffhanger}`,
+      environment: `sealed or dangerous place in ${region}`,
+      keyObjects: ["activating clue", "opened threshold", "reacting object"],
+      mood: "suspenseful, unresolved",
+      lighting: "high contrast on the cliffhanger detail",
     },
     {
-      sceneType: "confrontation scene",
-      cameraShot: "wide confrontation shot with threat and protagonist both visible",
-      characterAction: `${input.name} faces the local force profiting from the problem`,
-      environment: `tense ${region} location where private conflict becomes public`,
-      keyObjects: ["enemy silhouette", "proof object", "dividing light"],
-      mood: "suspenseful, grounded, dangerous",
-      lighting: "opposing light sources and deep atmospheric separation",
+      sceneType: "immediate consequence scene",
+      cameraShot: "medium-wide shot showing fallout",
+      characterAction: `${input.name} faces the direct aftermath of the cliffhanger`,
+      environment: `${region} location now changed by the event`,
+      keyObjects: ["crowd reaction", "damaged evidence", profile.distinctiveHook],
+      mood: "urgent, reactive",
+      lighting: "unstable aftermath light",
     },
     {
-      sceneType: "transformation scene",
-      cameraShot: "medium-wide shot showing context, tools, and witnesses",
-      characterAction: `${input.name} accepts a new role shaped by duty rather than destiny`,
-      environment: `${region} setting reacting subtly to the protagonist's choice`,
-      keyObjects: [profile.distinctiveHook, "local witnesses", "changed environment"],
-      mood: "revelatory, earned, human",
-      lighting: "warm breakthrough light with mysterious blue undertone",
+      sceneType: "personal change scene",
+      cameraShot: "medium-wide shot showing action and witnesses",
+      characterAction: `${input.name} acts with new resolve using ${profile.distinctiveHook}`,
+      environment: `${region} community space responding to the truth`,
+      keyObjects: ["proof object", "local witnesses", "changed role"],
+      mood: "earned, resolute",
+      lighting: "warmer decisive light",
     },
     {
-      sceneType: "cinematic final scene",
-      cameraShot: "epic wide shot from behind or distant side angle",
-      characterAction: `${input.name} follows the final clue beyond the solved local problem`,
-      environment: `open road, portal, tide, ruin, bridge, mountain path, or hidden route in ${region}`,
-      keyObjects: ["unresolved clue", profile.distinctiveHook, "distant threshold"],
-      mood: "open-ended, mysterious, onward-moving",
-      lighting: "twilight horizon glow and soft magical haze",
+      sceneType: "current fate scene",
+      cameraShot: "wide cinematic shot toward an open road",
+      characterAction: `${input.name} follows the last clue beyond the solved local crisis`,
+      environment: `open route, harbor, shrine, or threshold in ${region}`,
+      keyObjects: ["unfinished clue", profile.distinctiveHook, "distant path"],
+      mood: "open-ended, clear",
+      lighting: "horizon glow with readable atmosphere",
     },
   ];
   return directions[index];
@@ -360,7 +538,12 @@ function buildFallbackImagePrompt(
   input: BookFormInput,
   profile: ReturnType<typeof regionalProfile>,
   anchor: string,
+  champion: ReturnType<typeof championForRegion>,
 ) {
+  const championHint =
+    pageNumber === 4 ? `Indirect champion reference: ${champion.name}. ${champion.summary}` : "";
+  const cliffhangerHint = pageNumber === 5 ? `Cliffhanger focus: ${champion.cliffhanger}` : "";
+
   return [
     `Full-page illustrated story scene for Page ${pageNumber}: ${chapter} - ${title}.`,
     `Scene type: ${visualDirection.sceneType}.`,
@@ -370,9 +553,13 @@ function buildFallbackImagePrompt(
     `Key objects: ${visualDirection.keyObjects.join(", ")}.`,
     `Mood: ${visualDirection.mood}.`,
     `Lighting: ${visualDirection.lighting}.`,
+    championHint,
+    cliffhangerHint,
     `Consistent original protagonist: ${input.name}, ${input.gender}, ${input.characterType}, social role: ${profile.socialRole}, symbolic object: ${profile.distinctiveHook}.`,
     `Runeterra region: ${region}. Lore-compatible regional anchor: ${anchor}.`,
-    `${IMAGE_STYLE_LOCK} Runeterra atmosphere, coherent character design, no repeated portrait composition, no generic cloaked standing figure.`,
+    `${IMAGE_STYLE_LOCK} Runeterra atmosphere, coherent character design, concrete biography moment, no repeated portrait composition.`,
     IMAGE_STYLE_AVOIDANCES,
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }

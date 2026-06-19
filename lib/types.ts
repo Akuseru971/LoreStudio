@@ -24,6 +24,7 @@ export type BookPage = {
   chapter: string;
   title: string;
   text: string;
+  continuityNote?: string;
   visualDirection: {
     sceneType: string;
     cameraShot: string;
@@ -64,6 +65,19 @@ export type LoreBook = {
     runeterraLoreAnchor: string;
   };
   pages: BookPage[];
+  biographyArc?: {
+    startingSituation: string;
+    incitingEvent: string;
+    championConnectionPage4: string;
+    page5Cliffhanger: string;
+    finalState: string;
+  };
+  championConnection?: {
+    championName: string;
+    connectionType: string;
+    connectionSummary: string;
+    canonSafetyNote: string;
+  };
 };
 
 export type AudioSettings = {

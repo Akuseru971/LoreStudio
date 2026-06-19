@@ -19,6 +19,8 @@ const loreBookJsonSchema = {
     "coreConflict",
     "distinctiveHook",
     "narratorIntro",
+    "biographyArc",
+    "championConnection",
     "characterBible",
     "pages",
   ],
@@ -31,6 +33,35 @@ const loreBookJsonSchema = {
     coreConflict: { type: "string" },
     distinctiveHook: { type: "string" },
     narratorIntro: { type: "string" },
+    biographyArc: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "startingSituation",
+        "incitingEvent",
+        "championConnectionPage4",
+        "page5Cliffhanger",
+        "finalState",
+      ],
+      properties: {
+        startingSituation: { type: "string" },
+        incitingEvent: { type: "string" },
+        championConnectionPage4: { type: "string" },
+        page5Cliffhanger: { type: "string" },
+        finalState: { type: "string" },
+      },
+    },
+    championConnection: {
+      type: "object",
+      additionalProperties: false,
+      required: ["championName", "connectionType", "connectionSummary", "canonSafetyNote"],
+      properties: {
+        championName: { type: "string" },
+        connectionType: { type: "string" },
+        connectionSummary: { type: "string" },
+        canonSafetyNote: { type: "string" },
+      },
+    },
     characterBible: {
       type: "object",
       additionalProperties: false,
@@ -80,6 +111,7 @@ const loreBookJsonSchema = {
           chapter: { type: "string" },
           title: { type: "string" },
           text: { type: "string" },
+          continuityNote: { type: "string" },
           visualDirection: {
             type: "object",
             additionalProperties: false,
