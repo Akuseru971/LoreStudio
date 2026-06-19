@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus } from "@/lib/bookStore";
+import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { hasPremiumAccess, triggerFulfillment } from "@/lib/paymentVerification";
 import { getStripeClient } from "@/lib/stripe";
 
@@ -74,6 +75,8 @@ export async function POST(request: Request) {
         await updateBookStatus(storedBook.id, "paid");
         void triggerFulfillment(accessToken);
       }
+
+      void sendConfirmationEmailIfNeeded(accessToken);
     }
 
     return NextResponse.json({ received: true });

@@ -57,6 +57,7 @@ export async function verifyStripeCheckoutSession(
   }
 
   if (hasPremiumAccess(storedBook.status)) {
+    void sendConfirmationEmailIfNeeded(accessToken);
     return {
       verified: true,
       alreadyUnlocked: true,
@@ -93,6 +94,7 @@ export async function verifyStripeCheckoutSession(
   );
   await updateBookStatus(storedBook.id, "paid");
   void triggerFulfillment(accessToken);
+  void sendConfirmationEmailIfNeeded(accessToken);
 
   const updatedBook = await getBookByAccessToken(accessToken);
   if (!updatedBook) {

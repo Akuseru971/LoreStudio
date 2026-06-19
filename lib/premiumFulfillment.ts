@@ -8,7 +8,6 @@ import {
   updateBookStatus,
   uploadBookPdf,
 } from "@/lib/bookStore";
-import { sendBookReadyEmail } from "@/lib/email";
 import { generateNarrationAudio } from "@/lib/elevenlabs";
 import { generateBookPageImage } from "@/lib/images";
 import { generateBookPdf } from "@/lib/pdf";
@@ -88,7 +87,6 @@ export async function fulfillPremiumBook(accessToken: string) {
     await uploadBookPdf(storedBook.id, pdfBuffer);
 
     const readyBook = await markBookReady(storedBook.id);
-    await sendBookReadyEmail(readyBook);
     return readyBook;
   } catch (error) {
     await markBookFailed(storedBook.id);

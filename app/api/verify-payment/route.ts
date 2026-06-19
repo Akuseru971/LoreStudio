@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
+import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
   try {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
     const book = result.book;
+    const emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
 
     return NextResponse.json({
       verified: result.verified,
@@ -33,6 +35,8 @@ export async function POST(request: Request) {
       canDownloadPdf: hasPremiumAccess(book.status),
       canDownloadMp3: hasPremiumAccess(book.status),
       accessToken: book.access_token,
+      confirmationEmailSent: emailResult.sent,
+      confirmationEmailSkipped: emailResult.skipped,
     });
   } catch (error) {
     console.error("Payment verification failed.", error);

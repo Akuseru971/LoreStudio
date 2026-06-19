@@ -96,6 +96,8 @@ export type BookStatus = "free" | "checkout_started" | "paid" | "generating" | "
 
 export type Mp3Status = "not_started" | "generating" | "ready" | "failed";
 
+export type ConfirmationEmailStatus = "not_started" | "sending" | "sent" | "failed" | "skipped";
+
 export type StoredBook = {
   id: string;
   access_token: string;
@@ -115,6 +117,8 @@ export type StoredBook = {
   mp3_status: Mp3Status;
   stripe_session_id: string | null;
   stripe_payment_intent_id: string | null;
+  confirmation_email_sent_at: string | null;
+  confirmation_email_status: ConfirmationEmailStatus;
   created_at: string;
   updated_at: string;
 };

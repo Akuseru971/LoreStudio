@@ -51,6 +51,10 @@ export async function POST(request: Request) {
       success_url: `${bookUrl}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${bookUrl}?payment=cancelled`,
       customer_email: body.email || storedBook.email || undefined,
+      payment_intent_data: {
+        description:
+          "Complete interactive Runeterra-inspired lore book. Access link sent by email and available after payment.",
+      },
       metadata: {
         access_token: storedBook.access_token,
         book_id: storedBook.id,

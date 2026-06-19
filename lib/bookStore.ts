@@ -2,7 +2,7 @@ import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
 import { persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
 import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
-import type { BookFormInput, BookPage, BookStatus, LoreBook, Mp3Status, StoredBook } from "@/lib/types";
+import type { BookFormInput, BookPage, BookStatus, ConfirmationEmailStatus, LoreBook, Mp3Status, StoredBook } from "@/lib/types";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
@@ -35,6 +35,8 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     mp3_status: (row.mp3_status as Mp3Status | null) ?? "not_started",
     stripe_session_id: row.stripe_session_id ? String(row.stripe_session_id) : null,
     stripe_payment_intent_id: row.stripe_payment_intent_id ? String(row.stripe_payment_intent_id) : null,
+    confirmation_email_sent_at: row.confirmation_email_sent_at ? String(row.confirmation_email_sent_at) : null,
+    confirmation_email_status: (row.confirmation_email_status as ConfirmationEmailStatus | null) ?? "not_started",
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
@@ -307,6 +309,75 @@ export async function markBookReady(bookId: string) {
 
 export async function markBookFailed(bookId: string) {
   return updateBookStatus(bookId, "failed");
+}
+
+export async function claimConfirmationEmailSend(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ confirmation_email_status: "sending" })
+    .eq("id", bookId)
+    .is("confirmation_email_sent_at", null)
+    .in("confirmation_email_status", ["not_started", "failed"])
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markConfirmationEmailSent(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      confirmation_email_status: "sent",
+      confirmation_email_sent_at: new Date().toISOString(),
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark confirmation email as sent.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markConfirmationEmailFailed(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ confirmation_email_status: "failed" })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark confirmation email as failed.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markConfirmationEmailSkipped(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ confirmation_email_status: "skipped" })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark confirmation email as skipped.");
+  }
+
+  return mapRow(data);
 }
 
 export async function uploadBookPdf(bookId: string, pdfBuffer: Buffer) {

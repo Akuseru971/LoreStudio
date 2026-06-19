@@ -27,6 +27,7 @@ type VerifyPaymentResponse = {
   isPremium?: boolean;
   canDownloadPdf?: boolean;
   canDownloadMp3?: boolean;
+  confirmationEmailSent?: boolean;
   status?: string;
   error?: string;
 };
@@ -90,6 +91,7 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
         if (paymentState === "cancelled") {
           setNotice("Payment cancelled. Your free pages are still available.");
           setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
+          window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
         }
 
         if (paymentState === "success" && sessionId) {
@@ -109,7 +111,10 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
           }
 
           if (!cancelled) {
-            setNotice("Your legend is unlocked.");
+            const emailNotice = verifyData.confirmationEmailSent
+              ? "Your legend is unlocked. We also sent your private recovery link by email."
+              : "Your legend is unlocked.";
+            setNotice(emailNotice);
             setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
             window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
           }

@@ -1,5 +1,4 @@
 import { Resend } from "resend";
-import type { StoredBook } from "@/lib/types";
 
 function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -13,58 +12,79 @@ function getResendClient() {
   return new Resend(apiKey);
 }
 
-export async function sendBookReadyEmail(book: StoredBook) {
+export type BookUnlockedEmailInput = {
+  to: string;
+  bookUrl: string;
+  pdfUrl: string;
+  mp3Url: string;
+  characterName: string;
+  idempotencyKey: string;
+};
+
+export async function sendBookUnlockedEmail({
+  to,
+  bookUrl,
+  pdfUrl,
+  mp3Url,
+  characterName,
+  idempotencyKey,
+}: BookUnlockedEmailInput) {
   const resend = getResendClient();
   const fromEmail = process.env.FROM_EMAIL;
-  const appUrl = getAppUrl();
 
-  if (!resend || !fromEmail || !book.email) {
-    console.warn("Email not sent: missing Resend configuration or recipient email.");
-    return { sent: false };
+  if (!resend || !fromEmail) {
+    console.warn("Confirmation email not sent: missing Resend configuration.");
+    return { sent: false, error: "Email provider is not configured." };
   }
-
-  const bookUrl = `${appUrl}/book/${book.access_token}`;
-  const pdfUrl = `${appUrl}/api/download-pdf?token=${encodeURIComponent(book.access_token)}`;
-  const mp3Url = `${appUrl}/api/download-mp3?token=${encodeURIComponent(book.access_token)}`;
-  const characterName = book.full_book?.characterBible.name || book.free_book?.characterBible.name || "your champion";
 
   const { data, error } = await resend.emails.send(
     {
       from: fromEmail,
-      to: [book.email],
+      to: [to],
       subject: "Your legend is unlocked",
       html: `
         <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
-          <p style="letter-spacing: 0.28em; text-transform: uppercase; font-size: 12px; color: #8a6231;">Your complete interactive book is ready</p>
-          <h1 style="font-size: 28px; color: #24170b; margin: 16px 0 12px;">${characterName}'s legend awaits.</h1>
+          <p style="letter-spacing: 0.28em; text-transform: uppercase; font-size: 12px; color: #8a6231;">Thank you for unlocking the full book</p>
+          <h1 style="font-size: 28px; color: #24170b; margin: 16px 0 12px;">Your complete legend is now unlocked.</h1>
           <p style="font-size: 16px; line-height: 1.7; color: #4a3724;">
-            Your complete interactive book is ready. Continue reading on the website, or keep parchment and narration copies as backup.
+            Thank you for unlocking ${characterName}'s full chronicle. Your interactive book, PDF, and narration are ready whenever you return.
           </p>
           <div style="margin: 28px 0;">
-            <a href="${bookUrl}" style="display:inline-block; margin-right: 12px; margin-bottom: 12px; padding: 14px 22px; background: #b89452; color: #120d07; text-decoration: none; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;">
-              Open your interactive book
-            </a>
-            <a href="${pdfUrl}" style="display:inline-block; margin-right: 12px; margin-bottom: 12px; padding: 14px 22px; border: 1px solid #8a6231; color: #4a3724; text-decoration: none; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;">
-              Download PDF
-            </a>
-            <a href="${mp3Url}" style="display:inline-block; margin-bottom: 12px; padding: 14px 22px; border: 1px solid #8a6231; color: #4a3724; text-decoration: none; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;">
-              Download MP3 narration
-            </a>
+            <p style="font-size: 15px; line-height: 1.8; color: #4a3724;">
+              Read your interactive book here:<br />
+              <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
+            </p>
+            <p style="font-size: 15px; line-height: 1.8; color: #4a3724;">
+              Download your PDF:<br />
+              <a href="${pdfUrl}" style="color: #4a3724;">${pdfUrl}</a>
+            </p>
+            <p style="font-size: 15px; line-height: 1.8; color: #4a3724;">
+              Download your full narration MP3:<br />
+              <a href="${mp3Url}" style="color: #4a3724;">${mp3Url}</a>
+            </p>
           </div>
-          <p style="font-size: 13px; line-height: 1.6; color: #6b4a24;">
-            Your private link will keep this legend waiting for you:<br />
-            <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
+          <p style="font-size: 14px; line-height: 1.7; color: #6b4a24;">
+            Keep this email safe. This private link lets you recover your legend without creating an account.
           </p>
         </div>
       `,
     },
-    { idempotencyKey: `book-ready/${book.id}` },
+    { idempotencyKey },
   );
 
   if (error) {
-    console.error("Failed to send book ready email.", error);
+    console.error("Failed to send book unlocked email.", error);
     return { sent: false, error: error.message };
   }
 
   return { sent: true, id: data?.id };
+}
+
+export function buildBookUnlockedEmailUrls(accessToken: string) {
+  const appUrl = getAppUrl();
+  return {
+    bookUrl: `${appUrl}/book/${accessToken}`,
+    pdfUrl: `${appUrl}/api/download-pdf?token=${encodeURIComponent(accessToken)}`,
+    mp3Url: `${appUrl}/api/download-mp3?token=${encodeURIComponent(accessToken)}`,
+  };
 }
