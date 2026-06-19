@@ -155,6 +155,30 @@ export async function createSignedAssetUrl(assetRef: string, expiresInSeconds = 
   return data.signedUrl;
 }
 
+export async function downloadAssetBuffer(assetRef: string) {
+  if (!assetRef) {
+    return null;
+  }
+
+  if (assetRef.startsWith("data:")) {
+    const parsed = parseDataUrl(assetRef);
+    return parsed?.buffer ?? null;
+  }
+
+  if (!isStorageAssetPath(assetRef)) {
+    return null;
+  }
+
+  const supabase = requireSupabase();
+  await ensureBookAssetsBucketReady(supabase);
+  const { data, error } = await supabase.storage.from(BOOK_ASSETS_BUCKET).download(assetRef);
+  if (error || !data) {
+    return null;
+  }
+
+  return Buffer.from(await data.arrayBuffer());
+}
+
 export async function resolveAssetMap(assets: Record<string, string>) {
   const entries = await Promise.all(
     Object.entries(assets).map(async ([pageNumber, assetRef]) => {

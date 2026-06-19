@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
+import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
 
@@ -17,10 +18,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Book not found." }, { status: 404 });
     }
 
+    const isPremium = hasPremiumAccess(storedBook.status);
+
     return NextResponse.json({
       status: storedBook.status,
       accessToken: storedBook.access_token,
-      canDownloadPdf: storedBook.status === "ready" && Boolean(storedBook.pdf_storage_path),
+      isPremium,
+      canDownloadPdf: isPremium,
+      canDownloadMp3: isPremium,
       characterName:
         storedBook.full_book?.characterBible.name || storedBook.free_book?.characterBible.name || null,
       title: storedBook.full_book?.title || storedBook.free_book?.title || null,

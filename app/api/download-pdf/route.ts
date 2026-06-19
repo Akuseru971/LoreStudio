@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { createSignedPdfUrl, getBookByAccessToken } from "@/lib/bookStore";
+import {
+  createSignedPdfUrl,
+  ensureBookPdf,
+  getBookByAccessToken,
+  mergeBookAssets,
+} from "@/lib/bookStore";
+import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -17,15 +24,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Book not found." }, { status: 404 });
     }
 
-    if (storedBook.status !== "ready") {
-      return NextResponse.json({ error: "Your book is not ready for download yet." }, { status: 409 });
+    if (!hasPremiumAccess(storedBook.status)) {
+      return NextResponse.json({ error: "Premium access is required." }, { status: 403 });
     }
 
-    if (!storedBook.pdf_storage_path) {
-      return NextResponse.json({ error: "PDF is not available yet." }, { status: 404 });
+    const sourceBook = storedBook.full_book || storedBook.free_book;
+    if (!sourceBook) {
+      return NextResponse.json({ error: "Book content is missing." }, { status: 404 });
     }
 
-    const url = await createSignedPdfUrl(storedBook.pdf_storage_path, 3600);
+    const book = await mergeBookAssets(sourceBook, storedBook.images, storedBook.audio);
+    const pdfStoragePath =
+      storedBook.pdf_storage_path || (await ensureBookPdf(storedBook.id, book));
+    const url = await createSignedPdfUrl(pdfStoragePath, 3600);
+
     return NextResponse.json({ url });
   } catch (error) {
     console.error("Failed to create PDF download URL.", error);

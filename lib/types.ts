@@ -94,6 +94,8 @@ export type AudioSettings = {
 
 export type BookStatus = "free" | "checkout_started" | "paid" | "generating" | "ready" | "failed";
 
+export type Mp3Status = "not_started" | "generating" | "ready" | "failed";
+
 export type StoredBook = {
   id: string;
   access_token: string;
@@ -108,6 +110,9 @@ export type StoredBook = {
   audio: Record<string, string>;
   pdf_url: string | null;
   pdf_storage_path: string | null;
+  mp3_storage_path: string | null;
+  mp3_generated_at: string | null;
+  mp3_status: Mp3Status;
   stripe_session_id: string | null;
   stripe_payment_intent_id: string | null;
   created_at: string;

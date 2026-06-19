@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
@@ -9,13 +9,25 @@ import {
   readAmbientMusicMutedPreference,
   writeAmbientMusicMutedPreference,
 } from "@/lib/ambient-music-config";
+import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import type { LoreBook } from "@/lib/types";
 
 type BookResponse = {
   status: string;
   accessToken: string;
   book: LoreBook | null;
-  canDownloadPdf: boolean;
+  isPremium?: boolean;
+  canDownloadPdf?: boolean;
+  canDownloadMp3?: boolean;
+  error?: string;
+};
+
+type VerifyPaymentResponse = {
+  verified?: boolean;
+  isPremium?: boolean;
+  canDownloadPdf?: boolean;
+  canDownloadMp3?: boolean;
+  status?: string;
   error?: string;
 };
 
@@ -23,10 +35,15 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
   const [token, setToken] = useState<string | null>(null);
   const [book, setBook] = useState<LoreBook | null>(null);
   const [status, setStatus] = useState<string>("loading");
+  const [isPremium, setIsPremium] = useState(false);
   const [canDownloadPdf, setCanDownloadPdf] = useState(false);
+  const [canDownloadMp3, setCanDownloadMp3] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
   const [bookIsOpen, setBookIsOpen] = useState(false);
+  const [initialPageIndex, setInitialPageIndex] = useState(0);
 
   useEffect(() => {
     void params.then((resolved) => setToken(resolved.token));
@@ -36,6 +53,22 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
     writeAmbientMusicMutedPreference(ambientMuted);
   }, [ambientMuted]);
 
+  const loadBook = useCallback(async (currentToken: string) => {
+    const response = await fetch(`/api/book?token=${encodeURIComponent(currentToken)}`);
+    const data = (await response.json()) as BookResponse;
+
+    if (!response.ok || !data.book) {
+      throw new Error(data.error || "This book could not be found.");
+    }
+
+    setBook(data.book);
+    setStatus(data.status);
+    setIsPremium(Boolean(data.isPremium));
+    setCanDownloadPdf(Boolean(data.canDownloadPdf));
+    setCanDownloadMp3(Boolean(data.canDownloadMp3));
+    return data;
+  }, []);
+
   useEffect(() => {
     if (!token) {
       return;
@@ -43,48 +76,74 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
 
     let cancelled = false;
 
-    async function loadBook() {
+    async function initializeBook() {
       const currentToken = token;
       if (!currentToken) {
         return;
       }
 
+      const query = new URLSearchParams(window.location.search);
+      const paymentState = query.get("payment");
+      const sessionId = query.get("session_id");
+
       try {
-        const response = await fetch(`/api/book?token=${encodeURIComponent(currentToken)}`);
-        const data = (await response.json()) as BookResponse;
-        if (cancelled) {
-          return;
+        if (paymentState === "cancelled") {
+          setNotice("Payment cancelled. Your free pages are still available.");
+          setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
         }
 
-        if (!response.ok || !data.book) {
-          setError(data.error || "This book could not be found.");
-          setStatus("error");
-          return;
+        if (paymentState === "success" && sessionId) {
+          setIsVerifyingPayment(true);
+          const verifyResponse = await fetch("/api/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              accessToken: currentToken,
+              sessionId,
+            }),
+          });
+          const verifyData = (await verifyResponse.json()) as VerifyPaymentResponse;
+
+          if (!verifyResponse.ok || !verifyData.verified) {
+            throw new Error(verifyData.error || "Payment could not be verified.");
+          }
+
+          if (!cancelled) {
+            setNotice("Your legend is unlocked.");
+            setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
+            window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
+          }
         }
 
-        setBook(data.book);
-        setStatus(data.status);
-        setCanDownloadPdf(Boolean(data.canDownloadPdf));
-      } catch {
         if (!cancelled) {
-          setError("This book could not be loaded.");
+          await loadBook(currentToken);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "This book could not be loaded.");
           setStatus("error");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsVerifyingPayment(false);
         }
       }
     }
 
-    void loadBook();
+    void initializeBook();
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [loadBook, token]);
 
-  const shouldPlayAmbientMusic = status === "ready" && bookIsOpen && !ambientMuted;
+  const shouldPlayAmbientMusic = Boolean(book) && bookIsOpen && !ambientMuted;
 
-  if (status === "loading") {
+  if (status === "loading" || isVerifyingPayment) {
     return (
       <main className="archive-shell flex min-h-screen items-center justify-center px-5">
-        <p className="text-sm uppercase tracking-[0.22em] text-[#9baabd]">Opening your chronicle...</p>
+        <p className="text-sm uppercase tracking-[0.22em] text-[#9baabd]">
+          {isVerifyingPayment ? "Opening the final pages..." : "Opening your chronicle..."}
+        </p>
       </main>
     );
   }
@@ -106,34 +165,24 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
     );
   }
 
-  if (status !== "ready") {
-    return (
-      <main className="archive-shell flex min-h-screen items-center justify-center px-5">
-        <section className="glass-panel max-w-lg rounded-[2rem] p-8 text-center">
-          <h1 className="font-title text-3xl text-[#f7ebce]">Your legend is still being forged</h1>
-          <p className="mt-4 text-sm leading-7 text-[#9baabd]">
-            The archive is still preparing your complete book. Check your email, or return here in a few minutes.
-          </p>
-          <Link
-            href={`/success?token=${encodeURIComponent(token)}`}
-            className="gold-button mt-6 inline-flex rounded-2xl px-6 py-3 text-xs font-bold uppercase tracking-[0.22em]"
-          >
-            View status
-          </Link>
-        </section>
-      </main>
-    );
-  }
-
   return (
     <>
       <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} normalVolume={0.12} />
       <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
+      {notice ? (
+        <div className="pointer-events-none fixed inset-x-0 top-5 z-[90] flex justify-center px-4">
+          <p className="rounded-full border border-[#d9bd78]/25 bg-[#120d07]/85 px-5 py-2 text-xs uppercase tracking-[0.18em] text-[#e8dcc0] shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
+            {notice}
+          </p>
+        </div>
+      ) : null}
       <InteractiveBook
         book={book}
         accessToken={token}
-        isPremium
+        isPremium={isPremium}
         canDownloadPdf={canDownloadPdf}
+        canDownloadMp3={canDownloadMp3}
+        initialPageIndex={initialPageIndex}
         onReadingStateChange={setBookIsOpen}
         onReset={() => {
           window.location.href = "/";

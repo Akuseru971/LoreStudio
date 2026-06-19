@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, mergeBookAssets } from "@/lib/bookStore";
+import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
 
@@ -17,8 +19,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Book not found." }, { status: 404 });
     }
 
-    const isReady = storedBook.status === "ready";
-    const sourceBook = isReady ? storedBook.full_book : storedBook.free_book;
+    const isPremium = hasPremiumAccess(storedBook.status);
+    const sourceBook = isPremium ? storedBook.full_book || storedBook.free_book : storedBook.free_book;
     const book = sourceBook
       ? await mergeBookAssets(sourceBook, storedBook.images, storedBook.audio)
       : null;
@@ -28,8 +30,10 @@ export async function GET(request: Request) {
       accessToken: storedBook.access_token,
       email: storedBook.email,
       book,
-      canDownloadPdf: isReady && Boolean(storedBook.pdf_storage_path),
-      pageCount: isReady ? 8 : 5,
+      isPremium,
+      canDownloadPdf: isPremium,
+      canDownloadMp3: isPremium,
+      pageCount: isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT,
     });
   } catch (error) {
     console.error("Failed to load book.", error);

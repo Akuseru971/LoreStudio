@@ -68,6 +68,8 @@ type InteractiveBookProps = {
   accessToken?: string;
   isPremium?: boolean;
   canDownloadPdf?: boolean;
+  canDownloadMp3?: boolean;
+  initialPageIndex?: number;
   onReadingStateChange?: (isReading: boolean) => void;
 };
 
@@ -81,10 +83,12 @@ export default function InteractiveBook({
   accessToken,
   isPremium = false,
   canDownloadPdf = false,
+  canDownloadMp3 = false,
+  initialPageIndex = 0,
   onReadingStateChange,
 }: InteractiveBookProps) {
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
-  const [activePageIndex, setActivePageIndex] = useState(0);
+  const [activePageIndex, setActivePageIndex] = useState(initialPageIndex);
   const [audioCache, setAudioCache] = useState<Record<number, string | null>>(() =>
     Object.fromEntries(
       book.pages
@@ -358,9 +362,12 @@ export default function InteractiveBook({
     stopNarration();
     setShowUnlockModal(false);
     setBookState("opening");
-    setActivePageIndex(0);
+    setActivePageIndex(initialPageIndex);
     window.setTimeout(() => {
       setBookState("open");
+      if (initialPageIndex > 0) {
+        flipRef.current?.pageFlip()?.flip(initialPageIndex * 2, "top");
+      }
     }, OPENING_DURATION_MS);
   }
 
@@ -450,7 +457,7 @@ export default function InteractiveBook({
                     </p>
                     <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{characterName}</h1>
                   </div>
-                  {isPremium && canDownloadPdf && accessToken ? (
+                  {isPremium && accessToken ? (
                     <BookPremiumActions accessToken={accessToken} className="mx-auto sm:mx-0" />
                   ) : null}
                 </div>

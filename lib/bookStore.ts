@@ -1,8 +1,8 @@
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
 import { persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
-import { BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
-import type { BookFormInput, BookPage, BookStatus, LoreBook, StoredBook } from "@/lib/types";
+import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
+import type { BookFormInput, BookPage, BookStatus, LoreBook, Mp3Status, StoredBook } from "@/lib/types";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
@@ -30,6 +30,9 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     audio: (row.audio as Record<string, string>) ?? {},
     pdf_url: row.pdf_url ? String(row.pdf_url) : null,
     pdf_storage_path: row.pdf_storage_path ? String(row.pdf_storage_path) : null,
+    mp3_storage_path: row.mp3_storage_path ? String(row.mp3_storage_path) : null,
+    mp3_generated_at: row.mp3_generated_at ? String(row.mp3_generated_at) : null,
+    mp3_status: (row.mp3_status as Mp3Status | null) ?? "not_started",
     stripe_session_id: row.stripe_session_id ? String(row.stripe_session_id) : null,
     stripe_payment_intent_id: row.stripe_payment_intent_id ? String(row.stripe_payment_intent_id) : null,
     created_at: String(row.created_at),
@@ -334,6 +337,114 @@ export async function createSignedPdfUrl(pdfStoragePath: string, expiresInSecond
   }
 
   return data.signedUrl;
+}
+
+export async function uploadBookMp3(bookId: string, mp3Buffer: Buffer) {
+  const supabase = requireSupabase();
+  const mp3StoragePath = `books/${bookId}/full-narration.mp3`;
+
+  const { data: bucket } = await supabase.storage.getBucket(BOOK_AUDIO_BUCKET);
+  if (!bucket) {
+    const { error: createError } = await supabase.storage.createBucket(BOOK_AUDIO_BUCKET, {
+      public: false,
+      fileSizeLimit: 104857600,
+      allowedMimeTypes: ["audio/mpeg", "audio/mp3"],
+    });
+    if (createError && !/already exists/i.test(createError.message)) {
+      throw new Error(createError.message);
+    }
+  }
+
+  const { error } = await supabase.storage.from(BOOK_AUDIO_BUCKET).upload(mp3StoragePath, mp3Buffer, {
+    contentType: "audio/mpeg",
+    upsert: true,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return mp3StoragePath;
+}
+
+export async function createSignedMp3Url(mp3StoragePath: string, expiresInSeconds = 3600) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.storage
+    .from(BOOK_AUDIO_BUCKET)
+    .createSignedUrl(mp3StoragePath, expiresInSeconds);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || "Unable to create a signed MP3 URL.");
+  }
+
+  return data.signedUrl;
+}
+
+export async function markMp3Generating(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ mp3_status: "generating" })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to update MP3 status.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markMp3Ready(bookId: string, mp3StoragePath: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      mp3_status: "ready",
+      mp3_storage_path: mp3StoragePath,
+      mp3_generated_at: new Date().toISOString(),
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to save MP3 path.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markMp3Failed(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ mp3_status: "failed" })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to update MP3 status.");
+  }
+
+  return mapRow(data);
+}
+
+export async function ensureBookPdf(bookId: string, book: LoreBook) {
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    throw new Error("Book not found.");
+  }
+
+  if (storedBook.pdf_storage_path) {
+    return storedBook.pdf_storage_path;
+  }
+
+  const { generateBookPdf } = await import("@/lib/pdf");
+  const pdfBuffer = await generateBookPdf(book);
+  return uploadBookPdf(bookId, pdfBuffer);
 }
 
 export async function mergeBookAssets(

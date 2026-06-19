@@ -68,7 +68,7 @@ export async function fulfillPremiumBook(accessToken: string) {
     throw new Error("Book not found.");
   }
 
-  if (storedBook.status === "ready") {
+  if (storedBook.status === "ready" || storedBook.status === "generating") {
     return storedBook;
   }
 

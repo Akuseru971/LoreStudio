@@ -24,3 +24,4 @@ export function getSupabaseServerClient() {
 
 export const BOOK_PDF_BUCKET = "book-pdfs";
 export const BOOK_ASSETS_BUCKET = "book-assets";
+export const BOOK_AUDIO_BUCKET = "book-audio";

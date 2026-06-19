@@ -38,6 +38,7 @@ export async function POST(request: Request) {
 
     const characterName =
       storedBook.free_book?.characterBible.name || storedBook.form_input.name || "your champion";
+    const bookUrl = `${appUrl}/book/${encodeURIComponent(storedBook.access_token)}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -47,8 +48,8 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${appUrl}/success?token=${encodeURIComponent(storedBook.access_token)}`,
-      cancel_url: `${appUrl}?checkout=cancelled`,
+      success_url: `${bookUrl}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${bookUrl}?payment=cancelled`,
       customer_email: body.email || storedBook.email || undefined,
       metadata: {
         access_token: storedBook.access_token,

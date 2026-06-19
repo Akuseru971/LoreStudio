@@ -86,8 +86,8 @@ export default function UnlockFullStoryModal({
                   Unlock the rest of your legend
                 </h2>
                 <p id="unlock-full-story-description" className="mt-4 text-sm leading-7 text-[#b8c2d0]">
-                  The truth behind this revelation lies in the final pages. Unlock the complete book to continue the
-                  story, reveal the remaining illustrations, and receive your PDF version.
+                  The final pages reveal what this connection truly means. Unlock the complete interactive book now and
+                  download your PDF version instantly after payment.
                 </p>
 
                 <label className="mt-5 block">

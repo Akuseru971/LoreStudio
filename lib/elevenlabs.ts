@@ -4,6 +4,15 @@ const DEFAULT_ELEVENLABS_VOICE_ID = "t9VKj6QDu6evrQNoV6Ij";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";
 
 export async function generateNarrationAudio(text: string) {
+  const buffer = await generateNarrationAudioBuffer(text);
+  if (!buffer) {
+    return null;
+  }
+
+  return dataUrlFromBase64(buffer.toString("base64"), "audio/mpeg");
+}
+
+export async function generateNarrationAudioBuffer(text: string) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVENLABS_VOICE_ID;
   const modelId = process.env.ELEVENLABS_MODEL_ID || DEFAULT_ELEVENLABS_MODEL_ID;
@@ -41,5 +50,5 @@ export async function generateNarrationAudio(text: string) {
   }
 
   const audioBuffer = Buffer.from(await response.arrayBuffer());
-  return dataUrlFromBase64(audioBuffer.toString("base64"), "audio/mpeg");
+  return audioBuffer;
 }

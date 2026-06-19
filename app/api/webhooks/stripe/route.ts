@@ -1,35 +1,13 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus } from "@/lib/bookStore";
+import { hasPremiumAccess, triggerFulfillment } from "@/lib/paymentVerification";
 import { getStripeClient } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
 function getWebhookSecret() {
   return process.env.STRIPE_WEBHOOK_SECRET;
-}
-
-function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-}
-
-async function triggerFulfillment(accessToken: string) {
-  const secret = process.env.INTERNAL_FULFILLMENT_SECRET;
-  if (!secret) {
-    console.warn("INTERNAL_FULFILLMENT_SECRET is not configured. Skipping async fulfillment trigger.");
-    return;
-  }
-
-  await fetch(`${getAppUrl()}/api/fulfill-book`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      accessToken,
-      secret,
-    }),
-  }).catch((error) => {
-    console.error("Failed to trigger fulfillment job.", error);
-  });
 }
 
 export async function POST(request: Request) {
@@ -65,9 +43,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ received: true });
       }
 
+      if (session.payment_status !== "paid") {
+        console.warn("Checkout session completed without paid status.", session.id);
+        return NextResponse.json({ received: true });
+      }
+
       const storedBook = await getBookByAccessToken(accessToken);
       if (!storedBook) {
         console.warn("Checkout completed for unknown access token.", accessToken);
+        return NextResponse.json({ received: true });
+      }
+
+      if (session.metadata?.book_id && session.metadata.book_id !== storedBook.id) {
+        console.warn("Checkout session book_id mismatch.", session.id);
         return NextResponse.json({ received: true });
       }
 
@@ -81,8 +69,11 @@ export async function POST(request: Request) {
         typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || null,
         email || null,
       );
-      await updateBookStatus(storedBook.id, "paid");
-      void triggerFulfillment(accessToken);
+
+      if (!hasPremiumAccess(storedBook.status)) {
+        await updateBookStatus(storedBook.id, "paid");
+        void triggerFulfillment(accessToken);
+      }
     }
 
     return NextResponse.json({ received: true });

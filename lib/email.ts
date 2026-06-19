@@ -25,26 +25,30 @@ export async function sendBookReadyEmail(book: StoredBook) {
 
   const bookUrl = `${appUrl}/book/${book.access_token}`;
   const pdfUrl = `${appUrl}/api/download-pdf?token=${encodeURIComponent(book.access_token)}`;
+  const mp3Url = `${appUrl}/api/download-mp3?token=${encodeURIComponent(book.access_token)}`;
   const characterName = book.full_book?.characterBible.name || book.free_book?.characterBible.name || "your champion";
 
   const { data, error } = await resend.emails.send(
     {
       from: fromEmail,
       to: [book.email],
-      subject: "Your legend is ready",
+      subject: "Your legend is unlocked",
       html: `
         <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
-          <p style="letter-spacing: 0.28em; text-transform: uppercase; font-size: 12px; color: #8a6231;">The archive has sealed your chronicle</p>
-          <h1 style="font-size: 28px; color: #24170b; margin: 16px 0 12px;">Your book has been bound.</h1>
+          <p style="letter-spacing: 0.28em; text-transform: uppercase; font-size: 12px; color: #8a6231;">Your complete interactive book is ready</p>
+          <h1 style="font-size: 28px; color: #24170b; margin: 16px 0 12px;">${characterName}'s legend awaits.</h1>
           <p style="font-size: 16px; line-height: 1.7; color: #4a3724;">
-            The final pages of ${characterName}'s legend are ready. Step back into the interactive tome, or keep a parchment copy close at hand.
+            Your complete interactive book is ready. Continue reading on the website, or keep parchment and narration copies as backup.
           </p>
           <div style="margin: 28px 0;">
             <a href="${bookUrl}" style="display:inline-block; margin-right: 12px; margin-bottom: 12px; padding: 14px 22px; background: #b89452; color: #120d07; text-decoration: none; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;">
               Open your interactive book
             </a>
-            <a href="${pdfUrl}" style="display:inline-block; margin-bottom: 12px; padding: 14px 22px; border: 1px solid #8a6231; color: #4a3724; text-decoration: none; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;">
-              Download your PDF
+            <a href="${pdfUrl}" style="display:inline-block; margin-right: 12px; margin-bottom: 12px; padding: 14px 22px; border: 1px solid #8a6231; color: #4a3724; text-decoration: none; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;">
+              Download PDF
+            </a>
+            <a href="${mp3Url}" style="display:inline-block; margin-bottom: 12px; padding: 14px 22px; border: 1px solid #8a6231; color: #4a3724; text-decoration: none; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px;">
+              Download MP3 narration
             </a>
           </div>
           <p style="font-size: 13px; line-height: 1.6; color: #6b4a24;">
