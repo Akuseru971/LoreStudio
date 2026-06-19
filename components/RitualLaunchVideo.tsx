@@ -408,10 +408,10 @@ export default function RitualLaunchVideo({
             onVolumeChange={setVolume}
             onMutedChange={setIsMuted}
             onEnded={() => {
-              setShowContinue(true);
               setIsPlaying(false);
               setIsBuffering(false);
               setControlsVisible(true);
+              finish(onEnded);
             }}
             onError={() => {
               setHasError(true);
