@@ -6,11 +6,6 @@ import {
   markConfirmationEmailSkipped,
 } from "@/lib/bookStore";
 import { buildBookUnlockedEmailUrls, sendBookUnlockedEmail } from "@/lib/email";
-import type { StoredBook } from "@/lib/types";
-
-function characterNameForBook(book: StoredBook) {
-  return book.full_book?.characterBible.name || book.free_book?.characterBible.name || "your champion";
-}
 
 export async function sendConfirmationEmailIfNeeded(accessToken: string) {
   const storedBook = await getBookByAccessToken(accessToken);
@@ -19,7 +14,7 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string) {
   }
 
   if (storedBook.confirmation_email_sent_at || storedBook.confirmation_email_status === "sent") {
-    return { sent: false, skipped: true, reason: "already_sent" as const };
+    return { sent: false, skipped: true, reason: "already_sent" as const, recoveryEmailAvailable: true };
   }
 
   if (!storedBook.email) {
@@ -38,7 +33,6 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string) {
     bookUrl: urls.bookUrl,
     pdfUrl: urls.pdfUrl,
     mp3Url: urls.mp3Url,
-    characterName: characterNameForBook(claimedBook),
     idempotencyKey: `book-unlocked/${claimedBook.id}`,
   });
 
@@ -48,5 +42,5 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string) {
   }
 
   await markConfirmationEmailSent(claimedBook.id);
-  return { sent: true, skipped: false, reason: "sent" as const };
+  return { sent: true, skipped: false, reason: "sent" as const, recoveryEmailAvailable: true };
 }

@@ -26,9 +26,8 @@ export async function sendBookUnlockedEmail({
   bookUrl,
   pdfUrl,
   mp3Url,
-  characterName,
   idempotencyKey,
-}: BookUnlockedEmailInput) {
+}: Omit<BookUnlockedEmailInput, "characterName"> & { characterName?: string }) {
   const resend = getResendClient();
   const fromEmail = process.env.FROM_EMAIL;
 
@@ -42,27 +41,33 @@ export async function sendBookUnlockedEmail({
       from: fromEmail,
       to: [to],
       subject: "Your legend is unlocked",
+      text: `Your complete legend is now unlocked.
+
+Read your interactive book here:
+${bookUrl}
+
+Download your PDF:
+${pdfUrl}
+
+Download your full narration MP3:
+${mp3Url}
+
+Keep this email safe. This private link lets you recover your legend without creating an account.`,
       html: `
         <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
-          <p style="letter-spacing: 0.28em; text-transform: uppercase; font-size: 12px; color: #8a6231;">Thank you for unlocking the full book</p>
-          <h1 style="font-size: 28px; color: #24170b; margin: 16px 0 12px;">Your complete legend is now unlocked.</h1>
-          <p style="font-size: 16px; line-height: 1.7; color: #4a3724;">
-            Thank you for unlocking ${characterName}'s full chronicle. Your interactive book, PDF, and narration are ready whenever you return.
+          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">Your complete legend is now unlocked.</p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            Read your interactive book here:<br />
+            <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
           </p>
-          <div style="margin: 28px 0;">
-            <p style="font-size: 15px; line-height: 1.8; color: #4a3724;">
-              Read your interactive book here:<br />
-              <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
-            </p>
-            <p style="font-size: 15px; line-height: 1.8; color: #4a3724;">
-              Download your PDF:<br />
-              <a href="${pdfUrl}" style="color: #4a3724;">${pdfUrl}</a>
-            </p>
-            <p style="font-size: 15px; line-height: 1.8; color: #4a3724;">
-              Download your full narration MP3:<br />
-              <a href="${mp3Url}" style="color: #4a3724;">${mp3Url}</a>
-            </p>
-          </div>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            Download your PDF:<br />
+            <a href="${pdfUrl}" style="color: #4a3724;">${pdfUrl}</a>
+          </p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            Download your full narration MP3:<br />
+            <a href="${mp3Url}" style="color: #4a3724;">${mp3Url}</a>
+          </p>
           <p style="font-size: 14px; line-height: 1.7; color: #6b4a24;">
             Keep this email safe. This private link lets you recover your legend without creating an account.
           </p>
