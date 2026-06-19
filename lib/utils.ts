@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
+import { polishImmersiveStoryText } from "@/lib/immersive-text";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export const genders = ["man", "woman", "creature", "unknown"] as const;
@@ -133,9 +134,12 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
 
     return {
       pageNumber: index + 1,
-      chapter,
-      title: sanitizeText(page?.title, 80) || chapter,
-      text: sanitizeText(page?.text, 700) || "The page remains veiled, waiting for the ink to return.",
+      chapter: polishImmersiveStoryText(sanitizeText(page?.chapter, 80) || fallbackChapter, 80),
+      title: polishImmersiveStoryText(sanitizeText(page?.title, 80) || fallbackChapter, 80),
+      text:
+        polishImmersiveStoryText(
+          sanitizeText(page?.text, 700) || "The page remains veiled, waiting for the ink to return.",
+        ) || "The page remains veiled, waiting for the ink to return.",
       continuityNote: sanitizeText(page?.continuityNote, 240) || undefined,
       visualDirection,
       imagePrompt:
@@ -179,6 +183,29 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
       "The protagonist remains original and no major canon events were altered.",
   };
 
+  const sourceOriginalityProfile = book.originalityProfile;
+  const originalityProfile = {
+    specificRole:
+      sanitizeText(sourceOriginalityProfile?.specificRole, 160) ||
+      sanitizeText(book.protagonistRole, 160) ||
+      sanitizeText(bible.socialRole, 160) ||
+      "local witness",
+    dailyReality:
+      sanitizeText(sourceOriginalityProfile?.dailyReality, 240) ||
+      "ordinary work, routes, and obligations before the trouble began",
+    regionalPressure:
+      sanitizeText(sourceOriginalityProfile?.regionalPressure, 240) ||
+      sanitizeText(book.coreConflict, 240) ||
+      "a concrete regional problem",
+    unusualStoryElement:
+      sanitizeText(sourceOriginalityProfile?.unusualStoryElement, 240) ||
+      sanitizeText(book.distinctiveHook, 240) ||
+      "a personal object tied to the conflict",
+    repetitionAvoided: Array.isArray(sourceOriginalityProfile?.repetitionAvoided)
+      ? sourceOriginalityProfile.repetitionAvoided.map((item) => sanitizeText(item, 120)).filter(Boolean).slice(0, 6)
+      : ["generic chosen one", "prophecy arc", "nameless darkness"],
+  };
+
   return {
     ...book,
     title: sanitizeText(book.title, 120) || "The Book of the Unwritten Legend",
@@ -194,9 +221,11 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     distinctiveHook:
       sanitizeText(book.distinctiveHook, 240) ||
       "A personal object, craft, or secret makes the protagonist's path distinct.",
-    narratorIntro:
+    narratorIntro: polishImmersiveStoryText(
       sanitizeText(book.narratorIntro, 260) ||
-      "The archive opens with a name, a place, and the first ordinary day that would not stay ordinary.",
+        "The archive opens with a name, a place, and the first ordinary day that would not stay ordinary.",
+      260,
+    ),
     biographyArc: {
       startingSituation: biographyArc.startingSituation,
       incitingEvent: biographyArc.incitingEvent,
@@ -210,6 +239,7 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
       connectionSummary: championConnection.connectionSummary,
       canonSafetyNote: championConnection.canonSafetyNote,
     },
+    originalityProfile,
     characterBible: {
       name: sanitizeText(bible.name, 80) || "The Unnamed",
       gender: sanitizeText(bible.gender, 40) || "unknown",

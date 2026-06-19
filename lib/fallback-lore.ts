@@ -32,7 +32,7 @@ export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
     protagonistRole: profile.socialRole,
     coreConflict: profile.coreConflict,
     distinctiveHook: profile.distinctiveHook,
-    narratorIntro: `This is the life of ${input.name}, told in order: where they began, what changed them, and why ${region} still remembers their name.`,
+    narratorIntro: `This is the life of ${input.name}, told in order: where they began in ${region}, what changed them, and why the lower lanes still speak of that name.`,
     biographyArc: {
       startingSituation: `${input.name} works as ${profile.socialRole} in ${region}.`,
       incitingEvent: profile.coreConflict,
@@ -45,6 +45,13 @@ export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
       connectionType: champion.connectionType,
       connectionSummary: champion.summary,
       canonSafetyNote: champion.canonNote,
+    },
+    originalityProfile: {
+      specificRole: profile.socialRole,
+      dailyReality: `ordinary ${region} work before the first failure`,
+      regionalPressure: profile.coreConflict,
+      unusualStoryElement: profile.distinctiveHook,
+      repetitionAvoided: ["chosen one", "prophecy arc", "generic warrior"],
     },
     characterBible: {
       name: input.name,
@@ -220,24 +227,24 @@ function buildPageTexts(
   return [
     `${input.name} was known in ${region} as ${profile.socialRole}, not as a hero. They kept local records, carried ${profile.distinctiveHook}, and lived inside ordinary duties until one missing detail made neighbors look at them for answers.`,
     `Every day followed the same practical rhythm: work, routes, repairs, and the small favors that hold a community together. ${input.name} knew which doors stuck, which elders lied about their health, and which warnings people preferred not to hear. That knowledge made the first real problem impossible to ignore.`,
-    `The change began with ${profile.coreConflict}. Something failed that should have been preventable, and ${input.name} was the one person close enough to see the pattern before others admitted there was one. From that hour onward, the biography stopped being routine.`,
+    `The change began with ${profile.coreConflict}. Something failed that should have been preventable, and ${input.name} was the one person close enough to see the pattern before others admitted there was one. From that hour onward, ordinary days were over.`,
     `Following the evidence led to ${champion.name}. ${champion.summary} For ${input.name}, the connection was not fame but consequence: a known champion's world had already touched theirs, and the proof was now in their hands.`,
-    `${input.name} traced the clue to a place no worker was meant to enter alone. The deeper they went, the more the evidence pointed back to choices made on page 3 and the name on page 4. Then ${champion.cliffhanger}`,
+    `${input.name} traced the clue to a place no worker was meant to enter alone. The deeper they went, the more the broken valve, the green residue, and ${champion.name}'s name all pointed to the same impossible answer. Then ${champion.cliffhanger}`,
     `The immediate aftermath left no time for poetry. People shouted, doors slammed, and the problem ${input.name} had uncovered could no longer stay private. Whatever happened in the sealed place, the community would demand an explanation before nightfall.`,
     `${input.name} changed by acting with clearer purpose. The ${input.characterType} stopped waiting for permission and started using ${profile.distinctiveHook} as proof, guide, and responsibility. Neighbors who once saw only a local worker now saw someone willing to name the truth.`,
-    `Today ${input.name} stands at the edge of a solved crisis and a larger unanswered one. ${region} is safer than it was, but the last clue points beyond one street, one tunnel, one ledger. The biography does not end cleanly; it continues wherever the evidence goes next.`,
+    `Today ${input.name} stands at the edge of a solved crisis and a larger unanswered one. ${region} is safer than it was, but the last clue points beyond one street, one tunnel, one ledger. The work is not finished; the road ahead still waits.`,
   ];
 }
 
 function continuityNoteForPage(index: number, name: string) {
   const notes = [
-    "Opening biography introduction.",
+    "Opening introduction.",
     `Continues from ${name}'s established role and community position.`,
-    "Follows the daily routine established on page 2.",
-    "Results directly from the inciting event on page 3.",
-    "Builds on the champion connection established on page 4.",
-    "Immediate consequence of the page 5 cliffhanger.",
-    "Shows how the fallout from page 6 changes the protagonist.",
+    "Follows the daily routine established previously.",
+    "Results directly from the inciting event.",
+    "Builds on the champion connection.",
+    "Immediate consequence of the cliffhanger.",
+    "Shows how the fallout changes the protagonist.",
     "Resolves the arc while leaving the future open.",
   ];
   return notes[index];

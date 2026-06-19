@@ -21,6 +21,7 @@ const loreBookJsonSchema = {
     "narratorIntro",
     "biographyArc",
     "championConnection",
+    "originalityProfile",
     "characterBible",
     "pages",
   ],
@@ -60,6 +61,21 @@ const loreBookJsonSchema = {
         connectionType: { type: "string" },
         connectionSummary: { type: "string" },
         canonSafetyNote: { type: "string" },
+      },
+    },
+    originalityProfile: {
+      type: "object",
+      additionalProperties: false,
+      required: ["specificRole", "dailyReality", "regionalPressure", "unusualStoryElement", "repetitionAvoided"],
+      properties: {
+        specificRole: { type: "string" },
+        dailyReality: { type: "string" },
+        regionalPressure: { type: "string" },
+        unusualStoryElement: { type: "string" },
+        repetitionAvoided: {
+          type: "array",
+          items: { type: "string" },
+        },
       },
     },
     characterBible: {

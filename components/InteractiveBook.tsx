@@ -10,8 +10,8 @@ import BookPage from "@/components/BookPage";
 import MagicalBookCover from "@/components/MagicalBookCover";
 import BookPremiumActions from "@/components/BookPremiumActions";
 import ResultActions from "@/components/ResultActions";
-import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
-import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT, FREE_EXPERIENCE_LAST_PAGE_INDEX } from "@/lib/book-config";
+import UnlockFullStoryModal, { type PaywallContext } from "@/components/UnlockFullStoryModal";
+import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
 import type { LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,8 @@ type InteractiveBookProps = {
 
 const OPENING_DURATION_MS = 2100;
 const NARRATION_START_DELAY_MS = 400;
+const PAGE_FOUR_INDEX = ILLUSTRATED_PAGE_COUNT - 2;
+const PAGE_FIVE_INDEX = ILLUSTRATED_PAGE_COUNT - 1;
 
 export default function InteractiveBook({
   book,
@@ -96,12 +98,13 @@ export default function InteractiveBook({
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [softPaywallDismissed, setSoftPaywallDismissed] = useState(false);
+  const [paywallContext, setPaywallContext] = useState<PaywallContext>("beforePage5");
 
   const flipRef = useRef<PageFlipHandle | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
-  const hasShownUnlockModalRef = useRef(false);
 
   const pagesWithImages = useMemo(
     () =>
@@ -117,7 +120,9 @@ export default function InteractiveBook({
   const isOpen = bookState === "open";
   const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
   const canGoPrevious = activePageIndex > 0;
-  const canGoNext = activePageIndex < illustratedPages.length - 1;
+  const canGoNext = isPremium
+    ? activePageIndex < illustratedPages.length - 1
+    : activePageIndex <= PAGE_FIVE_INDEX;
 
   const escapeParticles = useMemo(
     () =>
@@ -207,6 +212,27 @@ export default function InteractiveBook({
     const pagesToIllustrate = book.pages.slice(0, ILLUSTRATED_PAGE_COUNT);
     void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
   }, [book.pages, fetchImageForPage]);
+
+  const tryForwardNavigation = useCallback(
+    (targetIndex: number) => {
+      if (!isPremium) {
+        if (activePageIndex === PAGE_FOUR_INDEX && targetIndex > PAGE_FOUR_INDEX && !softPaywallDismissed) {
+          setPaywallContext("beforePage5");
+          setShowUnlockModal(true);
+          return false;
+        }
+
+        if (activePageIndex === PAGE_FIVE_INDEX && targetIndex > PAGE_FIVE_INDEX) {
+          setPaywallContext("beforePage6");
+          setShowUnlockModal(true);
+          return false;
+        }
+      }
+
+      return targetIndex <= illustratedPages.length - 1;
+    },
+    [activePageIndex, illustratedPages.length, isPremium, softPaywallDismissed],
+  );
 
   const goToSpread = useCallback(
     (pageIndex: number) => {
@@ -336,29 +362,15 @@ export default function InteractiveBook({
     };
   }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
 
-  useEffect(() => {
-    if (!isOpen || isPremium || activePageIndex !== FREE_EXPERIENCE_LAST_PAGE_INDEX || hasShownUnlockModalRef.current) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      hasShownUnlockModalRef.current = true;
-      setShowUnlockModal(true);
-    }, 700);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [activePageIndex, isOpen, isPremium]);
-
   function handleOpen() {
     if (bookState !== "closed") {
       return;
     }
 
     stopNarration();
-    hasShownUnlockModalRef.current = false;
+    setSoftPaywallDismissed(false);
     setShowUnlockModal(false);
+    setPaywallContext("beforePage5");
     setBookState("opening");
     setActivePageIndex(0);
     window.setTimeout(() => {
@@ -370,6 +382,12 @@ export default function InteractiveBook({
     const physicalPage = typeof event.data === "number" ? event.data : 0;
     const nextIndex = Math.floor(Math.max(physicalPage, 0) / 2);
     const boundedIndex = Math.min(Math.max(nextIndex, 0), illustratedPages.length - 1);
+
+    if (boundedIndex > activePageIndex && !tryForwardNavigation(boundedIndex)) {
+      window.setTimeout(() => goToSpread(activePageIndex), 0);
+      return;
+    }
+
     setActivePageIndex(boundedIndex);
   }
 
@@ -385,8 +403,28 @@ export default function InteractiveBook({
     if (!canGoNext) {
       return;
     }
-    const nextSpread = Math.min(activePageIndex + 1, illustratedPages.length - 1);
+
+    const nextIndex = activePageIndex + 1;
+    if (!tryForwardNavigation(nextIndex)) {
+      return;
+    }
+
+    const nextSpread = Math.min(nextIndex, illustratedPages.length - 1);
     flipRef.current?.pageFlip()?.flip(nextSpread * 2, "top");
+  }
+
+  function handleContinueToActualPage() {
+    if (paywallContext !== "beforePage5") {
+      return;
+    }
+
+    setSoftPaywallDismissed(true);
+    setShowUnlockModal(false);
+    goToSpread(PAGE_FIVE_INDEX);
+  }
+
+  function handleClosePaywall() {
+    setShowUnlockModal(false);
   }
 
   function toggleVoice() {
@@ -551,7 +589,9 @@ export default function InteractiveBook({
           book={book}
           accessToken={accessToken}
           isOpen={showUnlockModal}
-          onClose={() => setShowUnlockModal(false)}
+          context={paywallContext}
+          onClose={handleClosePaywall}
+          onContinueToPage={handleContinueToActualPage}
         />
       ) : null}
     </main>

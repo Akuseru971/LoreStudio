@@ -7,23 +7,28 @@ export const IMAGE_STYLE_AVOIDANCES =
   "Avoid cheap AI fantasy look, blurry faces, generic armor, overused black-purple glowing villain style, flat backgrounds, repetitive portraits, plastic-looking characters, oversaturated neon colors, vague magical fog, random symbols without context, and disconnected fantasy poster poses.";
 
 const BIOGRAPHY_PAGE_GUIDANCE = [
-  "Page 1: introduce the protagonist clearly — name, region, social role, and starting situation.",
-  "Page 2: show early life, daily reality, community, family, work, or duty.",
-  "Page 3: show the first major event that changes their path, caused by page 2.",
-  "Page 4: introduce a meaningful canon-safe connection to one existing League champion from the region.",
-  "Page 5: end with a strong cliffhanger caused by pages 1–4; final sentence must create suspense.",
-  "Page 6: show the immediate consequence of the page 5 cliffhanger.",
-  "Page 7: show how the protagonist changes because of what happened.",
-  "Page 8: show where the protagonist stands now, with an open but understandable ending.",
+  "Beat 1: introduce the protagonist clearly — name, region, social role, and starting situation.",
+  "Beat 2: show early life, daily reality, community, family, work, or duty.",
+  "Beat 3: show the first major event that changes their path, caused by beat 2.",
+  "Beat 4: introduce a meaningful canon-safe connection to one existing League champion from the region.",
+  "Beat 5: end with a strong cliffhanger caused by beats 1–4; final sentence must create suspense.",
+  "Beat 6: show the immediate consequence of the cliffhanger.",
+  "Beat 7: show how the protagonist changes because of what happened.",
+  "Beat 8: show where the protagonist stands now, with an open but understandable ending.",
 ];
+
+const ROLE_VARIETY_HINT = `Invent a highly specific Runeterra role for the protagonist. The user's character type should influence the story, but the actual job or social position must be concrete and varied.
+Avoid always generating: warrior, cursed fighter, exile, chosen one, orphan survivor, hidden mage, shadow-touched character, prophecy-driven character, final-boss style protagonist, generic rebel, generic monster hunter.
+Examples of specific roles by region include: Demacia — petricite mason, border courier, bell tower keeper; Noxus — battlefield cartographer, arena bookkeeper, war medic; Ionia — shrine keeper, river guide, herbalist; Piltover — hextech lens polisher, bridge inspector, museum restorer; Zaun — chemtech salvage diver, sump courier, pipe repairer; Shurima — dune guide, oasis keeper, tomb lamp carrier; Freljord — ice fisher, tribal negotiator, storm reader; Bilgewater — harbor tax runner, dockside message runner, ship bell keeper; Targon — mountain guide, pilgrim escort, dawn bell ringer; Ixtal — living stone artisan, jungle border scout; Shadow Isles — lantern polisher, mist scout, ruined chapel caretaker; Bandle City — impossible mail carrier, portal mapmaker; The Void — frontier scout, biological anomaly cataloguer.`;
 
 export function buildLorePrompt(input: BookFormInput) {
   const system = `You are a narrative designer specialized in League of Legends lore and Runeterra.
 You create original characters who could plausibly exist in Runeterra.
-You write clear, chronological character biographies adapted into illustrated storybooks.
-Your writing is cinematic, but always easy to understand.
-Every page must follow logically from the previous one.
+You write immersive in-world chronicles adapted into illustrated storybooks.
+Your writing is cinematic, grounded, atmospheric, and always easy to understand.
+Every beat must follow logically from the previous one through events, not meta commentary.
 You avoid abstract fantasy filler, vague prophecy poetry, and disconnected fragments.
+You never break immersion by mentioning book structure, page numbers, readers, or generation mechanics in visible story text.
 You output strict valid JSON only.`;
 
   const user = `Create an 8-page personalized illustrated lore book set in Runeterra.
@@ -38,65 +43,82 @@ If the region is Auto, choose the most coherent region for the character type.
 If a specific region is selected, anchor the whole biography in that region.
 
 Main requirement:
-Write a clear chronological biography of the protagonist.
+Write a clear chronological in-world life story of the protagonist.
 
-The reader must easily understand:
+The audience must easily understand:
 - who the protagonist is
 - where they come from
 - what their role is
 - what changed their life
-- how an existing League champion connects to their story on page 4
-- why page 5 ends with suspense
+- how an existing League champion connects to their life in beat 4
+- why beat 5 ends with suspense
 - what happens after the suspense
 - where the character stands at the end
 
-Hidden chronological structure (do not use these labels as page titles or chapter names):
+IMMERSION RULE (hard):
+The visible story text in title, chapter, narratorIntro, and every pages[].text must never reference:
+page numbers, page structure, biography structure, previous page, next page, chapter mechanics, paywall, unlock, paid section, reader, user, generated story, prompt, AI, JSON, "this biography", "this page", "the narrative", continuation, or story structure.
+Write as in-world Runeterra lore. Transitions must happen through events, memories, objects, places, dialogue, consequences, and decisions.
+Never say: "page", "chapter", "biography", "previous", "next", "reader", "user", "unlock", "paid", "continuation", "narrative", "story structure", or "generated".
+continuityNote is internal metadata only and must never be copied into pages[].text.
+
+Tone:
+- immersive Runeterra character chronicle
+- mythic but understandable lore entry
+- a real life recounted from inside the world
+- cinematic, grounded, atmospheric
+Do NOT sound like an analysis of a biography, a summary of page events, or a technical outline.
+
+${ROLE_VARIETY_HINT}
+Store the chosen specific role in originalityProfile.specificRole and characterBible.socialRole.
+
+Hidden chronological structure (do not use these labels as page titles, chapter names, or visible text):
 ${BIOGRAPHY_PAGE_GUIDANCE.map((line) => `- ${line}`).join("\n")}
 
 Important:
 - Return exactly 8 pages.
-- Each page chapter and title must be unique and story-specific.
+- Each page chapter and title must be unique, story-specific, and in-world.
 - Do not use fixed structure labels like "The Trial", "The Sign", "Origin", or "The Final Prophecy" as chapter names.
 - Each page text must be 55 to 90 words.
-- Each page after page 1 must clearly continue from the previous page.
+- Each page after page 1 must clearly continue from the previous page through natural storytelling.
 - The first sentence of pages 2–8 should naturally follow the previous page.
-- Use cause and effect. Do not jump to random new scenes, symbols, enemies, or relics without transition.
-- If a new object, person, or threat appears, explain how it connects to the story.
-- Page 4 must include the champion connection and explain who the champion is, how the protagonist connects, and why it matters.
-- Page 5 must end with a clear cliffhanger sentence.
+- Use cause and effect through repeated objects, locations, wounds, letters, rumors, relationships, faction pressure, and consequences.
+- Do not use: "as seen earlier", "from page 3", "the earlier section", "the next part", or "his biography".
+- Beat 4 must include the champion connection naturally in the scene. Name the champion or show unmistakable influence.
+- Beat 5 must end with a clear in-world cliffhanger sentence only.
 - The story must be simple enough to follow but still beautiful.
 - Avoid vague symbolism that is not explained.
 - Avoid generic dark fantasy clichés.
 - Avoid making every story about prophecy, curses, shadows, or chosen ones.
 
 Writing style:
-- clear chronological biography
+- clear chronological life story
 - simple narrative progression
 - concrete events, places, jobs, objects, decisions, and consequences
 - less abstract poetry and fewer unexplained metaphors
-- no disconnected page fragments
+- no disconnected fragments
 
 Reduce overuse of vague words such as:
 destiny, shadow, omen, forgotten stars, ancient whispers, nameless darkness, fate, prophecy, silence remembered him, the world forgot his name.
 
-Champion connection rules (page 4):
+Champion connection rules (beat 4):
 - Choose one existing League of Legends champion based on the region.
+- Write the scene naturally inside the world. Never say "page 4 introduces".
 - The connection must be meaningful but canon-safe.
-- The protagonist must remain original.
+- The protagonist must remain original and central.
 - Do not make the protagonist defeat, kill, replace, marry, or secretly belong to the champion's family.
 - Do not invent major fake canon events involving champions.
 - The champion should influence the protagonist indirectly or briefly.
-- Good connections: witnessing aftermath, hearing true rumors, working near a faction affected by the champion, finding an object or document linked to the champion, being inspired or frightened, village or work affected by known champion history, brief distant crossing without changing canon.
 
-Page 5 cliffhanger rules:
+Beat 5 cliffhanger rules:
 - Must come directly from the champion connection and previous events.
-- Must not always be a trial or fight.
-- Can be a dangerous discovery, message, hidden faction noticing the protagonist, machine activating, relic reacting, door opening, witness disappearing, secret revealed, champion-related clue returning, threat recognizing the protagonist, or irreversible choice.
-- The final sentence of page 5 must be a clear cliffhanger.
+- Must be purely in-world.
+- Must not mention free page, paid section, next page, unlock, continuation, or reader.
+- The final sentence of beat 5 must be a clear cliffhanger.
 
 Canon rules:
 - Do not contradict official League of Legends lore.
-- Do not mention Riot Games, AI, prompts, models, paywall, paid section, or technical terms in the story.
+- Do not mention Riot Games, AI, prompts, models, paywall, paid section, or technical terms in visible story text.
 
 Return a JSON object matching this exact schema:
 {
@@ -120,6 +142,13 @@ Return a JSON object matching this exact schema:
     "connectionType": "string",
     "connectionSummary": "string",
     "canonSafetyNote": "string"
+  },
+  "originalityProfile": {
+    "specificRole": "string",
+    "dailyReality": "string",
+    "regionalPressure": "string",
+    "unusualStoryElement": "string",
+    "repetitionAvoided": ["string"]
   },
   "characterBible": {
     "name": "string",
@@ -180,10 +209,13 @@ Visual direction guidance by page:
 - Page 8: current fate scene with open but understandable ending.
 
 Before returning JSON, internally verify:
-- Is the biography easy to follow page by page?
-- Does page 4 clearly name and explain the champion connection?
-- Does page 5 end with suspense caused by prior events?
-- Are pages connected with cause and effect?
+- Is the story easy to follow beat by beat?
+- Does beat 4 naturally include the champion connection in-world?
+- Does beat 5 end with an in-world cliffhanger?
+- Are pages connected with cause and effect without meta references?
+- Is the protagonist role specific and varied?
+- Does the job or social role affect the events?
+- Does any visible text mention page, chapter, biography, reader, unlock, paid, continuation, narrative, prompt, or generated? If yes, rewrite it.
 - Is the writing concrete rather than abstract?
 
 Return strict JSON only.`;

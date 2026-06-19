@@ -4,22 +4,57 @@ import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { LoreBook } from "@/lib/types";
 
+export type PaywallContext = "beforePage5" | "beforePage6";
+
 type UnlockFullStoryModalProps = {
   book: LoreBook;
   accessToken: string;
   isOpen: boolean;
+  context: PaywallContext;
   onClose: () => void;
+  onContinueToPage?: () => void;
+};
+
+const COPY: Record<
+  PaywallContext,
+  {
+    eyebrow: string;
+    title: string;
+    description: string;
+    primaryLabel: string;
+    secondaryLabel: string;
+  }
+> = {
+  beforePage5: {
+    eyebrow: "The turning point approaches",
+    title: "The final free page is about to open",
+    description:
+      "Your legend is nearing its turning point. You can continue to the next page, but the pages after it will require the complete book.",
+    primaryLabel: "Unlock full book",
+    secondaryLabel: "Continue to actual page",
+  },
+  beforePage6: {
+    eyebrow: "The chronicle deepens",
+    title: "Unlock the rest of your legend",
+    description:
+      "The next pages reveal what happens after the cliffhanger, with the final illustrations and complete interactive book.",
+    primaryLabel: "Unlock full book",
+    secondaryLabel: "Not now",
+  },
 };
 
 export default function UnlockFullStoryModal({
   book,
   accessToken,
   isOpen,
+  context,
   onClose,
+  onContinueToPage,
 }: UnlockFullStoryModalProps) {
   const [email, setEmail] = useState("");
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const copy = COPY[context];
 
   const handleUnlock = useCallback(async () => {
     setIsRedirecting(true);
@@ -46,6 +81,14 @@ export default function UnlockFullStoryModal({
       setIsRedirecting(false);
     }
   }, [accessToken, email]);
+
+  const handleSecondary = useCallback(() => {
+    if (context === "beforePage5" && onContinueToPage) {
+      onContinueToPage();
+      return;
+    }
+    onClose();
+  }, [context, onClose, onContinueToPage]);
 
   return (
     <AnimatePresence>
@@ -81,23 +124,24 @@ export default function UnlockFullStoryModal({
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(217,189,120,0.14),transparent_55%)]" />
               <div className="relative">
                 <p className="font-title text-[0.62rem] uppercase tracking-[0.34em] text-[#d9bd78]/85">
-                  The prophecy pauses here
+                  {copy.eyebrow}
                 </p>
                 <h2 id="unlock-full-story-title" className="font-cover-title mt-3 text-2xl leading-tight text-[#f7ebce]">
-                  Discover the rest of {book.characterBible.name}&apos;s legend
+                  {copy.title}
                 </h2>
                 <p id="unlock-full-story-description" className="mt-4 text-sm leading-7 text-[#b8c2d0]">
-                  Unlock the full chronicle to receive the complete interactive book, final illustrated pages, full
-                  narration, a private access link by email, and a downloadable PDF version of your legend.
+                  {copy.description}
                 </p>
 
-                <ul className="mt-4 space-y-2 text-sm text-[#c9d3df]">
-                  <li>Complete interactive book</li>
-                  <li>Final illustrated pages</li>
-                  <li>Full narration</li>
-                  <li>Private access link by email</li>
-                  <li>Downloadable PDF version</li>
-                </ul>
+                {context === "beforePage6" ? (
+                  <ul className="mt-4 space-y-2 text-sm text-[#c9d3df]">
+                    <li>Complete interactive book</li>
+                    <li>Final illustrated pages</li>
+                    <li>Full narration</li>
+                    <li>Private access link by email</li>
+                    <li>Downloadable PDF version</li>
+                  </ul>
+                ) : null}
 
                 <label className="mt-5 block">
                   <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#9baabd]">Email for delivery</span>
@@ -123,15 +167,15 @@ export default function UnlockFullStoryModal({
                     disabled={isRedirecting}
                     className="gold-button rounded-2xl px-5 py-3.5 text-xs font-bold uppercase tracking-[0.22em] disabled:cursor-wait disabled:opacity-70"
                   >
-                    {isRedirecting ? "Opening secure checkout..." : "Unlock full book"}
+                    {isRedirecting ? "Opening secure checkout..." : copy.primaryLabel}
                   </button>
                   <button
                     type="button"
-                    onClick={onClose}
+                    onClick={handleSecondary}
                     disabled={isRedirecting}
                     className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#9baabd] transition hover:border-[#d9bd78]/30 hover:text-[#e8dcc0] disabled:opacity-60"
                   >
-                    Continue on this page
+                    {copy.secondaryLabel}
                   </button>
                 </div>
               </div>

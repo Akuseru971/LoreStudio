@@ -78,6 +78,13 @@ export type LoreBook = {
     connectionSummary: string;
     canonSafetyNote: string;
   };
+  originalityProfile?: {
+    specificRole: string;
+    dailyReality: string;
+    regionalPressure: string;
+    unusualStoryElement: string;
+    repetitionAvoided: string[];
+  };
 };
 
 export type AudioSettings = {
