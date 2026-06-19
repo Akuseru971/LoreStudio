@@ -2,11 +2,11 @@ import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 const fallbackChapterLabels = [
-  "A Name in the Ledger",
-  "The Work and the Ward",
-  "The Day the Pattern Broke",
-  "A Champion's Shadow",
-  "The Door That Would Not Stay Shut",
+  "Where the Name Began",
+  "The Weight of Ordinary Days",
+  "When the Pattern Shifted",
+  "The Road That Narrowed",
+  "A Name the World Already Knew",
   "What the Silence Left Behind",
   "The Person They Had to Become",
   "Where the Road Ends Now",
@@ -36,7 +36,7 @@ export function buildFallbackLoreBook(input: BookFormInput): LoreBook {
     biographyArc: {
       startingSituation: `${input.name} works as ${profile.socialRole} in ${region}.`,
       incitingEvent: profile.coreConflict,
-      championConnectionPage4: champion.summary,
+      championConnectionPage5: champion.summary,
       page5Cliffhanger: champion.cliffhanger,
       finalState: `${input.name} survives the immediate crisis but must follow evidence that points beyond one solved problem.`,
     },
@@ -225,13 +225,13 @@ function buildPageTexts(
   champion: ReturnType<typeof championForRegion>,
 ) {
   return [
-    `${input.name} was known in ${region} as ${profile.socialRole}, not as a hero. They kept local records, carried ${profile.distinctiveHook}, and lived inside ordinary duties until one missing detail made neighbors look at them for answers.`,
-    `Every day followed the same practical rhythm: work, routes, repairs, and the small favors that hold a community together. ${input.name} knew which doors stuck, which elders lied about their health, and which warnings people preferred not to hear. That knowledge made the first real problem impossible to ignore.`,
-    `The change began with ${profile.coreConflict}. Something failed that should have been preventable, and ${input.name} was the one person close enough to see the pattern before others admitted there was one. From that hour onward, ordinary days were over.`,
-    `Following the evidence led to ${champion.name}. ${champion.summary} For ${input.name}, the connection was not fame but consequence: a known champion's world had already touched theirs, and the proof was now in their hands.`,
-    `${input.name} traced the clue to a place no worker was meant to enter alone. The deeper they went, the more the broken valve, the green residue, and ${champion.name}'s name all pointed to the same impossible answer. Then ${champion.cliffhanger}`,
+    `${input.name} grew up in ${region} knowing the lanes by sound and smell, not by maps. As ${profile.socialRole}, they learned early which favors kept people alive and which warnings were better left unspoken.`,
+    `A debt, a promise, or a mistake from those early years followed ${input.name} longer than they admitted. ${profile.distinctiveHook} became the one object they trusted when official answers failed.`,
+    `${profile.coreConflict} did not arrive as prophecy. It arrived as a practical failure — a broken route, a missing record, a door that should not have opened — and ${input.name} was close enough to see it first.`,
+    `Neighbors who once called ${input.name} reliable now looked to them for explanations no worker should have to give. Every answer led deeper into ${region}'s hidden machinery, and none of it felt accidental.`,
+    `Only then did the evidence point to ${champion.name}. ${champion.summary} ${input.name} understood, with a sick clarity, that their private trouble had crossed into lore the city already knew. ${champion.cliffhanger}`,
     `The immediate aftermath left no time for poetry. People shouted, doors slammed, and the problem ${input.name} had uncovered could no longer stay private. Whatever happened in the sealed place, the community would demand an explanation before nightfall.`,
-    `${input.name} changed by acting with clearer purpose. The ${input.characterType} stopped waiting for permission and started using ${profile.distinctiveHook} as proof, guide, and responsibility. Neighbors who once saw only a local worker now saw someone willing to name the truth.`,
+    `${input.name} stopped measuring their life by shifts and routes. They used ${profile.distinctiveHook} as proof, guide, and responsibility, and the ${input.characterType} people had underestimated finally spoke with authority.`,
     `Today ${input.name} stands at the edge of a solved crisis and a larger unanswered one. ${region} is safer than it was, but the last clue points beyond one street, one tunnel, one ledger. The work is not finished; the road ahead still waits.`,
   ];
 }
@@ -240,9 +240,9 @@ function continuityNoteForPage(index: number, name: string) {
   const notes = [
     "Opening introduction.",
     `Continues from ${name}'s established role and community position.`,
-    "Follows the daily routine established previously.",
-    "Results directly from the inciting event.",
-    "Builds on the champion connection.",
+    "Escalates the growing tension from earlier events.",
+    "Builds pressure before the champion revelation.",
+    "Champion connection and cliffhanger.",
     "Immediate consequence of the cliffhanger.",
     "Shows how the fallout changes the protagonist.",
     "Resolves the arc while leaving the future open.",
@@ -488,22 +488,22 @@ function visualDirectionForPage(
       lighting: "contrasty incident light",
     },
     {
-      sceneType: "champion connection scene",
-      cameraShot: "over-the-shoulder shot focused on evidence tied to ${champion.name}",
-      characterAction: `${input.name} finds proof linking their problem to ${champion.name}'s known influence`,
-      environment: `${region} location affected by ${champion.name}'s history or faction`,
-      keyObjects: ["document", "symbol", "aftermath detail", "distant banner"],
-      mood: "revealing, grounded",
-      lighting: "clear focal light on the clue",
+      sceneType: "rising tension scene",
+      cameraShot: "medium-wide shot focused on mounting pressure",
+      characterAction: `${input.name} faces consequences as ${profile.coreConflict} tightens around them`,
+      environment: `${region} location where private trouble becomes public`,
+      keyObjects: ["accusing witness", profile.distinctiveHook, "closing route"],
+      mood: "pressured, narrowing",
+      lighting: "closing shadows with a clear focal detail",
     },
     {
-      sceneType: "cliffhanger scene",
-      cameraShot: "dramatic medium-wide shot on the suspense beat",
-      characterAction: `${input.name} reaches the moment of suspense: ${champion.cliffhanger}`,
-      environment: `sealed or dangerous place in ${region}`,
-      keyObjects: ["activating clue", "opened threshold", "reacting object"],
-      mood: "suspenseful, unresolved",
-      lighting: "high contrast on the cliffhanger detail",
+      sceneType: "champion connection and cliffhanger scene",
+      cameraShot: "dramatic medium-wide shot on the revelation and suspense beat",
+      characterAction: `${input.name} discovers the link to ${champion.name} and reaches the cliffhanger: ${champion.cliffhanger}`,
+      environment: `${region} location where known lore collides with the protagonist's life`,
+      keyObjects: ["champion-linked evidence", "activating clue", profile.distinctiveHook],
+      mood: "revelatory, suspenseful",
+      lighting: "high contrast on the champion clue and cliffhanger detail",
     },
     {
       sceneType: "immediate consequence scene",
@@ -548,7 +548,7 @@ function buildFallbackImagePrompt(
   champion: ReturnType<typeof championForRegion>,
 ) {
   const championHint =
-    pageNumber === 4 ? `Indirect champion reference: ${champion.name}. ${champion.summary}` : "";
+    pageNumber === 5 ? `Champion connection and cliffhanger: ${champion.name}. ${champion.summary}` : "";
   const cliffhangerHint = pageNumber === 5 ? `Cliffhanger focus: ${champion.cliffhanger}` : "";
 
   return [

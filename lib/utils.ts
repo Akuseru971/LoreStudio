@@ -160,8 +160,12 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
       sanitizeText(sourceBiographyArc?.incitingEvent, 300) ||
       sanitizeText(book.coreConflict, 240) ||
       "A concrete event disrupts their daily life.",
-    championConnectionPage4:
-      sanitizeText(sourceBiographyArc?.championConnectionPage4, 300) ||
+    championConnectionPage5:
+      sanitizeText(sourceBiographyArc?.championConnectionPage5, 300) ||
+      sanitizeText(
+        (sourceBiographyArc as { championConnectionPage4?: string } | undefined)?.championConnectionPage4,
+        300,
+      ) ||
       sanitizeText(book.championConnection?.connectionSummary, 300) ||
       "A canon-safe connection to a regional champion shapes their path.",
     page5Cliffhanger:
@@ -177,7 +181,7 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     championName: sanitizeText(sourceChampionConnection?.championName, 80) || "A regional champion",
     connectionType: sanitizeText(sourceChampionConnection?.connectionType, 160) || "indirect influence",
     connectionSummary:
-      sanitizeText(sourceChampionConnection?.connectionSummary, 300) || biographyArc.championConnectionPage4,
+      sanitizeText(sourceChampionConnection?.connectionSummary, 300) || biographyArc.championConnectionPage5,
     canonSafetyNote:
       sanitizeText(sourceChampionConnection?.canonSafetyNote, 300) ||
       "The protagonist remains original and no major canon events were altered.",
@@ -229,7 +233,7 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     biographyArc: {
       startingSituation: biographyArc.startingSituation,
       incitingEvent: biographyArc.incitingEvent,
-      championConnectionPage4: biographyArc.championConnectionPage4,
+      championConnectionPage5: biographyArc.championConnectionPage5,
       page5Cliffhanger: biographyArc.page5Cliffhanger,
       finalState: biographyArc.finalState,
     },

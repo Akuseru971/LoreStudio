@@ -68,7 +68,7 @@ export type LoreBook = {
   biographyArc?: {
     startingSituation: string;
     incitingEvent: string;
-    championConnectionPage4: string;
+    championConnectionPage5: string;
     page5Cliffhanger: string;
     finalState: string;
   };

@@ -40,14 +40,14 @@ const loreBookJsonSchema = {
       required: [
         "startingSituation",
         "incitingEvent",
-        "championConnectionPage4",
+        "championConnectionPage5",
         "page5Cliffhanger",
         "finalState",
       ],
       properties: {
         startingSituation: { type: "string" },
         incitingEvent: { type: "string" },
-        championConnectionPage4: { type: "string" },
+        championConnectionPage5: { type: "string" },
         page5Cliffhanger: { type: "string" },
         finalState: { type: "string" },
       },
