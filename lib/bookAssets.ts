@@ -1,6 +1,12 @@
 import { BOOK_ASSETS_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type BookAssetType = "image" | "audio";
+
+const BOOK_ASSET_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "audio/mpeg", "audio/mp3"];
+const BOOK_ASSET_SIZE_LIMIT = 10 * 1024 * 1024;
+
+let ensureBucketPromise: Promise<void> | null = null;
 
 function requireSupabase() {
   const client = getSupabaseServerClient();
@@ -8,6 +14,34 @@ function requireSupabase() {
     throw new Error("Supabase is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
   return client;
+}
+
+async function ensureBookAssetsBucket(supabase: SupabaseClient) {
+  const { data: bucket, error: getError } = await supabase.storage.getBucket(BOOK_ASSETS_BUCKET);
+  if (!getError && bucket) {
+    return;
+  }
+
+  const { error: createError } = await supabase.storage.createBucket(BOOK_ASSETS_BUCKET, {
+    public: false,
+    fileSizeLimit: BOOK_ASSET_SIZE_LIMIT,
+    allowedMimeTypes: BOOK_ASSET_MIME_TYPES,
+  });
+
+  if (createError && !/already exists/i.test(createError.message)) {
+    throw new Error(createError.message);
+  }
+}
+
+function ensureBookAssetsBucketReady(supabase: SupabaseClient) {
+  if (!ensureBucketPromise) {
+    ensureBucketPromise = ensureBookAssetsBucket(supabase).catch((error) => {
+      ensureBucketPromise = null;
+      throw error;
+    });
+  }
+
+  return ensureBucketPromise;
 }
 
 export function isInlineAssetReference(value: string) {
@@ -76,6 +110,7 @@ export async function uploadBookAsset(
   }
 
   const supabase = requireSupabase();
+  await ensureBookAssetsBucketReady(supabase);
   const storagePath = buildAssetStoragePath(bookId, pageNumber, assetType, parsed.mimeType);
   const { error } = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, parsed.buffer, {
     contentType: parsed.mimeType,
@@ -83,6 +118,19 @@ export async function uploadBookAsset(
   });
 
   if (error) {
+    if (/bucket not found/i.test(error.message)) {
+      ensureBucketPromise = null;
+      await ensureBookAssetsBucketReady(supabase);
+      const retry = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, parsed.buffer, {
+        contentType: parsed.mimeType,
+        upsert: true,
+      });
+      if (retry.error) {
+        throw new Error(retry.error.message);
+      }
+      return storagePath;
+    }
+
     throw new Error(error.message);
   }
 
@@ -95,6 +143,7 @@ export async function createSignedAssetUrl(assetRef: string, expiresInSeconds = 
   }
 
   const supabase = requireSupabase();
+  await ensureBookAssetsBucketReady(supabase);
   const { data, error } = await supabase.storage
     .from(BOOK_ASSETS_BUCKET)
     .createSignedUrl(assetRef, expiresInSeconds);
