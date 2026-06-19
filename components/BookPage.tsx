@@ -10,18 +10,9 @@ type BookPageProps = {
   isActive: boolean;
   side?: "image" | "text";
   isImageLoading?: boolean;
-  isTextRevealed?: boolean;
-  audioDuration?: number;
 };
 
-export default function BookPage({
-  page,
-  isActive,
-  side = "text",
-  isImageLoading = false,
-  isTextRevealed = true,
-  audioDuration,
-}: BookPageProps) {
+export default function BookPage({ page, isActive, side = "text", isImageLoading = false }: BookPageProps) {
   if (side === "image") {
     return <ImageLeaf page={page} isImageLoading={isImageLoading} />;
   }
@@ -33,10 +24,10 @@ export default function BookPage({
       <div className="relative z-10 flex h-full flex-col">
         <header className="mb-4 flex items-center justify-between gap-3 border-b border-[#6b4a24]/20 pb-3">
           <div>
-            <p className="font-title text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
+            <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
               Chapter {page.pageNumber}
             </p>
-            <h2 className="font-cover-title mt-1.5 text-xl leading-tight text-[#2a1a0c] sm:text-2xl">{page.chapter}</h2>
+            <h2 className="page-elegant-title mt-1.5 text-xl leading-tight text-[#2a1a0c] sm:text-2xl">{page.chapter}</h2>
           </div>
           <span className="rounded-full border border-[#6b4a24]/18 bg-[#fff8e8]/40 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-wider text-[#6b4a24]/75">
             {String(page.pageNumber).padStart(2, "0")}
@@ -45,23 +36,18 @@ export default function BookPage({
 
         <div className="flex flex-1 items-center">
           <motion.div
-            key={`${page.pageNumber}-${isActive}-${isTextRevealed}`}
-            initial={{ opacity: 0, y: 14 }}
-            animate={isActive && isTextRevealed ? { opacity: 1, y: 0 } : { opacity: 0.7, y: 6 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            key={page.pageNumber}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isActive ? 1 : 0.96 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
             className="w-full rounded-lg border border-[#6b4a24]/12 bg-[#fff8e8]/25 p-5 shadow-[inset_0_2px_12px_rgba(80,52,28,0.06)] sm:p-6"
           >
             <p className="page-elegant-title text-xl leading-snug sm:text-2xl">{page.title}</p>
-            <SyncedNarrationText
-              text={page.text}
-              isActive={isActive}
-              audioDuration={audioDuration}
-              narrationStarted={isTextRevealed}
-            />
+            <SyncedNarrationText text={page.text} isActive={isActive} />
           </motion.div>
         </div>
 
-        <footer className="mt-3 flex items-center justify-between border-t border-[#6b4a24]/15 pt-2.5 text-[0.6rem] uppercase tracking-[0.2em] text-[#6b4a24]/60">
+        <footer className="book-meta-label mt-3 flex items-center justify-between border-t border-[#6b4a24]/15 pt-2.5 text-[0.6rem] uppercase tracking-[0.2em] text-[#6b4a24]/60">
           <span>Personal chronicle</span>
           <span>{page.pageNumber} / 8</span>
         </footer>
@@ -77,8 +63,8 @@ function ImageLeaf({ page, isImageLoading }: { page: BookPageType; isImageLoadin
       <div className="pointer-events-none absolute inset-0 opacity-28 mix-blend-multiply [background:radial-gradient(circle_at_20%_20%,rgba(255,255,255,.45),transparent_10rem),repeating-linear-gradient(90deg,rgba(72,45,19,.06)_0_1px,transparent_1px_5px)]" />
       <div className="relative z-10 flex h-full flex-col">
         <header className="mb-3 flex items-center justify-between border-b border-[#6b4a24]/15 pb-2.5">
-          <p className="font-title text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">Illustration</p>
-          <p className="font-title text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
+          <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">Illustration</p>
+          <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
             {String(page.pageNumber).padStart(2, "0")} / 8
           </p>
         </header>
@@ -114,7 +100,7 @@ function IllustratedPlaceholder({
       )}
     >
       <div>
-        <p className="font-title text-[0.62rem] uppercase tracking-[0.28em] text-[#a89068]/75">{chapter}</p>
+        <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.28em] text-[#a89068]/75">{chapter}</p>
         <p className="page-elegant-title mt-3 text-xl leading-tight text-[#e8dcc0] sm:text-2xl">{title}</p>
         <p className="mt-4 text-[0.62rem] uppercase tracking-[0.22em] text-[#8a9aad]/70">
           {isImageLoading ? "Illustration being painted..." : "Illustration waiting in the mist"}

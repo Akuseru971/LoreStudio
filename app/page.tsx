@@ -134,10 +134,12 @@ export default function Home() {
   const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
   const [generationDone, setGenerationDone] = useState(false);
   const [videoFinished, setVideoFinished] = useState(false);
+  const [bookIsOpen, setBookIsOpen] = useState(false);
 
   const generationRunRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
-  const shouldPlayAmbientMusic = view === "form" && !ambientMuted;
+  const shouldPlayAmbientMusic = (view === "form" || (view === "book" && bookIsOpen)) && !ambientMuted;
+  const ambientMusicVolume = view === "form" ? 0.14 : 0.12;
 
   useEffect(() => {
     writeAmbientMusicMutedPreference(ambientMuted);
@@ -242,12 +244,13 @@ export default function Home() {
     setAccessToken(null);
     setGenerationDone(false);
     setVideoFinished(false);
+    setBookIsOpen(false);
     setView("form");
   }
 
   return (
     <>
-      <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} />
+      <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} normalVolume={ambientMusicVolume} />
       {view === "form" ? <RitualVideoPreloader /> : null}
 
       <AnimatePresence mode="wait">
@@ -270,6 +273,10 @@ export default function Home() {
           </motion.div>
         ) : null}
 
+        {view === "book" ? (
+          <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
+        ) : null}
+
         {view === "ritualVideo" && introVideoSrc ? (
           <motion.div key="ritualVideo" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
             <RitualLaunchVideo
@@ -289,7 +296,12 @@ export default function Home() {
 
         {view === "book" && book && accessToken ? (
           <motion.div key="book" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
-            <InteractiveBook book={book} accessToken={accessToken} onReset={reset} />
+            <InteractiveBook
+              book={book}
+              accessToken={accessToken}
+              onReset={reset}
+              onReadingStateChange={setBookIsOpen}
+            />
           </motion.div>
         ) : null}
 

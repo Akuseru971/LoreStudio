@@ -650,10 +650,64 @@ button {
 }
 
 .page-elegant-title {
-  font-family: var(--font-cormorant), Georgia, serif;
+  font-family: var(--font-cormorant), var(--font-eb-garamond), Georgia, serif;
   font-weight: 400;
   letter-spacing: 0.06em;
   color: #2a1a0c;
+}
+
+.book-meta-label {
+  font-family: var(--font-cormorant), var(--font-eb-garamond), Georgia, serif;
+  font-weight: 500;
+}
+
+.book-body-text {
+  font-family: var(--font-eb-garamond), var(--font-cormorant), Georgia, serif;
+  font-size: 1rem;
+  line-height: 1.68;
+  letter-spacing: 0.012em;
+  color: #2a1f14;
+  font-weight: 400;
+}
+
+@media (min-width: 640px) {
+  .book-body-text {
+    font-size: 1.12rem;
+    line-height: 1.72;
+  }
+}
+
+.ambient-music-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 144, 104, 0.28);
+  background: rgba(8, 12, 20, 0.62);
+  color: rgba(232, 220, 192, 0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.ambient-music-toggle:hover {
+  border-color: rgba(217, 189, 120, 0.45);
+  background: rgba(12, 18, 30, 0.78);
+  transform: translateY(-1px);
+}
+
+.ambient-music-toggle-icon {
+  width: 1.15rem;
+  height: 1.15rem;
 }
 
 .book-scene {
@@ -668,25 +722,6 @@ button {
 .pageflip-root .page {
   overflow: hidden;
   border-radius: 4px 14px 14px 4px;
-}
-
-.smokey-word {
-  position: relative;
-  text-shadow:
-    0 0 10px rgba(62, 43, 24, 0.16),
-    0 0 22px rgba(91, 61, 31, 0.12);
-  will-change: opacity, transform, filter;
-}
-
-.smokey-word::after {
-  position: absolute;
-  inset: -0.12em -0.18em;
-  z-index: -1;
-  content: "";
-  opacity: 0.18;
-  background: radial-gradient(circle, rgba(72, 45, 19, 0.18), transparent 58%);
-  filter: blur(8px);
-  transform: translateY(-0.02em);
 }
 
 .ritual-particle {

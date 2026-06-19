@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
+import AmbientMusicToggle from "@/components/AmbientMusicToggle";
 import InteractiveBook from "@/components/InteractiveBook";
+import {
+  readAmbientMusicMutedPreference,
+  writeAmbientMusicMutedPreference,
+} from "@/lib/ambient-music-config";
 import type { LoreBook } from "@/lib/types";
 
 type BookResponse = {
@@ -19,10 +25,16 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
   const [status, setStatus] = useState<string>("loading");
   const [canDownloadPdf, setCanDownloadPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
+  const [bookIsOpen, setBookIsOpen] = useState(false);
 
   useEffect(() => {
     void params.then((resolved) => setToken(resolved.token));
   }, [params]);
+
+  useEffect(() => {
+    writeAmbientMusicMutedPreference(ambientMuted);
+  }, [ambientMuted]);
 
   useEffect(() => {
     if (!token) {
@@ -66,6 +78,8 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
       cancelled = true;
     };
   }, [token]);
+
+  const shouldPlayAmbientMusic = status === "ready" && bookIsOpen && !ambientMuted;
 
   if (status === "loading") {
     return (
@@ -112,14 +126,19 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
   }
 
   return (
-    <InteractiveBook
-      book={book}
-      accessToken={token}
-      isPremium
-      canDownloadPdf={canDownloadPdf}
-      onReset={() => {
-        window.location.href = "/";
-      }}
-    />
+    <>
+      <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} normalVolume={0.12} />
+      <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
+      <InteractiveBook
+        book={book}
+        accessToken={token}
+        isPremium
+        canDownloadPdf={canDownloadPdf}
+        onReadingStateChange={setBookIsOpen}
+        onReset={() => {
+          window.location.href = "/";
+        }}
+      />
+    </>
   );
 }
