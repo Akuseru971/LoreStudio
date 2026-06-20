@@ -1,14 +1,10 @@
 import { dataUrlFromBase64, sanitizeText } from "@/lib/utils";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";
+const DEFAULT_ELEVENLABS_VOICE_ID = "t9VKj6QDu6evrQNoV6Ij";
 
 export function getElevenLabsVoiceId() {
-  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
-  if (!voiceId) {
-    throw new Error("Missing ELEVENLABS_VOICE_ID");
-  }
-
-  return voiceId;
+  return process.env.ELEVENLABS_VOICE_ID?.trim() || DEFAULT_ELEVENLABS_VOICE_ID;
 }
 
 function getElevenLabsModelId() {
