@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import { buildFallbackIllustration, generateBookPageImage } from "@/lib/images";
 import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       typeof pageNumber !== "number" ||
       !Number.isInteger(pageNumber) ||
       pageNumber < 1 ||
-      pageNumber > ILLUSTRATED_PAGE_COUNT
+      pageNumber > FREE_IMAGE_PAGE_COUNT
     ) {
       return NextResponse.json({ imageUrl: null, error: "Invalid image request." }, { status: 400 });
     }

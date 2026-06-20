@@ -12,6 +12,7 @@ import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import RitualVideoPreloader from "@/components/RitualVideoPreloader";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import {
   readAmbientMusicMutedPreference,
   writeAmbientMusicMutedPreference,
@@ -73,11 +74,12 @@ async function generateAudioForPage(page: LoreBook["pages"][number]) {
 
 async function attachInitialAssets(book: LoreBook) {
   const pages = [...book.pages];
-  const experiencePages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+  const imagePages = pages.slice(0, FREE_IMAGE_PAGE_COUNT);
+  const audioPages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
 
   const [imageResults, audioResults] = await Promise.all([
-    Promise.allSettled(experiencePages.map((page) => generateImageForPage(book, page.pageNumber))),
-    Promise.allSettled(experiencePages.map((page) => generateAudioForPage(page))),
+    Promise.allSettled(imagePages.map((page) => generateImageForPage(book, page.pageNumber))),
+    Promise.allSettled(audioPages.map((page) => generateAudioForPage(page))),
   ]);
 
   imageResults.forEach((result, index) => {
@@ -119,20 +121,21 @@ async function uploadBookAsset(
 }
 
 async function persistInitialAssets(accessToken: string, book: LoreBook) {
-  const experiencePages = book.pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+  const uploads: Promise<void>[] = [];
 
-  await Promise.all(
-    experiencePages.flatMap((page) => {
-      const uploads: Promise<void>[] = [];
-      if (page.imageUrl) {
-        uploads.push(uploadBookAsset(accessToken, page.pageNumber, "image", page.imageUrl));
-      }
-      if (page.audioUrl) {
-        uploads.push(uploadBookAsset(accessToken, page.pageNumber, "audio", page.audioUrl));
-      }
-      return uploads;
-    }),
-  );
+  for (const page of book.pages.slice(0, FREE_IMAGE_PAGE_COUNT)) {
+    if (page.imageUrl) {
+      uploads.push(uploadBookAsset(accessToken, page.pageNumber, "image", page.imageUrl));
+    }
+  }
+
+  for (const page of book.pages.slice(0, ILLUSTRATED_PAGE_COUNT)) {
+    if (page.audioUrl) {
+      uploads.push(uploadBookAsset(accessToken, page.pageNumber, "audio", page.audioUrl));
+    }
+  }
+
+  await Promise.all(uploads);
 }
 
 export default function Home() {

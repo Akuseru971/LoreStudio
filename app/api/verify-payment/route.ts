@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
+import { hasPremiumAccess, triggerFulfillment, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
 import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
+import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,9 @@ export async function POST(request: Request) {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
     const book = result.book;
     const emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
+    if (hasPremiumAccess(book.status)) {
+      triggerPremiumImageGeneration(body.accessToken);
+    }
 
     return NextResponse.json({
       verified: result.verified,

@@ -10,11 +10,18 @@ type BookPageProps = {
   isActive: boolean;
   side?: "image" | "text";
   isImageLoading?: boolean;
+  imageSealed?: boolean;
 };
 
-export default function BookPage({ page, isActive, side = "text", isImageLoading = false }: BookPageProps) {
+export default function BookPage({
+  page,
+  isActive,
+  side = "text",
+  isImageLoading = false,
+  imageSealed = false,
+}: BookPageProps) {
   if (side === "image") {
-    return <ImageLeaf page={page} isImageLoading={isImageLoading} />;
+    return <ImageLeaf page={page} isImageLoading={isImageLoading} imageSealed={imageSealed} />;
   }
 
   return (
@@ -56,7 +63,15 @@ export default function BookPage({ page, isActive, side = "text", isImageLoading
   );
 }
 
-function ImageLeaf({ page, isImageLoading }: { page: BookPageType; isImageLoading: boolean }) {
+function ImageLeaf({
+  page,
+  isImageLoading,
+  imageSealed,
+}: {
+  page: BookPageType;
+  isImageLoading: boolean;
+  imageSealed: boolean;
+}) {
   return (
     <article className="page parchment-surface page-shadow relative flex h-full w-full flex-col overflow-hidden p-4 text-[#20170d] sm:p-5">
       <div className="page-spine-crease" aria-hidden="true" />
@@ -73,6 +88,8 @@ function ImageLeaf({ page, isImageLoading }: { page: BookPageType; isImageLoadin
           {page.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={page.imageUrl} alt={page.title} className="relative z-0 h-full w-full object-cover" />
+          ) : imageSealed ? (
+            <SealedCliffhangerPlaceholder title={page.title} chapter={page.chapter} />
           ) : (
             <IllustratedPlaceholder title={page.title} chapter={page.chapter} isImageLoading={isImageLoading} />
           )}
@@ -80,6 +97,28 @@ function ImageLeaf({ page, isImageLoading }: { page: BookPageType; isImageLoadin
         </div>
       </div>
     </article>
+  );
+}
+
+function SealedCliffhangerPlaceholder({ title, chapter }: { title: string; chapter: string }) {
+  return (
+    <div
+      className={cn(
+        "flex h-full min-h-56 w-full items-center justify-center p-6 text-center",
+        "bg-[radial-gradient(circle_at_50%_18%,rgba(217,189,120,.18),transparent_12rem),linear-gradient(160deg,#120d07,#09111e_48%,#03050a)]",
+      )}
+    >
+      <div className="max-w-xs">
+        <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.32em] text-[#d9bd78]/70">{chapter}</p>
+        <p className="page-elegant-title mt-3 text-xl leading-tight text-[#f7ebce] sm:text-2xl">{title}</p>
+        <p className="mt-5 text-sm leading-7 text-[#c9d3df]/85">
+          The vision beyond this page is sealed.
+        </p>
+        <p className="mt-3 text-[0.62rem] uppercase tracking-[0.24em] text-[#8a9aad]/70">
+          Unlock the full legend to reveal the illustration
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -103,7 +142,7 @@ function IllustratedPlaceholder({
         <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.28em] text-[#a89068]/75">{chapter}</p>
         <p className="page-elegant-title mt-3 text-xl leading-tight text-[#e8dcc0] sm:text-2xl">{title}</p>
         <p className="mt-4 text-[0.62rem] uppercase tracking-[0.22em] text-[#8a9aad]/70">
-          {isImageLoading ? "Illustration being painted..." : "Illustration waiting in the mist"}
+          {isImageLoading ? "Summoning illustration..." : "Illustration waiting in the mist"}
         </p>
       </div>
     </div>

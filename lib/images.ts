@@ -1,3 +1,4 @@
+import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE } from "@/lib/image-config";
 import { buildFinalImagePrompt } from "@/lib/prompts";
 import { openai } from "@/lib/openai";
 import type { BookPage, LoreBook } from "@/lib/types";
@@ -13,9 +14,9 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
     return options.fallbackOnFailure ? buildFallbackIllustration(book, page) : undefined;
   }
 
-  const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+  const imageModel = IMAGE_MODEL;
   const models = [imageModel];
-  const requestedSize = process.env.OPENAI_IMAGE_SIZE || "1024x1536";
+  const requestedSize = IMAGE_SIZE;
   const sizes = Array.from(new Set([requestedSize, "1024x1024"]));
   const attempts = sizes.flatMap((size) => models.map((model) => ({ model, size })));
   const prompt = buildFinalImagePrompt(book, page);
@@ -35,6 +36,7 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
         model,
         prompt,
         size: size as "1024x1024" | "1024x1536" | "1536x1024",
+        quality: isGptImageModel ? IMAGE_QUALITY : undefined,
         ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
       });
 

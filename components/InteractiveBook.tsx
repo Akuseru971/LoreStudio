@@ -12,8 +12,14 @@ import BookPremiumActions from "@/components/BookPremiumActions";
 import ResultActions from "@/components/ResultActions";
 import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import {
+  FREE_IMAGE_PAGE_COUNT,
+  isPremiumImagePage,
+  isSealedFreeImagePage,
+  PREMIUM_IMAGE_PAGE_NUMBERS,
+} from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
-import type { LoreBook } from "@/lib/types";
+import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type PageFlipHandle = {
@@ -180,12 +186,21 @@ export default function InteractiveBook({
 
   const fetchImageForPage = useCallback(
     async (pageNumber: number) => {
-      if (pageNumber < 1 || pageNumber > ILLUSTRATED_PAGE_COUNT) {
+      if (pageNumber < 1 || pageNumber > FULL_BOOK_PAGE_COUNT) {
+        return;
+      }
+
+      if (!isPremium && pageNumber > FREE_IMAGE_PAGE_COUNT) {
+        return;
+      }
+
+      if (isPremium && isPremiumImagePage(pageNumber)) {
         return;
       }
 
       const page = book.pages.find((item) => item.pageNumber === pageNumber);
-      if (!page || page.imageUrl || requestedImagesRef.current.has(pageNumber)) {
+      const cachedImage = imageCache[pageNumber] ?? page?.imageUrl;
+      if (!page || cachedImage || requestedImagesRef.current.has(pageNumber)) {
         return;
       }
 
@@ -206,13 +221,95 @@ export default function InteractiveBook({
         setLoadingImages((current) => ({ ...current, [pageNumber]: false }));
       }
     },
-    [book],
+    [book, imageCache, isPremium],
   );
 
+  const refreshPremiumImages = useCallback(async (): Promise<boolean> => {
+    if (!accessToken || !isPremium) {
+      return true;
+    }
+
+    const response = await fetch("/api/book?token=" + encodeURIComponent(accessToken));
+    const data = (await response.json()) as {
+      book?: LoreBook | null;
+      imageStatus?: Record<string, { status: ImagePageStatus; url?: string | null }>;
+    };
+
+    if (!response.ok || !data.book) {
+      return false;
+    }
+
+    const nextCache: Record<number, string | null> = {};
+    for (const page of data.book.pages) {
+      if (page.imageUrl) {
+        nextCache[page.pageNumber] = page.imageUrl;
+      }
+    }
+
+    setImageCache((current) => ({ ...current, ...nextCache }));
+
+    const imageStatus = data.imageStatus || {};
+    let allPremiumReady = true;
+
+    const nextLoading: Record<number, boolean> = {};
+    for (const pageNumber of PREMIUM_IMAGE_PAGE_NUMBERS) {
+      const state = imageStatus[String(pageNumber)];
+      const page = data.book.pages.find((item) => item.pageNumber === pageNumber);
+
+      if (state?.status === "generating") {
+        nextLoading[pageNumber] = true;
+        allPremiumReady = false;
+        continue;
+      }
+
+      if (state?.status === "ready" && page?.imageUrl) {
+        nextLoading[pageNumber] = false;
+        continue;
+      }
+
+      allPremiumReady = false;
+    }
+
+    setLoadingImages((current) => ({ ...current, ...nextLoading }));
+
+    return allPremiumReady;
+  }, [accessToken, isPremium]);
+
   useEffect(() => {
-    const pagesToIllustrate = book.pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+    const pagesToIllustrate = book.pages.slice(0, isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT);
     void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
-  }, [book.pages, fetchImageForPage]);
+  }, [book.pages, fetchImageForPage, isPremium]);
+
+  useEffect(() => {
+    if (!isPremium || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function runPremiumImages() {
+      await fetch("/api/generate-premium-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken }),
+      });
+
+      while (!cancelled) {
+        const allReady = await refreshPremiumImages();
+        if (allReady) {
+          break;
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      }
+    }
+
+    void runPremiumImages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, isPremium, refreshPremiumImages]);
 
   const tryForwardNavigation = useCallback(
     (targetIndex: number) => {
@@ -497,6 +594,7 @@ export default function InteractiveBook({
                           side="image"
                           isActive={index === activePageIndex}
                           isImageLoading={Boolean(loadingImages[page.pageNumber])}
+                          imageSealed={!isPremium && isSealedFreeImagePage(page.pageNumber)}
                         />
                       </div>,
                       <div key={`${page.pageNumber}-text`} className="page">

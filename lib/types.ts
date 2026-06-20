@@ -96,6 +96,13 @@ export type BookStatus = "free" | "checkout_started" | "paid" | "generating" | "
 
 export type Mp3Status = "not_started" | "generating" | "ready" | "failed";
 
+export type ImagePageStatus = "not_started" | "generating" | "ready" | "failed";
+
+export type PageImageState = {
+  status: ImagePageStatus;
+  url?: string | null;
+};
+
 export type ConfirmationEmailStatus = "not_started" | "sending" | "sent" | "failed" | "skipped";
 
 export type StoredBook = {
@@ -109,6 +116,7 @@ export type StoredBook = {
   free_pages: BookPage[] | null;
   premium_pages: BookPage[] | null;
   images: Record<string, string>;
+  image_status: Record<string, ImagePageStatus>;
   audio: Record<string, string>;
   pdf_url: string | null;
   pdf_storage_path: string | null;

@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus } from "@/lib/bookStore";
 import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { hasPremiumAccess, triggerFulfillment } from "@/lib/paymentVerification";
+import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
 import { getStripeClient } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
       }
 
       void sendConfirmationEmailIfNeeded(accessToken);
+      triggerPremiumImageGeneration(accessToken);
     }
 
     return NextResponse.json({ received: true });

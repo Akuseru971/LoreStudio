@@ -2,7 +2,8 @@ import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
 import { persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
 import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
-import type { BookFormInput, BookPage, BookStatus, ConfirmationEmailStatus, LoreBook, Mp3Status, StoredBook } from "@/lib/types";
+import type { BookFormInput, BookPage, BookStatus, ConfirmationEmailStatus, ImagePageStatus, LoreBook, Mp3Status, StoredBook } from "@/lib/types";
+import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
@@ -27,6 +28,7 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     free_pages: (row.free_pages as BookPage[] | null) ?? null,
     premium_pages: (row.premium_pages as BookPage[] | null) ?? null,
     images: (row.images as Record<string, string>) ?? {},
+    image_status: (row.image_status as Record<string, ImagePageStatus>) ?? {},
     audio: (row.audio as Record<string, string>) ?? {},
     pdf_url: row.pdf_url ? String(row.pdf_url) : null,
     pdf_storage_path: row.pdf_storage_path ? String(row.pdf_storage_path) : null,
@@ -80,6 +82,7 @@ export async function createFreeBook(formInput: BookFormInput, book: LoreBook) {
       free_pages: freePages,
       premium_pages: premiumPages,
       images: {},
+      image_status: createDefaultImageStatusMap(),
       audio: {},
     })
     .select("*")
@@ -119,10 +122,20 @@ export async function saveBookAsset(
     ...storedBook[column],
     [String(pageNumber)]: persistedRef,
   };
+  const nextImageStatus =
+    assetType === "image"
+      ? {
+          ...storedBook.image_status,
+          [String(pageNumber)]: "ready" as ImagePageStatus,
+        }
+      : storedBook.image_status;
 
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
-    .update({ [column]: nextAssets })
+    .update({
+      [column]: nextAssets,
+      ...(assetType === "image" ? { image_status: nextImageStatus } : {}),
+    })
     .eq("id", storedBook.id)
     .select("*")
     .single();
@@ -305,6 +318,65 @@ export async function saveStripePayment(
 
 export async function markBookReady(bookId: string) {
   return updateBookStatus(bookId, "ready");
+}
+
+export async function claimPageImageGeneration(bookId: string, pageNumber: number) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    return null;
+  }
+
+  const key = String(pageNumber);
+  const currentStatus = storedBook.image_status[key] || (storedBook.images[key] ? "ready" : "not_started");
+  if (currentStatus === "ready" || currentStatus === "generating") {
+    return null;
+  }
+
+  const nextImageStatus = {
+    ...storedBook.image_status,
+    [key]: "generating" as ImagePageStatus,
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ image_status: nextImageStatus })
+    .eq("id", bookId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markPageImageFailed(bookId: string, pageNumber: number) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    throw new Error("Book not found.");
+  }
+
+  const key = String(pageNumber);
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      image_status: {
+        ...storedBook.image_status,
+        [key]: "failed",
+      },
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark image as failed.");
+  }
+
+  return mapRow(data);
 }
 
 export async function markBookFailed(bookId: string) {

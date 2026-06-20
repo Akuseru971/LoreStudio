@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, mergeBookAssets } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { buildPageImageStates } from "@/lib/imageStatus";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
       accessToken: storedBook.access_token,
       email: storedBook.email,
       book,
+      imageStatus: buildPageImageStates(storedBook),
       isPremium,
       canDownloadPdf: isPremium,
       canDownloadMp3: isPremium,

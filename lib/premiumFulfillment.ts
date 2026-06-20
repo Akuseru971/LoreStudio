@@ -9,37 +9,25 @@ import {
   uploadBookPdf,
 } from "@/lib/bookStore";
 import { generateNarrationAudio } from "@/lib/elevenlabs";
-import { generateBookPageImage } from "@/lib/images";
+import { ensureAllBookImagesReady } from "@/lib/premiumImages";
 import { generateBookPdf } from "@/lib/pdf";
 import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
-const FULL_PAGE_COUNT = FULL_BOOK_PAGE_COUNT;
-
-async function generatePremiumAssets(book: LoreBook) {
-  const images: Record<string, string> = {};
+async function generatePremiumAudio(book: LoreBook) {
   const audio: Record<string, string> = {};
   const pages = [...book.pages];
 
-  for (let pageNumber = ILLUSTRATED_PAGE_COUNT + 1; pageNumber <= FULL_PAGE_COUNT; pageNumber += 1) {
+  for (let pageNumber = ILLUSTRATED_PAGE_COUNT + 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
     const page = pages[pageNumber - 1];
     if (!page) {
       continue;
     }
 
-    const imageUrl = await generateBookPageImage(book, page, {
-      fallbackOnFailure: true,
-      maxAttempts: 2,
-    });
-    if (imageUrl) {
-      images[String(pageNumber)] = imageUrl;
-      pages[pageNumber - 1] = { ...page, imageUrl };
-    }
-
     const audioUrl = await generateNarrationAudio(page.text);
     if (audioUrl) {
       audio[String(pageNumber)] = audioUrl;
-      pages[pageNumber - 1] = { ...pages[pageNumber - 1], audioUrl };
+      pages[pageNumber - 1] = { ...page, audioUrl };
     }
   }
 
@@ -56,7 +44,6 @@ async function generatePremiumAssets(book: LoreBook) {
 
   return {
     book: normalizeLoreBook({ ...book, pages }),
-    images,
     audio,
   };
 }
@@ -79,11 +66,12 @@ export async function fulfillPremiumBook(accessToken: string) {
 
   try {
     const baseBook = await mergeBookAssets(storedBook.free_book, storedBook.images, storedBook.audio);
-    const { book: fullBook, images, audio } = await generatePremiumAssets(baseBook);
+    const { book: audioBook, audio } = await generatePremiumAudio(baseBook);
 
-    await saveFullBook(storedBook.id, fullBook, { images, audio });
+    await saveFullBook(storedBook.id, audioBook, { audio });
 
-    const pdfBuffer = await generateBookPdf(fullBook);
+    const { book: illustratedBook } = await ensureAllBookImagesReady(accessToken);
+    const pdfBuffer = await generateBookPdf(illustratedBook);
     await uploadBookPdf(storedBook.id, pdfBuffer);
 
     const readyBook = await markBookReady(storedBook.id);
