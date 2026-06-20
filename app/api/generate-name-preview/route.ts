@@ -14,16 +14,12 @@ export async function POST(request: Request) {
     }
 
     const previewText = `The archives have found ${name}.`;
-
-    try {
-      const audioUrl = await generateNarrationAudio(previewText);
-      return NextResponse.json({ audioUrl });
-    } catch (error) {
-      console.warn("Name preview audio failed.", error);
-      return NextResponse.json({ audioUrl: null });
-    }
+    const audioUrl = await generateNarrationAudio(previewText, { pageNumber: "preview" });
+    return NextResponse.json({ audioUrl });
   } catch (error) {
-    console.warn("Name preview route failed.", error);
-    return NextResponse.json({ audioUrl: null });
+    console.warn("Name preview audio failed.", error);
+    const message = error instanceof Error ? error.message : "Unable to generate name preview.";
+    const status = message.includes("Missing ELEVENLABS") ? 503 : 500;
+    return NextResponse.json({ audioUrl: null, error: message }, { status });
   }
 }

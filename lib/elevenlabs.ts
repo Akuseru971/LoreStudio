@@ -1,10 +1,26 @@
 import { dataUrlFromBase64, sanitizeText } from "@/lib/utils";
 
-const DEFAULT_ELEVENLABS_VOICE_ID = "t9VKj6QDu6evrQNoV6Ij";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";
 
-export async function generateNarrationAudio(text: string) {
-  const buffer = await generateNarrationAudioBuffer(text);
+export function getElevenLabsVoiceId() {
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+  if (!voiceId) {
+    throw new Error("Missing ELEVENLABS_VOICE_ID");
+  }
+
+  return voiceId;
+}
+
+function getElevenLabsModelId() {
+  return process.env.ELEVENLABS_MODEL_ID?.trim() || DEFAULT_ELEVENLABS_MODEL_ID;
+}
+
+type GenerateNarrationOptions = {
+  pageNumber?: number | string;
+};
+
+export async function generateNarrationAudio(text: string, options: GenerateNarrationOptions = {}) {
+  const buffer = await generateNarrationAudioBuffer(text, options);
   if (!buffer) {
     return null;
   }
@@ -12,18 +28,21 @@ export async function generateNarrationAudio(text: string) {
   return dataUrlFromBase64(buffer.toString("base64"), "audio/mpeg");
 }
 
-export async function generateNarrationAudioBuffer(text: string) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVENLABS_VOICE_ID;
-  const modelId = process.env.ELEVENLABS_MODEL_ID || DEFAULT_ELEVENLABS_MODEL_ID;
-
+export async function generateNarrationAudioBuffer(text: string, options: GenerateNarrationOptions = {}) {
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
   if (!apiKey) {
-    return null;
+    throw new Error("Missing ELEVENLABS_API_KEY");
   }
+
+  const voiceId = getElevenLabsVoiceId();
+  const modelId = getElevenLabsModelId();
+  const pageLabel = options.pageNumber ?? "preview";
+
+  console.log("[AUDIO] Generating page", pageLabel, "with voice", voiceId);
 
   const safeText = sanitizeText(text, 900);
   if (!safeText) {
-    return null;
+    throw new Error("Narration text is empty.");
   }
 
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {

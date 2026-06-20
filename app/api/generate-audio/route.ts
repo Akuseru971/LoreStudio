@@ -14,15 +14,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ audioUrl: null, error: "Invalid narration request." }, { status: 400 });
     }
 
-    try {
-      const audioUrl = await generateNarrationAudio(text);
-      return NextResponse.json({ audioUrl });
-    } catch (error) {
-      console.warn(`Narration failed for page ${pageNumber}.`, error);
-      return NextResponse.json({ audioUrl: null });
-    }
+    const audioUrl = await generateNarrationAudio(text, { pageNumber });
+    return NextResponse.json({ audioUrl });
   } catch (error) {
     console.warn("Narration route failed.", error);
-    return NextResponse.json({ audioUrl: null });
+    const message = error instanceof Error ? error.message : "Unable to generate narration.";
+    const status = message.includes("Missing ELEVENLABS") ? 503 : 500;
+    return NextResponse.json({ audioUrl: null, error: message }, { status });
   }
 }

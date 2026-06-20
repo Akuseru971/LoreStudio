@@ -142,7 +142,7 @@ function IllustratedPlaceholder({
         <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.28em] text-[#a89068]/75">{chapter}</p>
         <p className="page-elegant-title mt-3 text-xl leading-tight text-[#e8dcc0] sm:text-2xl">{title}</p>
         <p className="mt-4 text-[0.62rem] uppercase tracking-[0.22em] text-[#8a9aad]/70">
-          {isImageLoading ? "Summoning illustration..." : "Illustration waiting in the mist"}
+          {isImageLoading ? "Illustration being summoned..." : "Illustration waiting in the mist"}
         </p>
       </div>
     </div>

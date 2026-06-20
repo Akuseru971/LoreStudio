@@ -13,15 +13,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ audioUrl: null, error: "Invalid pseudo." }, { status: 400 });
     }
 
-    try {
-      const audioUrl = await generateNarrationAudio(name);
-      return NextResponse.json({ audioUrl });
-    } catch (error) {
-      console.warn("Pseudo pronunciation failed.", error);
-      return NextResponse.json({ audioUrl: null });
-    }
+    const audioUrl = await generateNarrationAudio(name, { pageNumber: "preview" });
+    return NextResponse.json({ audioUrl });
   } catch (error) {
-    console.warn("Pseudo pronunciation route failed.", error);
-    return NextResponse.json({ audioUrl: null });
+    console.warn("Pseudo pronunciation failed.", error);
+    const message = error instanceof Error ? error.message : "Unable to generate pronunciation.";
+    const status = message.includes("Missing ELEVENLABS") ? 503 : 500;
+    return NextResponse.json({ audioUrl: null, error: message }, { status });
   }
 }

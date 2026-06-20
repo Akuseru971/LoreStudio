@@ -1,5 +1,5 @@
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { buildFullBookNarrationScript, buildPageNarrationText } from "@/lib/bookNarration";
+import { buildPageNarrationText } from "@/lib/bookNarration";
 import { downloadAssetBuffer } from "@/lib/bookAssets";
 import { generateNarrationAudioBuffer } from "@/lib/elevenlabs";
 import {
@@ -32,7 +32,7 @@ async function resolvePageAudioBuffer(
   }
 
   const narrationText = buildPageNarrationText(page);
-  return generateNarrationAudioBuffer(narrationText);
+  return generateNarrationAudioBuffer(narrationText, { pageNumber: page.pageNumber });
 }
 
 export async function generateFullBookMp3(bookId: string, book: LoreBook, audioMap: Record<string, string>) {
@@ -40,13 +40,6 @@ export async function generateFullBookMp3(bookId: string, book: LoreBook, audioM
 
   try {
     const buffers: Buffer[] = [];
-    const introText = buildFullBookNarrationScript(book).split("\n\n")[0];
-    if (introText) {
-      const introBuffer = await generateNarrationAudioBuffer(introText);
-      if (introBuffer) {
-        buffers.push(introBuffer);
-      }
-    }
 
     for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
       const page = book.pages.find((item) => item.pageNumber === pageNumber);

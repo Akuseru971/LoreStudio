@@ -1,4 +1,5 @@
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { buildPageNarrationText } from "@/lib/bookNarration";
 import {
   getBookByAccessToken,
   markBookFailed,
@@ -24,7 +25,7 @@ async function generatePremiumAudio(book: LoreBook) {
       continue;
     }
 
-    const audioUrl = await generateNarrationAudio(page.text);
+    const audioUrl = await generateNarrationAudio(buildPageNarrationText(page), { pageNumber });
     if (audioUrl) {
       audio[String(pageNumber)] = audioUrl;
       pages[pageNumber - 1] = { ...page, audioUrl };
@@ -34,7 +35,7 @@ async function generatePremiumAudio(book: LoreBook) {
   for (let pageNumber = 1; pageNumber <= ILLUSTRATED_PAGE_COUNT; pageNumber += 1) {
     const page = pages[pageNumber - 1];
     if (!page?.audioUrl) {
-      const audioUrl = await generateNarrationAudio(page.text);
+      const audioUrl = await generateNarrationAudio(buildPageNarrationText(page), { pageNumber });
       if (audioUrl) {
         audio[String(pageNumber)] = audioUrl;
         pages[pageNumber - 1] = { ...page, audioUrl };

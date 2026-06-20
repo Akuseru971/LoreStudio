@@ -12,6 +12,7 @@ import BookPremiumActions from "@/components/BookPremiumActions";
 import ResultActions from "@/components/ResultActions";
 import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { buildPageNarrationText } from "@/lib/bookNarration";
 import {
   FREE_IMAGE_PAGE_COUNT,
   isPremiumImagePage,
@@ -95,14 +96,20 @@ export default function InteractiveBook({
 }: InteractiveBookProps) {
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
   const [activePageIndex, setActivePageIndex] = useState(initialPageIndex);
-  const [audioCache, setAudioCache] = useState<Record<number, string | null>>(() =>
+  const [audioCache, setAudioCache] = useState<Record<number, string>>(() =>
     Object.fromEntries(
       book.pages
-        .filter((page) => page.audioUrl !== undefined)
-        .map((page) => [page.pageNumber, page.audioUrl || null]),
+        .filter((page) => Boolean(page.audioUrl))
+        .map((page) => [page.pageNumber, page.audioUrl as string]),
     ),
   );
-  const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
+  const [imageCache, setImageCache] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      book.pages
+        .filter((page) => Boolean(page.imageUrl))
+        .map((page) => [page.pageNumber, page.imageUrl as string]),
+    ),
+  );
   const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
@@ -117,7 +124,7 @@ export default function InteractiveBook({
     () =>
       book.pages.map((page) => ({
         ...page,
-        imageUrl: imageCache[page.pageNumber] || page.imageUrl,
+        imageUrl: imageCache[page.pageNumber] ?? page.imageUrl,
       })),
     [book.pages, imageCache],
   );
@@ -159,8 +166,9 @@ export default function InteractiveBook({
 
   const fetchAudioForPage = useCallback(
     async (pageNumber: number, text: string) => {
-      if (audioCache[pageNumber] !== undefined) {
-        return audioCache[pageNumber];
+      const cachedAudio = audioCache[pageNumber];
+      if (cachedAudio) {
+        return cachedAudio;
       }
 
       setIsLoadingVoice(true);
@@ -170,12 +178,13 @@ export default function InteractiveBook({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, pageNumber }),
         });
-        const data = (await response.json()) as { audioUrl?: string | null };
+        const data = (await response.json()) as { audioUrl?: string | null; error?: string };
         const audioUrl = data.audioUrl || null;
-        setAudioCache((current) => ({ ...current, [pageNumber]: audioUrl }));
+        if (audioUrl) {
+          setAudioCache((current) => ({ ...current, [pageNumber]: audioUrl }));
+        }
         return audioUrl;
       } catch {
-        setAudioCache((current) => ({ ...current, [pageNumber]: null }));
         return null;
       } finally {
         setIsLoadingVoice(false);
@@ -214,10 +223,15 @@ export default function InteractiveBook({
           body: JSON.stringify({ book, pageNumber }),
         });
         const data = (await response.json()) as { imageUrl?: string | null };
-        setImageCache((current) => ({ ...current, [pageNumber]: data.imageUrl || null }));
-      } catch {
-        setImageCache((current) => ({ ...current, [pageNumber]: null }));
+        if (data.imageUrl) {
+          setImageCache((current) => ({ ...current, [pageNumber]: data.imageUrl as string }));
+        } else {
+          console.warn(`[IMAGE] Missing illustration for page ${pageNumber}.`);
+        }
+      } catch (error) {
+        console.warn(`[IMAGE] Failed to load illustration for page ${pageNumber}.`, error);
       } finally {
+        requestedImagesRef.current.delete(pageNumber);
         setLoadingImages((current) => ({ ...current, [pageNumber]: false }));
       }
     },
@@ -239,7 +253,7 @@ export default function InteractiveBook({
       return false;
     }
 
-    const nextCache: Record<number, string | null> = {};
+    const nextCache: Record<number, string> = {};
     for (const page of data.book.pages) {
       if (page.imageUrl) {
         nextCache[page.pageNumber] = page.imageUrl;
@@ -350,7 +364,7 @@ export default function InteractiveBook({
       voiceRef.current?.pause();
       dispatchNarrationEnd();
 
-      const audioUrl = await fetchAudioForPage(page.pageNumber, page.text);
+      const audioUrl = await fetchAudioForPage(page.pageNumber, buildPageNarrationText(page));
       if (narrationRunRef.current !== runId) {
         return;
       }

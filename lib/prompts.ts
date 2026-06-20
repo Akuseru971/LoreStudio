@@ -12,67 +12,90 @@ Use very varied roles such as: courier, shrine keeper, relic cleaner, chemtech r
 The role must shape the events. Do not assign a job and ignore it.`;
 
 export function buildLorePrompt(input: BookFormInput) {
-  const system = `You are a narrative designer specialized in League of Legends lore and Runeterra.
-You create original characters who could plausibly exist in Runeterra.
-You write immersive, easy-to-follow character biographies adapted into illustrated storybooks.
-Your stories must feel like one continuous life story, not a rigid page template.
-You avoid abstract filler, repeated formulas, and meta references.
+  const system = `You are a narrative designer writing champion-style biographies set in Runeterra.
+Your style is inspired by official League of Legends champion biographies: clear, dramatic, chronological, emotionally driven, and grounded in a specific region.
+You write original characters who could plausibly exist in Runeterra.
+You avoid disconnected poetic fragments, vague prophecies, and random fantasy symbolism.
 You output strict valid JSON only.`;
 
-  const user = `Create an 8-page personalized illustrated lore book set in Runeterra.
+  const user = `Create an 8-page illustrated biography for an original Runeterra character.
 
 User information:
 Name: ${input.name}
 Gender: ${input.gender}
 Character type: ${input.characterType}
-Runeterra region: ${input.runeterraRegion}
+Region: ${input.runeterraRegion}
+
+Write the story like a concise official champion biography adapted into 8 illustrated pages.
 
 If the region is Auto, choose the most coherent region for the character type.
 If a region is selected, anchor the whole biography in that region.
 
-Main requirement:
-Write one clear, chronological biography of the protagonist, then divide it naturally into 8 illustrated pages.
+Title:
+Use the character name as the book title.
 
-The protagonist must feel like a real inhabitant of Runeterra with:
-- a specific role
-- a concrete place in the region
-- a believable motivation
-- a life shaped by events
-- a clear progression from beginning to current fate
+Subtitle:
+Use a legendary title or epithet.
 
-Biography-first generation (internal only — never expose these steps in visible text):
-1. Create a complete life arc for the protagonist.
-2. Make sure the arc is simple, chronological, and easy to follow.
-3. Divide that arc into 8 natural story pages.
-4. Avoid repeating the same sentence patterns from one page to another.
+Hidden structure (internal only — never mention page numbers, structure, chapters, or biography mechanics in visible text):
+- Pages 1–4: build a proper biography with origin, social position, flaws or desire, place in the region, relationships or obligations, first shaping events, and growing tension.
+- Page 5: reveal a meaningful connection to one existing League of Legends champion. This is the major turning point and cliffhanger.
+- Pages 6–8: continue the consequence of the champion connection — what it changes, what the character becomes, what they now represent, and a strong final ending.
 
-Hidden flexible flow (generation guideline only — do not use as visible titles or formulas):
-- Pages 1–4: build a clear, natural biography. Show origin, role, personality, region, and growing tension. The order can vary — do not force page 2 to be routine, page 3 to be a first event, or the same transitions every time.
-- Page 5: reveal a meaningful connection to one existing League of Legends champion, then end with a strong in-world cliffhanger.
-- Pages 6–8: continue directly from the cliffhanger — consequence, change, and current fate.
+The biography must:
+- open with a strong introduction
+- clearly explain who the character is
+- explain where they come from
+- show what they wanted, feared, or lacked
+- show the events that changed their life
+- include emotional motivation
+- include concrete regional details
+- build toward a major turning point
+- reveal a meaningful connection to one existing League of Legends champion on page 5
+- end page 5 with a strong cliffhanger
+- continue pages 6–8 with clear consequences
+- end with a memorable final state
 
-Story rules:
-- The story must be easy to follow from beginning to end.
-- The story must not feel like a page-by-page checklist.
-- Do not force page 2 to describe daily routine.
-- Do not force page 3 to be a first event.
-- Do not force repeated structures or sentence openings.
-- Each page must feel like a natural continuation of the previous one.
-- Each page chapter and title must be unique and story-specific.
-- Each page text must be 55 to 95 words.
-- The visible text must read like one continuous biography cut into illustrated pages.
+Style reference:
+Use the structure and tone of official champion biographies like Viego's biography:
+a clear life story, dramatic escalation, emotional obsession or motivation, tragedy or transformation, and strong final lines.
 
-Immersion rules (hard):
-- Never mention page numbers inside the story text.
-- Never mention biography mechanics, story arc, chapter mechanics, reader, user, prompt, AI, unlock, payment, next page, previous page, or paid section.
-- The text must read like in-world Runeterra lore.
-- continuityNote is internal metadata only and must never appear in pages[].text.
+Do not copy Viego.
+Do not reuse Viego's story.
+Do not mention Viego unless it is canonically relevant to the selected region and champion connection.
 
-Tone:
-- polished League of Legends biography adapted into an illustrated book
-- immersive, clear, chronological, cinematic but not confusing
-- concrete enough to follow
-- not too abstract, not too academic, not too mechanical
+Length:
+- exactly 8 pages
+- 55 to 95 words per page
+- keep text size similar to the current UI
+- do not generate a huge biography
+
+Writing style:
+- serious, mythic, elegant, clear, dramatic, grounded in Runeterra, emotionally driven, easy to follow
+- read like one continuous official lore text cut into 8 pages
+- every event must have a cause and consequence
+- the protagonist's motivation must be clear
+
+Do NOT feel like:
+- random fantasy fragments
+- AI-generated purple prose
+- "a prophecy chose him"
+- weird abstract symbolism
+- disconnected page scenes
+- a checklist
+- a technical character summary
+- an RPG quest log
+
+Immersion (hard):
+- never mention page numbers inside the story text
+- never mention "this biography"
+- never mention "reader"
+- never mention "story structure"
+- never mention "next page"
+- never mention "unlock"
+- never mention payment
+- never mention AI or prompt
+- continuityNote is internal metadata only and must never appear in pages[].text
 
 Avoid:
 - vague symbols that are never explained
@@ -184,16 +207,25 @@ Image prompt rules:
 - No written text inside the image.
 
 Before returning JSON, internally verify:
+- Does the biography make sense from beginning to end?
+- Can a normal reader explain what happened?
+- Does every event have a cause and consequence?
+- Is the protagonist's motivation clear?
+- Is the region concrete?
+- Does the champion connection appear on page 5?
+- Is the page 5 cliffhanger clear?
+- Does the text avoid random abstract symbolism?
+- Does it avoid repeated sentence patterns?
+- Does it sound like a serious champion biography?
 - Are the first sentences of pages too similar?
 - Do multiple pages start with the same structure?
 - Does the story repeat the same phrase?
 - Does it overuse fate, shadow, whisper, forgotten, legend, or prophecy?
-- Does the biography feel like one continuous story?
-- Is page 5 clearly connected to a champion?
-- Does page 5 end with a real in-world cliffhanger?
 - Does any visible text mention page, chapter, biography, reader, unlock, paid, continuation, narrative, prompt, or generated? If yes, rewrite it.
 - Is the protagonist role specific and varied?
 - Does the job or social role affect the events?
+
+If any answer is no, rewrite before returning JSON.
 
 Return strict JSON only.`;
 

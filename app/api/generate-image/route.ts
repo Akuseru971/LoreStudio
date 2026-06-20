@@ -21,7 +21,10 @@ export async function POST(request: Request) {
     }
 
     const book = normalizeLoreBook(body.book);
-    const page = book.pages[pageNumber - 1];
+    const page = book.pages.find((item) => item.pageNumber === pageNumber);
+    if (!page) {
+      return NextResponse.json({ imageUrl: null, error: "Invalid image request." }, { status: 400 });
+    }
     const imageUrl = process.env.OPENAI_API_KEY
       ? await generateBookPageImage(book, page, {
           fallbackOnFailure: true,

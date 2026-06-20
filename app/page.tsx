@@ -12,6 +12,7 @@ import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import RitualVideoPreloader from "@/components/RitualVideoPreloader";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { buildPageNarrationText } from "@/lib/bookNarration";
 import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import {
   readAmbientMusicMutedPreference,
@@ -65,29 +66,38 @@ async function generateAudioForPage(page: LoreBook["pages"][number]) {
   const response = await fetch("/api/generate-audio", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: page.text, pageNumber: page.pageNumber }),
+    body: JSON.stringify({ text: buildPageNarrationText(page), pageNumber: page.pageNumber }),
   });
 
   const data = await readJsonResponse<{ audioUrl?: string | null }>(response);
   return data.audioUrl || null;
 }
 
+async function generateImageWithRetry(book: LoreBook, pageNumber: number) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const imageUrl = await generateImageForPage(book, pageNumber);
+    if (imageUrl) {
+      return imageUrl;
+    }
+  }
+
+  console.warn(`[IMAGE] Failed to generate illustration for page ${pageNumber}.`);
+  return undefined;
+}
+
 async function attachInitialAssets(book: LoreBook) {
-  const pages = [...book.pages];
-  const imagePages = pages.slice(0, FREE_IMAGE_PAGE_COUNT);
+  const pages = book.pages.map((page) => ({ ...page }));
+
+  for (let pageNumber = 1; pageNumber <= FREE_IMAGE_PAGE_COUNT; pageNumber += 1) {
+    const pageIndex = pageNumber - 1;
+    const imageUrl = await generateImageWithRetry(book, pageNumber);
+    if (imageUrl) {
+      pages[pageIndex] = { ...pages[pageIndex], imageUrl };
+    }
+  }
+
   const audioPages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
-
-  const [imageResults, audioResults] = await Promise.all([
-    Promise.allSettled(imagePages.map((page) => generateImageForPage(book, page.pageNumber))),
-    Promise.allSettled(audioPages.map((page) => generateAudioForPage(page))),
-  ]);
-
-  imageResults.forEach((result, index) => {
-    pages[index] = {
-      ...pages[index],
-      imageUrl: result.status === "fulfilled" ? result.value : undefined,
-    };
-  });
+  const audioResults = await Promise.allSettled(audioPages.map((page) => generateAudioForPage(page)));
 
   audioResults.forEach((result, index) => {
     pages[index] = {
