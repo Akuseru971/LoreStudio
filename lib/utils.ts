@@ -2,7 +2,16 @@ import { clsx, type ClassValue } from "clsx";
 import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import { polishImmersiveStoryText } from "@/lib/immersive-text";
 import { isGenericPageTitle } from "@/lib/page-titles";
-import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
+import type {
+  BookFormInput,
+  BookPage,
+  CharacterBible,
+  ChampionConnection,
+  LoreBook,
+  StoryEngine,
+  VisualBible,
+  VisualDirection,
+} from "@/lib/types";
 
 export const genders = ["man", "woman", "creature", "unknown"] as const;
 
@@ -99,46 +108,223 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
   };
 }
 
-export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
-  const fallbackChapterLabels = [
-    "A Clerk in the Ledger Room",
-    "Smoke Over the Lower Ward",
-    "A Map to the Wrong Front",
-    "A Letter Bearing a Champion's Seal",
-    "The Harbor Debt Left Unpaid",
-    "Orders from the Crimson Table",
-    "The Name the Archive Buried",
-    "A Bridge Still Unfinished",
-  ];
-  const bible = book.characterBible || {
-    name: "The Unnamed",
-    gender: "unknown",
-    characterType: "Wanderer",
-    legendaryTitle: "The Unwritten Legend",
-    socialRole: "itinerant witness",
-    visualIdentity: "enigmatic dark fantasy protagonist",
-    clothing: "weathered ceremonial cloak and ancient leather armor",
-    faceAndBody: "solemn face, resilient posture, mysterious presence",
-    aura: "quiet moonlit aura",
-    symbolicObject: "an old sealed book",
-    colorPalette: "deep navy, charcoal black, parchment, muted gold",
-    worldRules: "Runeterra's old powers answer only to consequence, memory, and sacrifice.",
-    region: "Runeterra",
-    runeterraLoreAnchor: "An original Runeterran legend compatible with known regional conflicts.",
+type LegacyLoreBook = Partial<LoreBook> & {
+  mainRegion?: string;
+  protagonistRole?: string;
+  coreConflict?: string;
+  distinctiveHook?: string;
+  narratorIntro?: string;
+  biographyArc?: {
+    startingSituation?: string;
+    incitingEvent?: string;
+    championConnectionPage5?: string;
+    page5Cliffhanger?: string;
+    finalState?: string;
   };
-  const mainRegion = sanitizeText(book.mainRegion, 80) || sanitizeText(bible.region, 80) || "Runeterra";
+  originalityProfile?: {
+    specificRole?: string;
+    dailyReality?: string;
+    regionalPressure?: string;
+    unusualStoryElement?: string;
+  };
+  characterBible?: Partial<CharacterBible>;
+  storyEngine?: Partial<StoryEngine> | string;
+  championConnection?: Partial<ChampionConnection> & { connectionSummary?: string };
+  visualBible?: Partial<VisualBible>;
+  pages?: Array<Partial<BookPage> & { continuityNote?: string }>;
+};
 
-  const pages = fallbackChapterLabels.map((fallbackChapter, index) => {
-    const page = book.pages?.[index];
-    const visualDirection = normalizeVisualDirection(page, index + 1, mainRegion);
-    const chapter = sanitizeText(page?.chapter, 80) || fallbackChapter;
-    const rawTitle = sanitizeText(page?.title, 80) || chapter;
+const FALLBACK_PAGE_TITLES = [
+  "A Clerk in the Ledger Room",
+  "Smoke Over the Lower Ward",
+  "A Census Error at the Barracks",
+  "The Harbor's False Saint",
+  "Seven Names on a City Bill",
+  "Orders from the Crimson Table",
+  "The Surgeon Who Refused Glory",
+  "A Bridge Still Unfinished",
+];
+
+export function normalizeLoreBook(book: LegacyLoreBook): LoreBook {
+  const legacyBible = book.characterBible;
+  const region =
+    sanitizeText(book.region, 80) ||
+    sanitizeText(book.mainRegion, 80) ||
+    sanitizeText(legacyBible?.region, 80) ||
+    "Runeterra";
+
+  const title = sanitizeText(book.title, 120) || sanitizeText(legacyBible?.name, 80) || "The Unnamed";
+  const subtitle =
+    sanitizeText(book.subtitle, 180) || sanitizeText(legacyBible?.legendaryTitle, 120) || "A Runeterra biography";
+
+  const storyEngine = normalizeStoryEngine(book, legacyBible, region);
+  const championConnection = normalizeChampionConnection(book, storyEngine);
+  const visualBible = normalizeVisualBible(book, legacyBible, region);
+  const characterBible = buildCharacterBible(book, legacyBible, title, subtitle, region, storyEngine, visualBible);
+  const pages = normalizePages(book.pages, region, visualBible);
+
+  return {
+    title,
+    subtitle,
+    region,
+    genre: sanitizeText(book.genre, 80) || "in-world biography",
+    storyEngine,
+    championConnection,
+    visualBible,
+    pages,
+    mainRegion: region,
+    characterBible,
+  };
+}
+
+function normalizeStoryEngine(
+  book: LegacyLoreBook,
+  legacyBible: Partial<CharacterBible> | undefined,
+  region: string,
+): StoryEngine {
+  const source =
+    typeof book.storyEngine === "object" && book.storyEngine !== null ? book.storyEngine : ({} as Partial<StoryEngine>);
+
+  const archetype =
+    sanitizeText(source.archetype, 160) ||
+    (typeof book.storyEngine === "string" ? sanitizeText(book.storyEngine, 160) : "") ||
+    "The Political Accident";
+
+  return {
+    archetype,
+    centralIrony:
+      sanitizeText(source.centralIrony, 300) ||
+      sanitizeText(book.biographyArc?.startingSituation, 300) ||
+      `In ${region}, ${legacyBible?.name || "the protagonist"} is remembered differently than they lived.`,
+    publicReputation:
+      sanitizeText(source.publicReputation, 240) ||
+      sanitizeText(legacyBible?.legendaryTitle, 160) ||
+      "a local figure spoken of with mixed reverence",
+    privateTruth:
+      sanitizeText(source.privateTruth, 240) ||
+      sanitizeText(book.distinctiveHook, 240) ||
+      "a truth they cannot safely speak aloud",
+    socialPressure:
+      sanitizeText(source.socialPressure, 240) ||
+      sanitizeText(book.coreConflict, 240) ||
+      sanitizeText(book.originalityProfile?.regionalPressure, 240) ||
+      `the ordinary pressures of life in ${region}`,
+    irreversibleEvent:
+      sanitizeText(source.irreversibleEvent, 240) ||
+      sanitizeText(book.biographyArc?.incitingEvent, 240) ||
+      "one decision that could not be undone",
+    championConnectionType:
+      sanitizeText(source.championConnectionType, 240) ||
+      sanitizeText(book.championConnection?.connectionType, 160) ||
+      "collateral consequence of a champion's public legend",
+    finalContradiction:
+      sanitizeText(source.finalContradiction, 240) ||
+      sanitizeText(book.biographyArc?.finalState, 240) ||
+      "they became influential by remaining partly unknown",
+  };
+}
+
+function normalizeChampionConnection(book: LegacyLoreBook, storyEngine: StoryEngine): ChampionConnection {
+  const source = (book.championConnection || {}) as Partial<ChampionConnection>;
+
+  return {
+    championName: sanitizeText(source.championName, 80) || "A regional champion",
+    connectionType:
+      sanitizeText(source.connectionType, 160) || storyEngine.championConnectionType || "structural influence",
+    connectionSummary:
+      sanitizeText(source.connectionSummary, 300) ||
+      sanitizeText(book.biographyArc?.championConnectionPage5, 300) ||
+      "A champion's public history reshaped the world around the protagonist.",
+    whyItMatters:
+      sanitizeText(source.whyItMatters, 300) ||
+      sanitizeText(source.connectionSummary, 300) ||
+      "The champion never needed to appear; their legend was enough to change everything.",
+    canonSafetyNote:
+      sanitizeText(source.canonSafetyNote, 300) ||
+      "The protagonist remains original and no major canon events were altered.",
+  };
+}
+
+function normalizeVisualBible(
+  book: LegacyLoreBook,
+  legacyBible: Partial<CharacterBible> | undefined,
+  region: string,
+): VisualBible {
+  const source = (book.visualBible || {}) as Partial<VisualBible>;
+
+  return {
+    appearance:
+      sanitizeText(source.appearance, 300) ||
+      sanitizeText(legacyBible?.visualIdentity, 260) ||
+      sanitizeText(legacyBible?.faceAndBody, 260) ||
+      "a weathered Runeterran with practical posture and watchful eyes",
+    clothing:
+      sanitizeText(source.clothing, 260) ||
+      sanitizeText(legacyBible?.clothing, 260) ||
+      "regional work clothes marked by daily labor",
+    regionAtmosphere:
+      sanitizeText(source.regionAtmosphere, 300) ||
+      sanitizeText(legacyBible?.runeterraLoreAnchor, 300) ||
+      `the lived atmosphere of ${region}`,
+    colorPalette:
+      sanitizeText(source.colorPalette, 180) ||
+      sanitizeText(legacyBible?.colorPalette, 180) ||
+      "deep navy, charcoal black, parchment, muted gold",
+    recurringVisualMotif:
+      sanitizeText(source.recurringVisualMotif, 180) ||
+      sanitizeText(legacyBible?.symbolicObject, 180) ||
+      "a personal object tied to their public reputation",
+  };
+}
+
+function buildCharacterBible(
+  book: LegacyLoreBook,
+  legacyBible: Partial<CharacterBible> | undefined,
+  title: string,
+  subtitle: string,
+  region: string,
+  storyEngine: StoryEngine,
+  visualBible: VisualBible,
+): CharacterBible {
+  return {
+    name: sanitizeText(legacyBible?.name, 80) || title,
+    gender: sanitizeText(legacyBible?.gender, 40) || "unknown",
+    characterType: sanitizeText(legacyBible?.characterType, 80) || "Wanderer",
+    legendaryTitle: subtitle,
+    region,
+    socialRole:
+      sanitizeText(legacyBible?.socialRole, 160) ||
+      sanitizeText(book.protagonistRole, 160) ||
+      sanitizeText(book.originalityProfile?.specificRole, 160) ||
+      storyEngine.publicReputation,
+    visualIdentity: visualBible.appearance,
+    clothing: visualBible.clothing,
+    faceAndBody: visualBible.appearance,
+    aura: sanitizeText(legacyBible?.aura, 180) || visualBible.regionAtmosphere,
+    symbolicObject: visualBible.recurringVisualMotif,
+    colorPalette: visualBible.colorPalette,
+    worldRules:
+      sanitizeText(legacyBible?.worldRules, 300) ||
+      "Runeterra remembers people through consequence, reputation, and the stories others need to believe.",
+    runeterraLoreAnchor: visualBible.regionAtmosphere,
+  };
+}
+
+function normalizePages(
+  sourcePages: LegacyLoreBook["pages"],
+  region: string,
+  visualBible: VisualBible,
+): BookPage[] {
+  return FALLBACK_PAGE_TITLES.map((fallbackTitle, index) => {
+    const page = sourcePages?.[index];
+    const rawTitle =
+      sanitizeText(page?.title, 80) || sanitizeText(page?.chapter, 80) || fallbackTitle;
     const resolvedTitle = polishImmersiveStoryText(
-      rawTitle && !isGenericPageTitle(rawTitle) ? rawTitle : fallbackChapter,
+      rawTitle && !isGenericPageTitle(rawTitle) ? rawTitle : fallbackTitle,
       80,
     );
 
-    return {
+    const normalizedPage: BookPage = {
       pageNumber: index + 1,
       chapter: resolvedTitle,
       title: resolvedTitle,
@@ -146,147 +332,23 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
         polishImmersiveStoryText(
           sanitizeText(page?.text, 700) || "The page remains veiled, waiting for the ink to return.",
         ) || "The page remains veiled, waiting for the ink to return.",
-      continuityNote: sanitizeText(page?.continuityNote, 240) || undefined,
-      visualDirection,
-      imagePrompt:
-        sanitizeText(page?.imagePrompt, 1800) ||
-        rewriteImagePromptFromVisualDirection(index + 1, chapter, chapter, visualDirection),
+      imagePrompt: sanitizeText(page?.imagePrompt, 1800) || "",
       imageUrl: page?.imageUrl,
       audioUrl: page?.audioUrl,
     };
+
+    normalizedPage.visualDirection = normalizeVisualDirection(page, normalizedPage, region);
+    normalizedPage.imagePrompt = ensureImagePrompt(normalizedPage, region, visualBible);
+    return normalizedPage;
   });
-
-  const sourceBiographyArc = book.biographyArc;
-  const biographyArc = {
-    startingSituation:
-      sanitizeText(sourceBiographyArc?.startingSituation, 300) ||
-      sanitizeText(book.protagonistRole, 240) ||
-      "An ordinary Runeterran with a clear local role.",
-    incitingEvent:
-      sanitizeText(sourceBiographyArc?.incitingEvent, 300) ||
-      sanitizeText(book.coreConflict, 240) ||
-      "A concrete event disrupts their daily life.",
-    championConnectionPage5:
-      sanitizeText(sourceBiographyArc?.championConnectionPage5, 300) ||
-      sanitizeText(
-        (sourceBiographyArc as { championConnectionPage4?: string } | undefined)?.championConnectionPage4,
-        300,
-      ) ||
-      sanitizeText(book.championConnection?.connectionSummary, 300) ||
-      "A canon-safe connection to a regional champion shapes their path.",
-    page5Cliffhanger:
-      sanitizeText(sourceBiographyArc?.page5Cliffhanger, 300) || "A discovery forces an irreversible next step.",
-    finalState:
-      sanitizeText(sourceBiographyArc?.finalState, 300) ||
-      sanitizeText(book.distinctiveHook, 240) ||
-      "Their life has changed, but the road ahead remains open.",
-  };
-
-  const sourceChampionConnection = book.championConnection;
-  const championConnection = {
-    championName: sanitizeText(sourceChampionConnection?.championName, 80) || "A regional champion",
-    connectionType: sanitizeText(sourceChampionConnection?.connectionType, 160) || "indirect influence",
-    connectionSummary:
-      sanitizeText(sourceChampionConnection?.connectionSummary, 300) || biographyArc.championConnectionPage5,
-    canonSafetyNote:
-      sanitizeText(sourceChampionConnection?.canonSafetyNote, 300) ||
-      "The protagonist remains original and no major canon events were altered.",
-  };
-
-  const sourceOriginalityProfile = book.originalityProfile;
-  const originalityProfile = {
-    specificRole:
-      sanitizeText(sourceOriginalityProfile?.specificRole, 160) ||
-      sanitizeText(book.protagonistRole, 160) ||
-      sanitizeText(bible.socialRole, 160) ||
-      "local witness",
-    dailyReality:
-      sanitizeText(sourceOriginalityProfile?.dailyReality, 240) ||
-      "ordinary work, routes, and obligations before the trouble began",
-    regionalPressure:
-      sanitizeText(sourceOriginalityProfile?.regionalPressure, 240) ||
-      sanitizeText(book.coreConflict, 240) ||
-      "a concrete regional problem",
-    unusualStoryElement:
-      sanitizeText(sourceOriginalityProfile?.unusualStoryElement, 240) ||
-      sanitizeText(book.distinctiveHook, 240) ||
-      "a personal object tied to the conflict",
-    repetitionAvoided: Array.isArray(sourceOriginalityProfile?.repetitionAvoided)
-      ? sourceOriginalityProfile.repetitionAvoided.map((item) => sanitizeText(item, 120)).filter(Boolean).slice(0, 6)
-      : ["generic chosen one", "prophecy arc", "nameless darkness"],
-  };
-
-  return {
-    ...book,
-    title: sanitizeText(book.title, 120) || "The Book of the Unwritten Legend",
-    subtitle: sanitizeText(book.subtitle, 180) || "A Runeterra biography recovered from a silent archive.",
-    mainRegion,
-    storyEngine:
-      sanitizeText(book.storyEngine, 240) ||
-      "A clear local duty pulls an ordinary Runeterran into a sequence of concrete events.",
-    protagonistRole: sanitizeText(book.protagonistRole, 160) || sanitizeText(bible.socialRole, 160) || "local witness",
-    coreConflict:
-      sanitizeText(book.coreConflict, 240) ||
-      "A concrete regional problem forces the protagonist to choose what they are willing to protect.",
-    distinctiveHook:
-      sanitizeText(book.distinctiveHook, 240) ||
-      "A personal object, craft, or secret makes the protagonist's path distinct.",
-    narratorIntro: polishImmersiveStoryText(
-      sanitizeText(book.narratorIntro, 260) ||
-        "The archive opens with a name, a place, and the first ordinary day that would not stay ordinary.",
-      260,
-    ),
-    biographyArc: {
-      startingSituation: biographyArc.startingSituation,
-      incitingEvent: biographyArc.incitingEvent,
-      championConnectionPage5: biographyArc.championConnectionPage5,
-      page5Cliffhanger: biographyArc.page5Cliffhanger,
-      finalState: biographyArc.finalState,
-    },
-    championConnection: {
-      championName: championConnection.championName,
-      connectionType: championConnection.connectionType,
-      connectionSummary: championConnection.connectionSummary,
-      canonSafetyNote: championConnection.canonSafetyNote,
-    },
-    originalityProfile,
-    characterBible: {
-      name: sanitizeText(bible.name, 80) || "The Unnamed",
-      gender: sanitizeText(bible.gender, 40) || "unknown",
-      characterType: sanitizeText(bible.characterType, 80) || "Wanderer",
-      legendaryTitle: sanitizeText(bible.legendaryTitle, 120) || "The Unwritten Legend",
-      region: sanitizeText(bible.region, 80) || mainRegion,
-      socialRole: sanitizeText(bible.socialRole, 160) || "local witness",
-      visualIdentity: sanitizeText(bible.visualIdentity, 260) || "enigmatic dark fantasy protagonist",
-      clothing: sanitizeText(bible.clothing, 260) || "weathered ceremonial cloak and ancient leather armor",
-      faceAndBody: sanitizeText(bible.faceAndBody, 260) || "solemn face, resilient posture, mysterious presence",
-      aura: sanitizeText(bible.aura, 180) || "quiet moonlit aura",
-      symbolicObject: sanitizeText(bible.symbolicObject, 180) || "an old sealed book",
-      colorPalette: sanitizeText(bible.colorPalette, 180) || "deep navy, charcoal black, parchment, muted gold",
-      worldRules:
-        sanitizeText(bible.worldRules, 300) ||
-        "Runeterra's old powers answer only to consequence, memory, and sacrifice.",
-      runeterraLoreAnchor:
-        sanitizeText(bible.runeterraLoreAnchor, 300) ||
-        "An original Runeterran legend compatible with known regional conflicts.",
-    },
-    pages: enforceImagePromptVariety(pages),
-  };
 }
 
-export function dataUrlFromBase64(base64: string, mimeType: string) {
-  return `data:${mimeType};base64,${base64}`;
-}
-
-export function stripBookAssets<T extends { pages: Array<{ imageUrl?: string; audioUrl?: string | null }> }>(book: T): T {
-  return {
-    ...book,
-    pages: book.pages.map(({ imageUrl: _imageUrl, audioUrl: _audioUrl, ...page }) => page),
-  };
-}
-
-function normalizeVisualDirection(page: Partial<BookPage> | undefined, pageNumber: number, region: string) {
-  const fallback = defaultVisualDirection(pageNumber, region);
+function normalizeVisualDirection(
+  page: Partial<BookPage> | undefined,
+  normalizedPage: BookPage,
+  region: string,
+): VisualDirection {
+  const fallback = defaultVisualDirection(normalizedPage, region);
   const source = page?.visualDirection;
   const keyObjects = Array.isArray(source?.keyObjects)
     ? source.keyObjects.map((item) => sanitizeText(item, 80)).filter(Boolean).slice(0, 5)
@@ -303,122 +365,51 @@ function normalizeVisualDirection(page: Partial<BookPage> | undefined, pageNumbe
   };
 }
 
-function defaultVisualDirection(pageNumber: number, region: string): BookPage["visualDirection"] {
-  const directions: Record<number, BookPage["visualDirection"]> = {
-    1: {
-      sceneType: "biography introduction scene",
-      cameraShot: "medium-wide shot showing role and place",
-      characterAction: "the protagonist is shown in their starting situation, work, or community role",
-      environment: `a recognizable everyday location in ${region} tied to the protagonist's social role`,
-      keyObjects: ["work tools", "local architecture", "personal detail"],
-      mood: "clear, grounded, introductory",
-      lighting: "natural regional daylight with readable detail",
-    },
-    2: {
-      sceneType: "early life establishing scene",
-      cameraShot: "wide shot with the protagonist within daily life",
-      characterAction: "the protagonist moves through routine work, family, community, or duty",
-      environment: `homes, workshops, streets, fields, docks, or shrines of ${region}`,
-      keyObjects: ["community life", "daily tools", "regional landmarks"],
-      mood: "lived-in, observant, specific",
-      lighting: "soft morning or workday light",
-    },
-    3: {
-      sceneType: "inciting event scene",
-      cameraShot: "medium-wide action or discovery shot",
-      characterAction: "the protagonist reacts to the first major event that changes their path",
-      environment: `a concrete location in ${region} where the turning point happens`,
-      keyObjects: ["broken object", "unexpected evidence", "changed environment"],
-      mood: "alert, consequential, tense",
-      lighting: "contrasty light emphasizing the incident",
-    },
-    4: {
-      sceneType: "champion connection scene",
-      cameraShot: "medium-wide shot focused on evidence, place, or indirect reference",
-      characterAction: "the protagonist discovers or witnesses something tied to a known champion's influence",
-      environment: `a location in ${region} affected by a champion's known history or faction`,
-      keyObjects: ["faction symbol", "document", "aftermath", "distant banner or silhouette"],
-      mood: "revealing, consequential, grounded",
-      lighting: "clear light with one strong focal detail",
-    },
-    5: {
-      sceneType: "cliffhanger scene",
-      cameraShot: "dramatic medium-wide shot on the suspense moment",
-      characterAction: "the protagonist reaches the cliffhanger discovery, threat, or impossible choice",
-      environment: `the exact place in ${region} where the suspense peaks`,
-      keyObjects: ["activating object", "opened door", "missing witness", "returning clue"],
-      mood: "suspenseful, urgent, unresolved",
-      lighting: "high-contrast light on the cliffhanger detail",
-    },
-    6: {
-      sceneType: "immediate consequence scene",
-      cameraShot: "medium-wide shot showing fallout",
-      characterAction: "the protagonist deals with the direct result of the cliffhanger",
-      environment: `a changed or exposed location in ${region}`,
-      keyObjects: ["evidence of consequence", "new threat", "damaged place"],
-      mood: "strained, reactive, pressing",
-      lighting: "harsh or unstable light matching the fallout",
-    },
-    7: {
-      sceneType: "personal change scene",
-      cameraShot: "medium-wide shot showing growth through action",
-      characterAction: "the protagonist acts differently because of what happened",
-      environment: `a meaningful place in ${region} where the change becomes visible`,
-      keyObjects: ["changed tool", "witnesses", "proof of growth"],
-      mood: "earned, resolute, human",
-      lighting: "warmer breakthrough light with depth",
-    },
-    8: {
-      sceneType: "current fate scene",
-      cameraShot: "wide cinematic shot with open horizon",
-      characterAction: "the protagonist stands at their current place in life, facing an understandable open future",
-      environment: `a road, harbor, shrine, workshop, ruin, or threshold in ${region}`,
-      keyObjects: ["unfinished path", "personal object", "distant destination"],
-      mood: "open-ended, clear, forward-looking",
-      lighting: "twilight or horizon glow with readable atmosphere",
-    },
+function defaultVisualDirection(page: BookPage, region: string): VisualDirection {
+  return {
+    sceneType: "concrete biography moment",
+    cameraShot: "medium-wide documentary scene",
+    characterAction: `the protagonist in the event: ${page.title}`,
+    environment: `a specific public or professional setting in ${region}`,
+    keyObjects: ["regional architecture", "work tools", "witnesses or officials"],
+    mood: "grounded, dramatic, specific",
+    lighting: "natural regional light with readable detail",
   };
-
-  return directions[pageNumber] || directions[8];
 }
 
-function enforceImagePromptVariety(pages: BookPage[]) {
-  const genericPattern = /\b(portrait|close-up|close up|bust|standing hero|heroic pose|standing)\b/i;
-  const genericCount = pages.filter((page) => genericPattern.test(page.imagePrompt)).length;
+function ensureImagePrompt(page: BookPage, region: string, visualBible: VisualBible) {
+  const prompt = sanitizeText(page.imagePrompt, 1800);
+  const genericPattern = /\b(portrait|close-up|close up|bust|standing hero|heroic pose|glowing relic|sealed door|mysterious map|mist)\b/i;
 
-  return pages.map((page) => {
-    const prompt = sanitizeText(page.imagePrompt, 1800);
-    const shouldRewrite =
-      prompt.length < 180 ||
-      /\b(generic portrait|simple portrait|face portrait|bust shot|standing hero|heroic pose)\b/i.test(prompt) ||
-      (genericCount > 2 && genericPattern.test(prompt));
+  if (prompt.length >= 180 && !genericPattern.test(prompt)) {
+    return prompt;
+  }
 
-    return {
-      ...page,
-      imagePrompt: shouldRewrite
-        ? rewriteImagePromptFromVisualDirection(page.pageNumber, page.chapter, page.title, page.visualDirection)
-        : prompt,
-    };
-  });
-}
-
-function rewriteImagePromptFromVisualDirection(
-  pageNumber: number,
-  chapter: string,
-  title: string,
-  visualDirection: BookPage["visualDirection"],
-) {
+  const direction = page.visualDirection || defaultVisualDirection(page, region);
   return [
-    `Full-page illustrated story scene for Page ${pageNumber}: ${chapter} - ${title}.`,
-    `Scene type: ${visualDirection.sceneType}.`,
-    `Camera shot: ${visualDirection.cameraShot}.`,
-    `Character action: ${visualDirection.characterAction}.`,
-    `Environment: ${visualDirection.environment}.`,
-    `Key objects: ${visualDirection.keyObjects.join(", ")}.`,
-    `Mood: ${visualDirection.mood}.`,
-    `Lighting: ${visualDirection.lighting}.`,
+    `Full-page illustrated biography scene for Page ${page.pageNumber}: ${page.title}.`,
+    `Scene type: ${direction.sceneType}.`,
+    `Camera shot: ${direction.cameraShot}.`,
+    `Character action: ${direction.characterAction}.`,
+    `Environment: ${direction.environment}.`,
+    `Key objects: ${direction.keyObjects.join(", ")}.`,
+    `Mood: ${direction.mood}.`,
+    `Lighting: ${direction.lighting}.`,
+    `Character appearance: ${visualBible.appearance}. Clothing: ${visualBible.clothing}.`,
+    `Region atmosphere: ${visualBible.regionAtmosphere}. Palette: ${visualBible.colorPalette}.`,
     IMAGE_STYLE_LOCK,
     IMAGE_STYLE_AVOIDANCES,
-    "No repeated portrait composition, no repeated background, no repeated camera angle, no generic character standing pose, no simple bust shot.",
+    "Show a concrete social scene, not a generic fantasy poster.",
   ].join(" ");
+}
+
+export function dataUrlFromBase64(base64: string, mimeType: string) {
+  return `data:${mimeType};base64,${base64}`;
+}
+
+export function stripBookAssets<T extends { pages: Array<{ imageUrl?: string; audioUrl?: string | null }> }>(book: T): T {
+  return {
+    ...book,
+    pages: book.pages.map(({ imageUrl: _imageUrl, audioUrl: _audioUrl, ...page }) => page),
+  };
 }

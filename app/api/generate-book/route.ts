@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
 import { buildLorePrompt } from "@/lib/prompts";
 import { openai } from "@/lib/openai";
+import { validateGeneratedStory } from "@/lib/story-engine";
 import type { BookFormInput, LoreBook } from "@/lib/types";
 import { normalizeLoreBook, validateBookInput } from "@/lib/utils";
 
@@ -10,108 +11,58 @@ export const runtime = "nodejs";
 const loreBookJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "title",
-    "subtitle",
-    "mainRegion",
-    "storyEngine",
-    "protagonistRole",
-    "coreConflict",
-    "distinctiveHook",
-    "narratorIntro",
-    "biographyArc",
-    "championConnection",
-    "originalityProfile",
-    "characterBible",
-    "pages",
-  ],
+  required: ["title", "subtitle", "region", "genre", "storyEngine", "championConnection", "visualBible", "pages"],
   properties: {
     title: { type: "string" },
     subtitle: { type: "string" },
-    mainRegion: { type: "string" },
-    storyEngine: { type: "string" },
-    protagonistRole: { type: "string" },
-    coreConflict: { type: "string" },
-    distinctiveHook: { type: "string" },
-    narratorIntro: { type: "string" },
-    biographyArc: {
+    region: { type: "string" },
+    genre: { type: "string" },
+    storyEngine: {
       type: "object",
       additionalProperties: false,
       required: [
-        "startingSituation",
-        "incitingEvent",
-        "championConnectionPage5",
-        "page5Cliffhanger",
-        "finalState",
+        "archetype",
+        "centralIrony",
+        "publicReputation",
+        "privateTruth",
+        "socialPressure",
+        "irreversibleEvent",
+        "championConnectionType",
+        "finalContradiction",
       ],
       properties: {
-        startingSituation: { type: "string" },
-        incitingEvent: { type: "string" },
-        championConnectionPage5: { type: "string" },
-        page5Cliffhanger: { type: "string" },
-        finalState: { type: "string" },
+        archetype: { type: "string" },
+        centralIrony: { type: "string" },
+        publicReputation: { type: "string" },
+        privateTruth: { type: "string" },
+        socialPressure: { type: "string" },
+        irreversibleEvent: { type: "string" },
+        championConnectionType: { type: "string" },
+        finalContradiction: { type: "string" },
       },
     },
     championConnection: {
       type: "object",
       additionalProperties: false,
-      required: ["championName", "connectionType", "connectionSummary", "canonSafetyNote"],
+      required: ["championName", "connectionType", "connectionSummary", "whyItMatters", "canonSafetyNote"],
       properties: {
         championName: { type: "string" },
         connectionType: { type: "string" },
         connectionSummary: { type: "string" },
+        whyItMatters: { type: "string" },
         canonSafetyNote: { type: "string" },
       },
     },
-    originalityProfile: {
+    visualBible: {
       type: "object",
       additionalProperties: false,
-      required: ["specificRole", "dailyReality", "regionalPressure", "unusualStoryElement", "repetitionAvoided"],
+      required: ["appearance", "clothing", "regionAtmosphere", "colorPalette", "recurringVisualMotif"],
       properties: {
-        specificRole: { type: "string" },
-        dailyReality: { type: "string" },
-        regionalPressure: { type: "string" },
-        unusualStoryElement: { type: "string" },
-        repetitionAvoided: {
-          type: "array",
-          items: { type: "string" },
-        },
-      },
-    },
-    characterBible: {
-      type: "object",
-      additionalProperties: false,
-      required: [
-        "name",
-        "gender",
-        "characterType",
-        "legendaryTitle",
-        "region",
-        "socialRole",
-        "visualIdentity",
-        "clothing",
-        "faceAndBody",
-        "aura",
-        "symbolicObject",
-        "colorPalette",
-        "worldRules",
-        "runeterraLoreAnchor",
-      ],
-      properties: {
-        name: { type: "string" },
-        gender: { type: "string" },
-        characterType: { type: "string" },
-        legendaryTitle: { type: "string" },
-        region: { type: "string" },
-        socialRole: { type: "string" },
-        visualIdentity: { type: "string" },
+        appearance: { type: "string" },
         clothing: { type: "string" },
-        faceAndBody: { type: "string" },
-        aura: { type: "string" },
-        symbolicObject: { type: "string" },
+        regionAtmosphere: { type: "string" },
         colorPalette: { type: "string" },
-        worldRules: { type: "string" },
-        runeterraLoreAnchor: { type: "string" },
+        recurringVisualMotif: { type: "string" },
       },
     },
     pages: {
@@ -121,30 +72,11 @@ const loreBookJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["pageNumber", "chapter", "title", "text", "visualDirection", "imagePrompt"],
+        required: ["pageNumber", "title", "text", "imagePrompt"],
         properties: {
           pageNumber: { type: "integer", minimum: 1, maximum: 8 },
-          chapter: { type: "string" },
           title: { type: "string" },
           text: { type: "string" },
-          continuityNote: { type: "string" },
-          visualDirection: {
-            type: "object",
-            additionalProperties: false,
-            required: ["sceneType", "cameraShot", "characterAction", "environment", "keyObjects", "mood", "lighting"],
-            properties: {
-              sceneType: { type: "string" },
-              cameraShot: { type: "string" },
-              characterAction: { type: "string" },
-              environment: { type: "string" },
-              keyObjects: {
-                type: "array",
-                items: { type: "string" },
-              },
-              mood: { type: "string" },
-              lighting: { type: "string" },
-            },
-          },
           imagePrompt: { type: "string" },
         },
       },
@@ -235,7 +167,12 @@ function getResponseText(response: unknown) {
 
 function parseLoreBook(rawText: string) {
   const parsed = JSON.parse(extractJson(rawText)) as Partial<LoreBook>;
-  return normalizeLoreBook(parsed);
+  const normalized = normalizeLoreBook(parsed);
+  const issues = validateGeneratedStory(normalized);
+  if (issues.length > 0) {
+    console.warn("Generated story validation warnings:", issues);
+  }
+  return normalized;
 }
 
 async function requestLoreBook(input: BookFormInput, useSchema: boolean) {
@@ -293,8 +230,6 @@ export async function POST(request: Request) {
 
     const loreBook = await generateLoreBook(input);
 
-    // Keep this route fast: image generation happens through /api/generate-image.
-    // The client waits for the first two image calls before revealing the book.
     return NextResponse.json({ book: loreBook });
   } catch (error) {
     console.error("Book generation failed.", error);

@@ -1,5 +1,5 @@
 const GENERIC_TITLE_BANNED_WORDS =
-  /\b(trial|test|choice|awakening|discovery|omen|shadow|prophecy|pattern|shift|turning point|first sign|first blood|first flame|hidden truth|broken path|final door|last light|dark gift|price|pact|mark|seal|calling|whisper)\b/i;
+  /\b(trial|test|choice|awakening|discovery|omen|shadow|prophecy|pattern|shift|turning point|first sign|first blood|first flame|hidden truth|broken path|final door|last light|dark gift|price|pact|mark|seal|calling|whisper|secret|debt|promise|door|map|relic)\b/i;
 
 const GENERIC_TITLE_BANNED_PHRASES = [
   /^the trial$/i,

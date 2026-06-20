@@ -19,72 +19,85 @@ export type BookFormInput = {
     | "The Void";
 };
 
+export type VisualDirection = {
+  sceneType: string;
+  cameraShot: string;
+  characterAction: string;
+  environment: string;
+  keyObjects: string[];
+  mood: string;
+  lighting: string;
+};
+
 export type BookPage = {
   pageNumber: number;
   chapter: string;
   title: string;
   text: string;
-  continuityNote?: string;
-  visualDirection: {
-    sceneType: string;
-    cameraShot: string;
-    characterAction: string;
-    environment: string;
-    keyObjects: string[];
-    mood: string;
-    lighting: string;
-  };
   imagePrompt: string;
+  visualDirection?: VisualDirection;
   imageUrl?: string;
   audioUrl?: string | null;
+};
+
+export type StoryEngine = {
+  archetype: string;
+  centralIrony: string;
+  publicReputation: string;
+  privateTruth: string;
+  socialPressure: string;
+  irreversibleEvent: string;
+  championConnectionType: string;
+  finalContradiction: string;
+};
+
+export type ChampionConnection = {
+  championName: string;
+  connectionType: string;
+  connectionSummary: string;
+  whyItMatters: string;
+  canonSafetyNote: string;
+};
+
+export type VisualBible = {
+  appearance: string;
+  clothing: string;
+  regionAtmosphere: string;
+  colorPalette: string;
+  recurringVisualMotif: string;
+};
+
+/** Derived for image/audio/PDF consumers that still expect the legacy shape. */
+export type CharacterBible = {
+  name: string;
+  gender: string;
+  characterType: string;
+  legendaryTitle: string;
+  region: string;
+  socialRole: string;
+  visualIdentity: string;
+  clothing: string;
+  faceAndBody: string;
+  aura: string;
+  symbolicObject: string;
+  colorPalette: string;
+  worldRules: string;
+  runeterraLoreAnchor: string;
 };
 
 export type LoreBook = {
   title: string;
   subtitle: string;
-  mainRegion: string;
-  storyEngine: string;
-  protagonistRole: string;
-  coreConflict: string;
-  distinctiveHook: string;
-  narratorIntro: string;
-  characterBible: {
-    name: string;
-    gender: string;
-    characterType: string;
-    legendaryTitle: string;
-    region: string;
-    socialRole: string;
-    visualIdentity: string;
-    clothing: string;
-    faceAndBody: string;
-    aura: string;
-    symbolicObject: string;
-    colorPalette: string;
-    worldRules: string;
-    runeterraLoreAnchor: string;
-  };
+  region: string;
+  genre: string;
+  storyEngine: StoryEngine;
+  championConnection: ChampionConnection;
+  visualBible: VisualBible;
   pages: BookPage[];
-  biographyArc?: {
-    startingSituation: string;
-    incitingEvent: string;
-    championConnectionPage5: string;
-    page5Cliffhanger: string;
-    finalState: string;
-  };
-  championConnection?: {
-    championName: string;
-    connectionType: string;
-    connectionSummary: string;
-    canonSafetyNote: string;
-  };
-  originalityProfile?: {
-    specificRole: string;
-    dailyReality: string;
-    regionalPressure: string;
-    unusualStoryElement: string;
-    repetitionAvoided: string[];
-  };
+  /** Legacy alias used across the app. */
+  mainRegion: string;
+  /** Legacy compatibility object derived during normalization. */
+  characterBible: CharacterBible;
 };
 
 export type AudioSettings = {
@@ -130,3 +143,7 @@ export type StoredBook = {
   created_at: string;
   updated_at: string;
 };
+
+export function getCharacterName(book: LoreBook) {
+  return book.characterBible.name || book.title;
+}
