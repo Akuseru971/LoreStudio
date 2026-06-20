@@ -109,6 +109,8 @@ export type BookStatus = "free" | "checkout_started" | "paid" | "generating" | "
 
 export type Mp3Status = "not_started" | "generating" | "ready" | "failed";
 
+export type PdfStatus = "not_started" | "waiting_for_images" | "generating" | "ready" | "failed";
+
 export type ImagePageStatus = "not_started" | "generating" | "ready" | "failed";
 
 export type PageImageState = {
@@ -133,6 +135,8 @@ export type StoredBook = {
   audio: Record<string, string>;
   pdf_url: string | null;
   pdf_storage_path: string | null;
+  pdf_status: PdfStatus;
+  pdf_generated_at: string | null;
   mp3_storage_path: string | null;
   mp3_generated_at: string | null;
   mp3_status: Mp3Status;

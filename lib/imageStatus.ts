@@ -54,3 +54,18 @@ export function allBookImagesReady(book: StoredBook) {
 
   return true;
 }
+
+export function areBookImagesPending(book: StoredBook) {
+  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
+    const status = resolvePageImageStatus(book, pageNumber);
+    if (status === "generating") {
+      return true;
+    }
+
+    if (status !== "ready" || !book.images[String(pageNumber)]) {
+      return true;
+    }
+  }
+
+  return false;
+}

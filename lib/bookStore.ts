@@ -2,7 +2,7 @@ import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
 import { persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
 import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
-import type { BookFormInput, BookPage, BookStatus, ConfirmationEmailStatus, ImagePageStatus, LoreBook, Mp3Status, StoredBook } from "@/lib/types";
+import type { BookFormInput, BookPage, BookStatus, ConfirmationEmailStatus, ImagePageStatus, LoreBook, Mp3Status, PdfStatus, StoredBook } from "@/lib/types";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { stripBookAssets } from "@/lib/utils";
 
@@ -32,6 +32,8 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     audio: (row.audio as Record<string, string>) ?? {},
     pdf_url: row.pdf_url ? String(row.pdf_url) : null,
     pdf_storage_path: row.pdf_storage_path ? String(row.pdf_storage_path) : null,
+    pdf_status: (row.pdf_status as PdfStatus | null) ?? (row.pdf_storage_path ? "ready" : "not_started"),
+    pdf_generated_at: row.pdf_generated_at ? String(row.pdf_generated_at) : null,
     mp3_storage_path: row.mp3_storage_path ? String(row.mp3_storage_path) : null,
     mp3_generated_at: row.mp3_generated_at ? String(row.mp3_generated_at) : null,
     mp3_status: (row.mp3_status as Mp3Status | null) ?? "not_started",
@@ -265,7 +267,11 @@ export async function savePdfPath(bookId: string, pdfStoragePath: string) {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
-    .update({ pdf_storage_path: pdfStoragePath })
+    .update({
+      pdf_storage_path: pdfStoragePath,
+      pdf_status: "ready",
+      pdf_generated_at: new Date().toISOString(),
+    })
     .eq("id", bookId)
     .select("*")
     .single();
@@ -570,6 +576,70 @@ export async function markMp3Failed(bookId: string) {
 
   if (error || !data) {
     throw new Error(error?.message || "Unable to update MP3 status.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markPdfWaitingForImages(bookId: string) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook || storedBook.pdf_storage_path) {
+    return storedBook;
+  }
+
+  if (storedBook.pdf_status === "generating" || storedBook.pdf_status === "ready") {
+    return storedBook;
+  }
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ pdf_status: "waiting_for_images" })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to update PDF status.");
+  }
+
+  return mapRow(data);
+}
+
+export async function claimPdfGeneration(bookId: string) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook || storedBook.pdf_storage_path || storedBook.pdf_status === "generating") {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ pdf_status: "generating" })
+    .eq("id", bookId)
+    .is("pdf_storage_path", null)
+    .neq("pdf_status", "generating")
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markPdfFailed(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ pdf_status: "failed" })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to update PDF status.");
   }
 
   return mapRow(data);
