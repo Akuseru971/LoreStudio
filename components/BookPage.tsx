@@ -34,7 +34,7 @@ export default function BookPage({
             <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
               Chapter {page.pageNumber}
             </p>
-            <h2 className="page-elegant-title mt-1.5 text-xl leading-tight text-[#2a1a0c] sm:text-2xl">{page.chapter}</h2>
+            <h2 className="page-elegant-title mt-1.5 text-xl leading-tight text-[#2a1a0c] sm:text-2xl">{page.title}</h2>
           </div>
           <span className="rounded-full border border-[#6b4a24]/18 bg-[#fff8e8]/40 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-wider text-[#6b4a24]/75">
             {String(page.pageNumber).padStart(2, "0")}
@@ -49,7 +49,6 @@ export default function BookPage({
             transition={{ duration: 0.25, ease: "easeOut" }}
             className="w-full rounded-lg border border-[#6b4a24]/12 bg-[#fff8e8]/25 p-5 shadow-[inset_0_2px_12px_rgba(80,52,28,0.06)] sm:p-6"
           >
-            <p className="page-elegant-title text-xl leading-snug sm:text-2xl">{page.title}</p>
             <SyncedNarrationText text={page.text} isActive={isActive} />
           </motion.div>
         </div>
@@ -89,9 +88,9 @@ function ImageLeaf({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={page.imageUrl} alt={page.title} className="relative z-0 h-full w-full object-cover" />
           ) : imageSealed ? (
-            <SealedCliffhangerPlaceholder title={page.title} chapter={page.chapter} />
+            <SealedCliffhangerPlaceholder pageNumber={page.pageNumber} title={page.title} />
           ) : (
-            <IllustratedPlaceholder title={page.title} chapter={page.chapter} isImageLoading={isImageLoading} />
+            <IllustratedPlaceholder pageNumber={page.pageNumber} title={page.title} isImageLoading={isImageLoading} />
           )}
           <div className="pointer-events-none absolute inset-0 z-[3] bg-gradient-to-t from-black/25 via-transparent to-white/8" />
         </div>
@@ -100,7 +99,7 @@ function ImageLeaf({
   );
 }
 
-function SealedCliffhangerPlaceholder({ title, chapter }: { title: string; chapter: string }) {
+function SealedCliffhangerPlaceholder({ pageNumber, title }: { pageNumber: number; title: string }) {
   return (
     <div
       className={cn(
@@ -109,7 +108,9 @@ function SealedCliffhangerPlaceholder({ title, chapter }: { title: string; chapt
       )}
     >
       <div className="max-w-xs">
-        <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.32em] text-[#d9bd78]/70">{chapter}</p>
+        <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.32em] text-[#d9bd78]/70">
+          Chapter {pageNumber}
+        </p>
         <p className="page-elegant-title mt-3 text-xl leading-tight text-[#f7ebce] sm:text-2xl">{title}</p>
         <p className="mt-5 text-sm leading-7 text-[#c9d3df]/85">
           The vision beyond this page is sealed.
@@ -123,12 +124,12 @@ function SealedCliffhangerPlaceholder({ title, chapter }: { title: string; chapt
 }
 
 function IllustratedPlaceholder({
+  pageNumber,
   title,
-  chapter,
   isImageLoading,
 }: {
+  pageNumber: number;
   title: string;
-  chapter: string;
   isImageLoading: boolean;
 }) {
   return (
@@ -139,7 +140,9 @@ function IllustratedPlaceholder({
       )}
     >
       <div>
-        <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.28em] text-[#a89068]/75">{chapter}</p>
+        <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.28em] text-[#a89068]/75">
+          Chapter {pageNumber}
+        </p>
         <p className="page-elegant-title mt-3 text-xl leading-tight text-[#e8dcc0] sm:text-2xl">{title}</p>
         <p className="mt-4 text-[0.62rem] uppercase tracking-[0.22em] text-[#8a9aad]/70">
           {isImageLoading ? "Illustration being summoned..." : "Illustration waiting in the mist"}

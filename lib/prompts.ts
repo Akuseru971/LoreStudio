@@ -1,4 +1,5 @@
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
+import { PAGE_TITLE_PROMPT_RULES, PAGE_TITLE_SELF_CHECK } from "@/lib/page-titles";
 
 export const IMAGE_STYLE_LOCK =
   "Cinematic League of Legends-inspired fantasy illustration, premium illustrated storybook art, high-end digital painting, refined character design, rich environment detail, dramatic but elegant lighting, atmospheric depth, painterly realism, sharp focal point, beautiful composition, high production value, no text, no logo, no watermark.";
@@ -102,6 +103,9 @@ Avoid:
 - repeated phrases and repeated sentence openings across pages
 - overusing fate, shadow, whisper, forgotten, legend, prophecy
 - meta language about the story
+- stereotyped chapter filler in pages[].text such as "the trial began", "the pattern broke", "fate shifted", "the omen arrived", "destiny called"
+
+${PAGE_TITLE_PROMPT_RULES}
 
 ${ROLE_VARIETY_HINT}
 Store the chosen specific role in originalityProfile.specificRole and characterBible.socialRole.
@@ -177,8 +181,8 @@ Return a JSON object matching this exact schema:
   "pages": [
     {
       "pageNumber": 1,
-      "chapter": "string, unique story-specific chapter label",
-      "title": "string, unique story-specific page title",
+      "chapter": "string, must exactly match title",
+      "title": "string, unique premium biography section heading, 3 to 8 words",
       "text": "string, 55 to 95 words",
       "continuityNote": "string, internal only — how this page connects to the previous page",
       "visualDirection": {
@@ -224,6 +228,8 @@ Before returning JSON, internally verify:
 - Does any visible text mention page, chapter, biography, reader, unlock, paid, continuation, narrative, prompt, or generated? If yes, rewrite it.
 - Is the protagonist role specific and varied?
 - Does the job or social role affect the events?
+
+${PAGE_TITLE_SELF_CHECK}
 
 If any answer is no, rewrite before returning JSON.
 

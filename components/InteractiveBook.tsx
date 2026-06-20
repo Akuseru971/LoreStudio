@@ -564,9 +564,10 @@ export default function InteractiveBook({
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-4 text-center sm:text-left">
                   <div className="mx-auto sm:mx-0">
                     <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
-                      {activePage.chapter}
+                      Chapter {activePage.pageNumber}
                     </p>
-                    <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{characterName}</h1>
+                    <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{activePage.title}</h1>
+                    <p className="mt-2 text-sm text-[#a89068]/70">{characterName}</p>
                   </div>
                   {isPremium && accessToken ? (
                     <BookPremiumActions accessToken={accessToken} className="mx-auto sm:mx-0" />

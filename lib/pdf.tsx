@@ -110,9 +110,7 @@ function BookPdfDocument({ book }: { book: LoreBook }) {
       {book.pages.map((page) => (
         <Page key={page.pageNumber} size="A4" style={styles.storyPage} wrap>
           {page.imageUrl ? <Image src={page.imageUrl} style={styles.image} /> : null}
-          <Text style={styles.chapter}>
-            Chapter {page.pageNumber} · {page.chapter}
-          </Text>
+          <Text style={styles.chapter}>Chapter {page.pageNumber}</Text>
           <Text style={styles.title}>{page.title}</Text>
           <Text style={styles.body}>{page.text}</Text>
           <Text style={styles.footer}>Page {page.pageNumber}</Text>

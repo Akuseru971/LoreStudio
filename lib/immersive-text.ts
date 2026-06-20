@@ -24,6 +24,14 @@ const IMMERSION_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bas the biography continues\b/gi, "as the years went on"],
   [/\bthis chapter shows\b/gi, ""],
   [/\bthe story now reveals\b/gi, ""],
+  [/\bthe trial began\b/gi, "the hearing began"],
+  [/\bthe pattern broke\b/gi, "the plan failed"],
+  [/\bthe pattern shifted\b/gi, "the route changed"],
+  [/\bfate shifted\b/gi, "fortune turned"],
+  [/\bthe omen arrived\b/gi, "the warning came"],
+  [/\bthe shadow answered\b/gi, "the danger followed"],
+  [/\bthe silence remembered\b/gi, "the silence held"],
+  [/\bdestiny called\b/gi, "duty called"],
 ];
 
 const IMMERSION_BANNED_PATTERN =

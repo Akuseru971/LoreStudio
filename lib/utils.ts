@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import { polishImmersiveStoryText } from "@/lib/immersive-text";
+import { isGenericPageTitle } from "@/lib/page-titles";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export const genders = ["man", "woman", "creature", "unknown"] as const;
@@ -100,14 +101,14 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
 
 export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
   const fallbackChapterLabels = [
-    "A Name in the Ledger",
-    "The Work and the Ward",
-    "The Day the Pattern Broke",
-    "A Champion's Shadow",
-    "The Door That Would Not Stay Shut",
-    "What the Silence Left Behind",
-    "The Person They Had to Become",
-    "Where the Road Ends Now",
+    "A Clerk in the Ledger Room",
+    "Smoke Over the Lower Ward",
+    "A Map to the Wrong Front",
+    "A Letter Bearing a Champion's Seal",
+    "The Harbor Debt Left Unpaid",
+    "Orders from the Crimson Table",
+    "The Name the Archive Buried",
+    "A Bridge Still Unfinished",
   ];
   const bible = book.characterBible || {
     name: "The Unnamed",
@@ -131,11 +132,16 @@ export function normalizeLoreBook(book: Partial<LoreBook>): LoreBook {
     const page = book.pages?.[index];
     const visualDirection = normalizeVisualDirection(page, index + 1, mainRegion);
     const chapter = sanitizeText(page?.chapter, 80) || fallbackChapter;
+    const rawTitle = sanitizeText(page?.title, 80) || chapter;
+    const resolvedTitle = polishImmersiveStoryText(
+      rawTitle && !isGenericPageTitle(rawTitle) ? rawTitle : fallbackChapter,
+      80,
+    );
 
     return {
       pageNumber: index + 1,
-      chapter: polishImmersiveStoryText(sanitizeText(page?.chapter, 80) || fallbackChapter, 80),
-      title: polishImmersiveStoryText(sanitizeText(page?.title, 80) || fallbackChapter, 80),
+      chapter: resolvedTitle,
+      title: resolvedTitle,
       text:
         polishImmersiveStoryText(
           sanitizeText(page?.text, 700) || "The page remains veiled, waiting for the ink to return.",
