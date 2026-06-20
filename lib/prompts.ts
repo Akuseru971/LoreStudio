@@ -86,18 +86,38 @@ The champion's existence or actions must affect the protagonist's life, but the 
 Better champion connection types include:
 ${CHAMPION_CONNECTION_TYPES.join("\n")}
 
-Page 5:
-Page 5 must end with a strong reason to continue.
-The cliffhanger must not rely on an object reveal.
-Use moral, social, political, emotional, or psychological tension.
+Page 5 rule:
+Page 5 must reveal a clear connection to one existing League of Legends champion and must end with a direct cliffhanger.
 
-Examples of better cliffhangers:
-- publicly honored for the thing they are most ashamed of
-- a law makes their ordinary job a crime
-- their enemy tells the truth and no one believes it
-- their family survives only if they accept a false identity
-- their name is added to a list of heroes, traitors, saints, or monsters
-- a champion's ideology is used to justify destroying their life
+The final sentence of page 5 must create an unresolved danger, discovery, arrival, message, voice, door, betrayal, transformation, or threat.
+
+The final sentence must not resolve the scene.
+It must leave the protagonist facing something immediate and unanswered.
+
+Good cliffhanger patterns:
+- someone arrives
+- something answers
+- a hidden name is revealed
+- a sealed door opens
+- a known champion-linked sign appears
+- a message changes meaning
+- an enemy recognizes the protagonist
+- a relic activates
+- a voice speaks from somewhere impossible
+- the protagonist sees something they should not see
+
+Do not end page 5 with:
+- a reflection
+- a lesson
+- a summary
+- a poetic conclusion
+- a resolved emotion
+- a calm statement
+- a vague prophecy
+
+The last sentence must feel like a turning point.
+The cliffhanger must not rely only on an object reveal.
+Use moral, social, political, emotional, or psychological tension when possible.
 
 Style:
 - serious, elegant, immersive, easy to follow

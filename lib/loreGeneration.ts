@@ -1,5 +1,10 @@
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
 import { openai } from "@/lib/openai";
+import {
+  attemptPage5CliffhangerRepair,
+  isCliffhangerOnlyFailure,
+  validatePage5Cliffhanger,
+} from "@/lib/page5Cliffhanger";
 import { buildLorePrompt } from "@/lib/prompts";
 import { validateGeneratedStory } from "@/lib/story-engine";
 import type { BookFormInput, LoreBook } from "@/lib/types";
@@ -160,18 +165,38 @@ function validateLoreStructure(book: Partial<LoreBook>) {
     errors.push("Page 5 must reference the chosen champion connection.");
   }
 
-  if (pageFive?.text) {
-    const ending = pageFive.text.trim().slice(-120);
-    const hasCliffhanger = /[?!…]|\.\.\./.test(ending);
-    if (!hasCliffhanger) {
-      errors.push("Page 5 must end with a cliffhanger.");
-    }
-  }
+  errors.push(...validatePage5Cliffhanger(pageFive));
 
   return errors;
 }
 
-function parseLoreBook(rawText: string) {
+async function finalizeLoreBook(parsed: Partial<LoreBook>, input: BookFormInput) {
+  let workingBook: Partial<LoreBook> = {
+    ...parsed,
+    pages: parsed.pages ? [...parsed.pages] : [],
+  };
+
+  let structureErrors = validateLoreStructure(workingBook);
+
+  if (isCliffhangerOnlyFailure(structureErrors)) {
+    workingBook = await attemptPage5CliffhangerRepair(workingBook, input);
+    structureErrors = validateLoreStructure(workingBook);
+  }
+
+  if (structureErrors.length > 0) {
+    throw new Error(`Generated lore failed validation: ${structureErrors.join(" ")}`);
+  }
+
+  const normalized = normalizeLoreBook(workingBook);
+  const issues = validateGeneratedStory(normalized);
+  if (issues.length > 0) {
+    console.warn("[LORE_GENERATION_VALIDATION_WARNINGS]", issues);
+  }
+
+  return normalized;
+}
+
+async function parseLoreBook(rawText: string, input: BookFormInput) {
   let parsed: Partial<LoreBook>;
 
   try {
@@ -184,18 +209,7 @@ function parseLoreBook(rawText: string) {
     throw error;
   }
 
-  const structureErrors = validateLoreStructure(parsed);
-  if (structureErrors.length > 0) {
-    throw new Error(`Generated lore failed validation: ${structureErrors.join(" ")}`);
-  }
-
-  const normalized = normalizeLoreBook(parsed);
-  const issues = validateGeneratedStory(normalized);
-  if (issues.length > 0) {
-    console.warn("[LORE_GENERATION_VALIDATION_WARNINGS]", issues);
-  }
-
-  return normalized;
+  return finalizeLoreBook(parsed, input);
 }
 
 async function requestRawLoreText(input: BookFormInput) {
@@ -253,7 +267,7 @@ export async function generateLoreBook(input: BookFormInput): Promise<GenerateLo
 
   try {
     lastRawText = await requestRawLoreText(input);
-    return { book: parseLoreBook(lastRawText), fallback: false };
+    return { book: await parseLoreBook(lastRawText, input), fallback: false };
   } catch (error) {
     lastError = error;
     logLoreGenerationError(error);
@@ -262,7 +276,7 @@ export async function generateLoreBook(input: BookFormInput): Promise<GenerateLo
   if (lastRawText) {
     try {
       const repairedText = await repairLoreJson(lastRawText, input);
-      return { book: parseLoreBook(repairedText), fallback: false };
+      return { book: await parseLoreBook(repairedText, input), fallback: false };
     } catch (repairError) {
       lastError = repairError;
       logLoreGenerationError(repairError);
