@@ -13,7 +13,6 @@ import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import RitualVideoPreloader from "@/components/RitualVideoPreloader";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { buildPageNarrationText } from "@/lib/bookNarration";
-import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import {
   readAmbientMusicMutedPreference,
   writeAmbientMusicMutedPreference,
@@ -24,7 +23,6 @@ import {
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
 import type { BookFormInput, LoreBook } from "@/lib/types";
-import { stripBookAssets } from "@/lib/utils";
 
 type AppStep =
   | "intro"
@@ -51,17 +49,6 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   }
 }
 
-async function generateImageForPage(book: LoreBook, pageNumber: number) {
-  const response = await fetch("/api/generate-image", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ book, pageNumber }),
-  });
-
-  const data = await readJsonResponse<{ imageUrl?: string | null }>(response);
-  return data.imageUrl || undefined;
-}
-
 async function generateAudioForPage(page: LoreBook["pages"][number]) {
   const response = await fetch("/api/generate-audio", {
     method: "POST",
@@ -73,29 +60,8 @@ async function generateAudioForPage(page: LoreBook["pages"][number]) {
   return data.audioUrl || null;
 }
 
-async function generateImageWithRetry(book: LoreBook, pageNumber: number) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const imageUrl = await generateImageForPage(book, pageNumber);
-    if (imageUrl) {
-      return imageUrl;
-    }
-  }
-
-  console.warn(`[IMAGE] Failed to generate illustration for page ${pageNumber}.`);
-  return undefined;
-}
-
-async function attachInitialAssets(book: LoreBook) {
+async function attachInitialAudio(book: LoreBook) {
   const pages = book.pages.map((page) => ({ ...page }));
-
-  for (let pageNumber = 1; pageNumber <= FREE_IMAGE_PAGE_COUNT; pageNumber += 1) {
-    const pageIndex = pageNumber - 1;
-    const imageUrl = await generateImageWithRetry(book, pageNumber);
-    if (imageUrl) {
-      pages[pageIndex] = { ...pages[pageIndex], imageUrl };
-    }
-  }
-
   const audioPages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
   const audioResults = await Promise.allSettled(audioPages.map((page) => generateAudioForPage(page)));
 
@@ -130,14 +96,8 @@ async function uploadBookAsset(
   }
 }
 
-async function persistInitialAssets(accessToken: string, book: LoreBook) {
+async function persistInitialAudio(accessToken: string, book: LoreBook) {
   const uploads: Promise<void>[] = [];
-
-  for (const page of book.pages.slice(0, FREE_IMAGE_PAGE_COUNT)) {
-    if (page.imageUrl) {
-      uploads.push(uploadBookAsset(accessToken, page.pageNumber, "image", page.imageUrl));
-    }
-  }
 
   for (const page of book.pages.slice(0, ILLUSTRATED_PAGE_COUNT)) {
     if (page.audioUrl) {
@@ -159,6 +119,7 @@ export default function Home() {
   const [bookIsOpen, setBookIsOpen] = useState(false);
 
   const generationRunRef = useRef(0);
+  const generationPromiseRef = useRef<Promise<void> | null>(null);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
   const shouldPlayAmbientMusic = (step === "form" || (step === "book" && bookIsOpen)) && !ambientMuted;
@@ -168,12 +129,6 @@ export default function Home() {
   useEffect(() => {
     writeAmbientMusicMutedPreference(ambientMuted);
   }, [ambientMuted]);
-
-  useEffect(() => {
-    if (step === "ritualVideo") {
-      console.log("[VIDEO] Started at", Date.now());
-    }
-  }, [step]);
 
   useEffect(() => {
     if (generationStatus !== "ready" || !book || !accessToken || !videoFinished) {
@@ -196,51 +151,47 @@ export default function Home() {
   }, [generationStatus, step, videoFinished]);
 
   async function runGeneration(input: BookFormInput, runId: number) {
+    console.log("[GENERATION_REQUEST_STARTED]", Date.now());
+
     const response = await fetch("/api/generate-book", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     });
 
-    const data = await readJsonResponse<{ book?: LoreBook; error?: string }>(response);
-    if (!response.ok || !data.book) {
-      throw new Error(data.error || "The archives refused to open. Try again.");
+    const data = await readJsonResponse<{
+      book?: LoreBook;
+      accessToken?: string;
+      error?: string;
+      debug?: { name?: string };
+    }>(response);
+
+    if (!response.ok || !data.book || !data.accessToken) {
+      const detail = data.error || data.debug?.name;
+      throw new Error(detail || "The archives refused to open. Try again.");
     }
 
     if (generationRunRef.current !== runId) {
       return;
     }
 
-    const preparedBook = await attachInitialAssets(data.book);
+    console.log("[GENERATION_REQUEST_FINISHED]", Date.now());
+
+    const preparedBook = await attachInitialAudio(data.book);
 
     if (generationRunRef.current !== runId) {
       return;
     }
 
-    const saveResponse = await fetch("/api/books", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input, book: stripBookAssets(preparedBook) }),
-    });
-    const saveData = await readJsonResponse<{ accessToken?: string; error?: string }>(saveResponse);
-    if (!saveResponse.ok || !saveData.accessToken) {
-      throw new Error(saveData.error || "The book could not be saved.");
-    }
-
-    if (generationRunRef.current !== runId) {
-      return;
-    }
-
-    await persistInitialAssets(saveData.accessToken, preparedBook);
+    await persistInitialAudio(data.accessToken, preparedBook);
 
     if (generationRunRef.current !== runId) {
       return;
     }
 
     setBook(preparedBook);
-    setAccessToken(saveData.accessToken);
+    setAccessToken(data.accessToken);
     setGenerationStatus("ready");
-    console.log("[GENERATION] Finished at", Date.now());
   }
 
   function handleSubmit(input: BookFormInput) {
@@ -248,10 +199,10 @@ export default function Home() {
       return;
     }
 
+    console.log("[GENERATE_CLICK]", Date.now());
+
     generationRunRef.current += 1;
     const runId = generationRunRef.current;
-
-    console.log("[GENERATION] Started at", Date.now());
 
     setBook(null);
     setAccessToken(null);
@@ -260,17 +211,20 @@ export default function Home() {
     setVideoFinished(false);
     setBookIsOpen(false);
 
-    void runGeneration(input, runId).catch((error) => {
+    const generationPromise = runGeneration(input, runId).catch((error) => {
       if (generationRunRef.current !== runId) {
         return;
       }
 
+      console.error("[GENERATION_REQUEST_FAILED]", error);
       setGenerationError(error instanceof Error ? error.message : "The archives refused to open. Try again.");
       setGenerationStatus("failed");
-      console.log("[GENERATION] Failed at", Date.now());
     });
 
+    generationPromiseRef.current = generationPromise;
+
     if (hasIntroVideo) {
+      console.log("[VIDEO_STEP_STARTED]", Date.now());
       setStep("ritualVideo");
       return;
     }
@@ -280,7 +234,7 @@ export default function Home() {
   }
 
   function handleVideoEnded() {
-    console.log("[VIDEO] Ended at", Date.now());
+    console.log("[VIDEO_ENDED]", Date.now());
     setVideoFinished(true);
 
     if (generationStatus === "ready" && book && accessToken) {
@@ -297,8 +251,20 @@ export default function Home() {
   }
 
   function handleVideoSkipped() {
-    console.log("[VIDEO] Skipped at", Date.now());
-    handleVideoEnded();
+    console.log("[VIDEO_SKIPPED]", Date.now());
+    setVideoFinished(true);
+
+    if (generationStatus === "ready" && book && accessToken) {
+      setStep("book");
+      return;
+    }
+
+    if (generationStatus === "failed") {
+      setStep("error");
+      return;
+    }
+
+    setStep("creationRitual");
   }
 
   function reset() {
