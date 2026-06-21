@@ -1,20 +1,46 @@
+import "server-only";
+
 import { dataUrlFromBase64, sanitizeText } from "@/lib/utils";
 
-const DEFAULT_ELEVENLABS_VOICE_ID = "32RJn1LZiXZZLVacVQoD";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";
+const DEFAULT_ELEVENLABS_VOICE_ID = "t9VKj6QDu6evrQNoV6Ij";
 
-export async function generateNarrationAudio(text: string) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_ELEVENLABS_VOICE_ID;
-  const modelId = process.env.ELEVENLABS_MODEL_ID || DEFAULT_ELEVENLABS_MODEL_ID;
+export function getElevenLabsVoiceId() {
+  return process.env.ELEVENLABS_VOICE_ID?.trim() || DEFAULT_ELEVENLABS_VOICE_ID;
+}
 
-  if (!apiKey) {
+function getElevenLabsModelId() {
+  return process.env.ELEVENLABS_MODEL_ID?.trim() || DEFAULT_ELEVENLABS_MODEL_ID;
+}
+
+type GenerateNarrationOptions = {
+  pageNumber?: number | string;
+};
+
+export async function generateNarrationAudio(text: string, options: GenerateNarrationOptions = {}) {
+  const buffer = await generateNarrationAudioBuffer(text, options);
+  if (!buffer) {
     return null;
   }
 
+  return dataUrlFromBase64(buffer.toString("base64"), "audio/mpeg");
+}
+
+export async function generateNarrationAudioBuffer(text: string, options: GenerateNarrationOptions = {}) {
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Missing ELEVENLABS_API_KEY");
+  }
+
+  const voiceId = getElevenLabsVoiceId();
+  const modelId = getElevenLabsModelId();
+  const pageLabel = options.pageNumber ?? "preview";
+
+  console.log("[AUDIO] Generating page", pageLabel, "with voice", voiceId);
+
   const safeText = sanitizeText(text, 900);
   if (!safeText) {
-    return null;
+    throw new Error("Narration text is empty.");
   }
 
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -41,5 +67,5 @@ export async function generateNarrationAudio(text: string) {
   }
 
   const audioBuffer = Buffer.from(await response.arrayBuffer());
-  return dataUrlFromBase64(audioBuffer.toString("base64"), "audio/mpeg");
+  return audioBuffer;
 }

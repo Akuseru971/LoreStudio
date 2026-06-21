@@ -5,10 +5,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, CSSProperties, ReactNode, RefAttributes } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AudioControls from "@/components/AudioControls";
+import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
+import MagicalBookCover from "@/components/MagicalBookCover";
+import BookPremiumActions from "@/components/BookPremiumActions";
+import NarratorUnlockModal from "@/components/NarratorUnlockModal";
 import ResultActions from "@/components/ResultActions";
-import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
-import type { AudioSettings, LoreBook } from "@/lib/types";
+import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
+import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { buildPageNarrationText } from "@/lib/bookNarration";
+import {
+  FREE_IMAGE_PAGE_COUNT,
+  isPremiumImagePage,
+  isSealedFreeImagePage,
+  PREMIUM_IMAGE_PAGE_NUMBERS,
+} from "@/lib/image-config";
+import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
+import { getDirectImageUrl, logBookImageRender } from "@/lib/book-image-utils";
+import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio, generatePremiumImages } from "@/lib/client/api";
+import { normalizeBook } from "@/lib/normalizeBook";
+import type { ImagePageStatus, LoreBook } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type PageFlipHandle = {
   pageFlip: () => {
@@ -59,140 +76,164 @@ const HTMLFlipBook = dynamic<PageFlipProps & RefAttributes<PageFlipHandle>>(
 type InteractiveBookProps = {
   book: LoreBook;
   onReset: () => void;
+  accessToken?: string;
+  isPremium?: boolean;
+  canDownloadPdf?: boolean;
+  canDownloadMp3?: boolean;
+  initialPageIndex?: number;
+  onReadingStateChange?: (isReading: boolean) => void;
 };
 
-export default function InteractiveBook({ book, onReset }: InteractiveBookProps) {
+const OPENING_DURATION_MS = 2100;
+const PAGE_FIVE_INDEX = ILLUSTRATED_PAGE_COUNT - 1;
+
+export default function InteractiveBook({
+  book,
+  onReset,
+  accessToken,
+  isPremium = false,
+  canDownloadPdf = false,
+  canDownloadMp3 = false,
+  initialPageIndex = 0,
+  onReadingStateChange,
+}: InteractiveBookProps) {
+  const safeBook = useMemo(() => normalizeBook(book) ?? book, [book]);
+  const safePages = useMemo(
+    () => (Array.isArray(safeBook.pages) ? safeBook.pages : []),
+    [safeBook.pages],
+  );
+
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
-  const [activePageIndex, setActivePageIndex] = useState(0);
-  const [musicAvailable, setMusicAvailable] = useState(false);
-  const [audioCache, setAudioCache] = useState<Record<number, string | null>>(() =>
+  const [activePageIndex, setActivePageIndex] = useState(initialPageIndex);
+  const [audioCache, setAudioCache] = useState<Record<number, string>>(() =>
     Object.fromEntries(
-      book.pages
-        .filter((page) => page.audioUrl !== undefined)
-        .map((page) => [page.pageNumber, page.audioUrl || null]),
+      safePages
+        .filter((page) => Boolean(page.audioUrl))
+        .map((page) => [page.pageNumber, page.audioUrl as string]),
     ),
   );
-  const [imageCache, setImageCache] = useState<Record<number, string | null>>({});
+  const [imageCache, setImageCache] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      safePages
+        .filter((page) => Boolean(page.imageUrl))
+        .map((page) => [page.pageNumber, page.imageUrl as string]),
+    ),
+  );
   const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
-  const [revealedPages, setRevealedPages] = useState<Record<number, boolean>>({});
-  const [audioDurations, setAudioDurations] = useState<Record<number, number>>({});
-  const [highestReachedIndex, setHighestReachedIndex] = useState(0);
-  const [hasCompletedFirstListen, setHasCompletedFirstListen] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
-  const [settings, setSettings] = useState<AudioSettings>({
-    musicEnabled: true,
-    voiceEnabled: true,
-  });
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [showNarratorModal, setShowNarratorModal] = useState(false);
+  const [narratorTeaserAudioUrl, setNarratorTeaserAudioUrl] = useState<string | null>(null);
+  const [narrationPageIndex, setNarrationPageIndex] = useState<number | null>(null);
+  const [isNarratorPlaying, setIsNarratorPlaying] = useState(false);
+  const [narratorError, setNarratorError] = useState<string | null>(null);
 
   const flipRef = useRef<PageFlipHandle | null>(null);
-  const musicRef = useRef<HTMLAudioElement | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
+  const teaserRef = useRef<HTMLAudioElement | null>(null);
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
-  const autoAdvanceTimerRef = useRef<number | undefined>(undefined);
-  const highestReachedRef = useRef(0);
-  const hasCompletedFirstListenRef = useRef(false);
+
   const pagesWithImages = useMemo(
     () =>
-      book.pages.map((page) => ({
-        ...page,
-        imageUrl: imageCache[page.pageNumber] || page.imageUrl,
-      })),
-    [book.pages, imageCache],
+      safePages.map((page) => {
+        const imageUrl = imageCache[page.pageNumber] ?? page.imageUrl ?? null;
+        logBookImageRender(page.pageNumber, imageUrl ? { pageNumber: page.pageNumber, status: "ready", url: imageUrl } : null);
+        return {
+          ...page,
+          imageUrl,
+        };
+      }),
+    [safePages, imageCache],
   );
-  const illustratedPages = useMemo(() => pagesWithImages.slice(0, ILLUSTRATED_PAGE_COUNT), [pagesWithImages]);
+  const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT;
+  const illustratedPages = useMemo(() => pagesWithImages.slice(0, pageLimit), [pagesWithImages, pageLimit]);
   const activePage = illustratedPages[activePageIndex] || illustratedPages[0];
   const isOpen = bookState === "open";
   const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
-  const isGuidedFirstListen = isOpen && !hasCompletedFirstListen;
-  const canLookBack = hasCompletedFirstListen || highestReachedIndex >= 4;
-  const canGoPrevious = activePageIndex > 0 && canLookBack;
-  const canGoNext = hasCompletedFirstListen
+  const canGoPrevious = activePageIndex > 0;
+  const canGoNext = isPremium
     ? activePageIndex < illustratedPages.length - 1
-    : canLookBack && activePageIndex < highestReachedIndex;
+    : activePageIndex <= PAGE_FIVE_INDEX;
 
-  const coverMarks = useMemo(() => ["I", "II", "III", "IV"], []);
+  const escapeParticles = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, index) => ({
+        id: index,
+        left: `${20 + ((index * 19) % 60)}%`,
+        top: `${25 + ((index * 21) % 50)}%`,
+      })),
+    [],
+  );
+
+  const characterName = safeBook.characterBible?.name || safeBook.title || "Your legend";
+  const showCover = bookState !== "open";
+  const showOpenBook = bookState === "opening" || bookState === "open";
 
   useEffect(() => {
-    highestReachedRef.current = highestReachedIndex;
-  }, [highestReachedIndex]);
+    onReadingStateChange?.(bookState === "open");
+  }, [bookState, onReadingStateChange]);
 
   useEffect(() => {
-    hasCompletedFirstListenRef.current = hasCompletedFirstListen;
-  }, [hasCompletedFirstListen]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/audio/mysterious-theme.mp3", { method: "HEAD" })
-      .then((response) => {
-        if (!cancelled) {
-          setMusicAvailable(response.ok);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMusicAvailable(false);
-        }
-      });
-
     return () => {
-      cancelled = true;
+      onReadingStateChange?.(false);
+      dispatchNarrationEnd();
+      voiceRef.current?.pause();
     };
-  }, []);
-
-  const playMusic = useCallback(async () => {
-    if (!musicAvailable || !settings.musicEnabled || !musicRef.current) {
-      return;
-    }
-
-    musicRef.current.volume = 0.16;
-    try {
-      await musicRef.current.play();
-    } catch {
-      setSettings((current) => ({ ...current, musicEnabled: false }));
-    }
-  }, [musicAvailable, settings.musicEnabled]);
-
-  const pauseMusic = useCallback(() => {
-    musicRef.current?.pause();
-  }, []);
+  }, [onReadingStateChange]);
 
   const fetchAudioForPage = useCallback(
     async (pageNumber: number, text: string) => {
-      if (audioCache[pageNumber] !== undefined) {
-        return audioCache[pageNumber];
+      if (!isPremium || !accessToken) {
+        return null;
+      }
+
+      const cachedAudio = audioCache[pageNumber];
+      if (cachedAudio) {
+        return cachedAudio;
+      }
+
+      const pageAudioUrl = illustratedPages.find((page) => page.pageNumber === pageNumber)?.audioUrl;
+      if (pageAudioUrl) {
+        setAudioCache((current) => ({ ...current, [pageNumber]: pageAudioUrl }));
+        return pageAudioUrl;
       }
 
       setIsLoadingVoice(true);
       try {
-        const response = await fetch("/api/generate-audio", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, pageNumber }),
-        });
-        const data = (await response.json()) as { audioUrl?: string | null };
-        const audioUrl = data.audioUrl || null;
-        setAudioCache((current) => ({ ...current, [pageNumber]: audioUrl }));
+        const { data } = await generatePageAudio({ text, pageNumber, accessToken: accessToken as string });
+        const audioUrl = (data as { audioUrl?: string | null }).audioUrl || null;
+        if (audioUrl) {
+          setAudioCache((current) => ({ ...current, [pageNumber]: audioUrl }));
+        }
         return audioUrl;
       } catch {
-        setAudioCache((current) => ({ ...current, [pageNumber]: null }));
         return null;
       } finally {
         setIsLoadingVoice(false);
       }
     },
-    [audioCache],
+    [accessToken, audioCache, illustratedPages, isPremium],
   );
 
   const fetchImageForPage = useCallback(
     async (pageNumber: number) => {
-      if (pageNumber < 1 || pageNumber > ILLUSTRATED_PAGE_COUNT) {
+      if (pageNumber < 1 || pageNumber > FULL_BOOK_PAGE_COUNT) {
         return;
       }
 
-      const page = book.pages.find((item) => item.pageNumber === pageNumber);
-      if (!page || page.imageUrl || requestedImagesRef.current.has(pageNumber)) {
+      if (!isPremium && pageNumber > FREE_IMAGE_PAGE_COUNT) {
+        return;
+      }
+
+      if (isPremium && isPremiumImagePage(pageNumber)) {
+        return;
+      }
+
+      const page = safePages.find((item) => item.pageNumber === pageNumber);
+      const cachedImage = imageCache[pageNumber] ?? page?.imageUrl;
+      if (!page || cachedImage || requestedImagesRef.current.has(pageNumber)) {
         return;
       }
 
@@ -200,35 +241,144 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       setLoadingImages((current) => ({ ...current, [pageNumber]: true }));
 
       try {
-        const response = await fetch("/api/generate-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ book, pageNumber }),
-        });
-        const data = (await response.json()) as { imageUrl?: string | null };
-        setImageCache((current) => ({ ...current, [pageNumber]: data.imageUrl || null }));
-      } catch {
-        setImageCache((current) => ({ ...current, [pageNumber]: null }));
+        const { data } = await generateImage({ book: safeBook, pageNumber });
+        const imageUrl = (data as { imageUrl?: string | null }).imageUrl || null;
+        if (imageUrl) {
+          setImageCache((current) => ({ ...current, [pageNumber]: imageUrl }));
+        } else {
+          console.warn(`[IMAGE] Missing illustration for page ${pageNumber}.`);
+        }
+      } catch (error) {
+        console.warn(`[IMAGE] Failed to load illustration for page ${pageNumber}.`, error);
       } finally {
+        requestedImagesRef.current.delete(pageNumber);
         setLoadingImages((current) => ({ ...current, [pageNumber]: false }));
       }
     },
-    [book],
+    [safeBook, imageCache, isPremium],
   );
 
-  useEffect(() => {
-    const pagesToIllustrate = book.pages.slice(0, ILLUSTRATED_PAGE_COUNT);
-    void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
-  }, [book.pages, fetchImageForPage]);
+  const refreshBookImages = useCallback(async (): Promise<boolean> => {
+    if (!accessToken) {
+      return true;
+    }
+
+    const { response, data } = await fetchBook(accessToken);
+    const bookData = data as {
+      book?: LoreBook | null;
+      images?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
+      imageStatus?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
+      allIllustrationsReady?: boolean;
+    };
+
+    if (!response.ok || !bookData.book) {
+      return false;
+    }
+
+    const normalizedBook = normalizeBook(bookData.book);
+    if (!normalizedBook) {
+      return false;
+    }
+
+    const bookPages = Array.isArray(normalizedBook.pages) ? normalizedBook.pages : [];
+    const imageMap = bookData.images || bookData.imageStatus || {};
+    const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT;
+    const nextCache: Record<number, string> = {};
+
+    for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+      const state = imageMap[String(pageNumber)];
+      const page = bookPages.find((item) => item.pageNumber === pageNumber);
+      const url = getDirectImageUrl(state) || page?.imageUrl || null;
+      if (url) {
+        nextCache[pageNumber] = url;
+      }
+    }
+
+    setImageCache((current) => ({ ...current, ...nextCache }));
+
+    const nextLoading: Record<number, boolean> = {};
+    for (const pageNumber of PREMIUM_IMAGE_PAGE_NUMBERS) {
+      const state = imageMap[String(pageNumber)];
+      const page = bookPages.find((item) => item.pageNumber === pageNumber);
+      const hasImage = Boolean(getDirectImageUrl(state) || page?.imageUrl);
+
+      if (state?.status === "generating" && !hasImage) {
+        nextLoading[pageNumber] = true;
+        continue;
+      }
+
+      nextLoading[pageNumber] = false;
+    }
+
+    setLoadingImages((current) => ({ ...current, ...nextLoading }));
+
+    return Boolean(bookData.allIllustrationsReady);
+  }, [accessToken, isPremium]);
+
+  const refreshPremiumImages = refreshBookImages;
 
   useEffect(() => {
-    return () => {
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
+    if (!accessToken) {
+      return;
+    }
+
+    void refreshBookImages();
+  }, [accessToken, isPremium, refreshBookImages]);
+
+  useEffect(() => {
+    const pagesToIllustrate = safePages.slice(0, isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT);
+    void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
+  }, [safePages, fetchImageForPage, isPremium]);
+
+  useEffect(() => {
+    if (!isPremium || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+    const currentAccessToken = accessToken;
+
+    async function runPremiumImages() {
+      await generatePremiumImages(currentAccessToken);
+
+      while (!cancelled) {
+        const allReady = await refreshPremiumImages();
+        if (allReady) {
+          break;
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
       }
-      voiceRef.current?.pause();
+    }
+
+    void runPremiumImages();
+
+    return () => {
+      cancelled = true;
     };
+  }, [accessToken, isPremium, refreshPremiumImages]);
+
+  const stopNarration = useCallback(() => {
+    narrationRunRef.current += 1;
+    voiceRef.current?.pause();
+    teaserRef.current?.pause();
+    setIsNarratorPlaying(false);
+    setNarrationPageIndex(null);
+    dispatchNarrationEnd();
   }, []);
+
+  const tryForwardNavigation = useCallback(
+    (targetIndex: number) => {
+      if (!isPremium && activePageIndex === PAGE_FIVE_INDEX && targetIndex > PAGE_FIVE_INDEX) {
+        stopNarration();
+        setShowUnlockModal(true);
+        return false;
+      }
+
+      return targetIndex <= illustratedPages.length - 1;
+    },
+    [activePageIndex, illustratedPages.length, isPremium, stopNarration],
+  );
 
   const goToSpread = useCallback(
     (pageIndex: number) => {
@@ -239,111 +389,73 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     [illustratedPages.length],
   );
 
-  const estimateReadingDuration = useCallback((text: string) => {
-    const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
-    return Math.min(14000, Math.max(6500, wordCount * 360));
-  }, []);
+  const playNarratorTeaser = useCallback(async () => {
+    stopNarration();
 
-  const getAudioDuration = useCallback(
-    async (audio: HTMLAudioElement, fallbackText: string) =>
-      new Promise<number>((resolve) => {
-        const fallback = estimateReadingDuration(fallbackText);
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
-          resolve(audio.duration * 1000);
-          return;
+    let audioUrl = narratorTeaserAudioUrl;
+    if (!audioUrl) {
+      try {
+        const { data } = await generateNarratorTeaser();
+        const teaserData = data as { audioUrl?: string | null };
+        audioUrl = teaserData.audioUrl || null;
+        if (audioUrl) {
+          setNarratorTeaserAudioUrl(audioUrl);
         }
-
-        const timeout = window.setTimeout(() => {
-          cleanup();
-          resolve(fallback);
-        }, 900);
-
-        function cleanup() {
-          window.clearTimeout(timeout);
-          audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-          audio.removeEventListener("durationchange", onLoadedMetadata);
-        }
-
-        function onLoadedMetadata() {
-          if (Number.isFinite(audio.duration) && audio.duration > 0) {
-            cleanup();
-            resolve(audio.duration * 1000);
-          }
-        }
-
-        audio.addEventListener("loadedmetadata", onLoadedMetadata);
-        audio.addEventListener("durationchange", onLoadedMetadata);
-      }),
-    [estimateReadingDuration],
-  );
-
-  const completeGuidedPage = useCallback(
-    (pageIndex: number) => {
-      if (!isOpen || hasCompletedFirstListenRef.current || pageIndex !== highestReachedRef.current) {
+      } catch {
         return;
       }
+    }
 
-      if (pageIndex >= illustratedPages.length - 1) {
-        hasCompletedFirstListenRef.current = true;
-        setHasCompletedFirstListen(true);
-        return;
-      }
+    if (!audioUrl) {
+      return;
+    }
 
-      const nextIndex = pageIndex + 1;
-      highestReachedRef.current = Math.max(highestReachedRef.current, nextIndex);
-      setHighestReachedIndex((current) => Math.max(current, nextIndex));
-      autoAdvanceTimerRef.current = window.setTimeout(() => {
-        goToSpread(nextIndex);
-      }, 900);
-    },
-    [goToSpread, illustratedPages.length, isOpen],
-  );
+    if (!teaserRef.current) {
+      teaserRef.current = new Audio();
+    }
+
+    const teaser = teaserRef.current;
+    teaser.pause();
+    teaser.src = audioUrl;
+    teaser.volume = 0.82;
+    teaser.onended = () => {
+      dispatchNarrationEnd();
+    };
+    teaser.onerror = () => {
+      dispatchNarrationEnd();
+    };
+
+    try {
+      dispatchNarrationStart();
+      await teaser.play();
+    } catch {
+      dispatchNarrationEnd();
+    }
+  }, [narratorTeaserAudioUrl, stopNarration]);
 
   const startPageNarration = useCallback(
-    async (pageIndex: number, options: { autoAdvance: boolean }) => {
+    async (pageIndex: number) => {
       const page = illustratedPages[pageIndex];
-      if (!page) {
+      if (!page || !voiceEnabled || !isPremium) {
         return;
-      }
-
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
       }
 
       narrationRunRef.current += 1;
       const runId = narrationRunRef.current;
+      teaserRef.current?.pause();
       voiceRef.current?.pause();
+      dispatchNarrationEnd();
+      setNarrationPageIndex(pageIndex);
+      setNarratorError(null);
 
-      if (!settings.voiceEnabled) {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
-        return;
-      }
-
-      const audioUrl = await fetchAudioForPage(page.pageNumber, page.text);
+      const audioUrl = await fetchAudioForPage(page.pageNumber, buildPageNarrationText(page));
       if (narrationRunRef.current !== runId) {
         return;
       }
 
       if (!audioUrl) {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
-        }
+        setNarratorError("The narrator could not be summoned. Please try again.");
+        setNarrationPageIndex(null);
         return;
       }
 
@@ -355,53 +467,64 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       voice.pause();
       voice.src = audioUrl;
       voice.volume = 0.82;
-      const revealDuration = await getAudioDuration(voice, page.text);
-      if (narrationRunRef.current !== runId) {
-        return;
-      }
-      setAudioDurations((current) => ({ ...current, [page.pageNumber]: revealDuration / 1000 }));
       voice.onended = () => {
-        if (narrationRunRef.current !== runId) {
-          return;
-        }
-        if (options.autoAdvance) {
-          completeGuidedPage(pageIndex);
+        if (narrationRunRef.current === runId) {
+          setIsNarratorPlaying(false);
+          setNarrationPageIndex(null);
+          dispatchNarrationEnd();
         }
       };
       voice.onerror = () => {
-        if (narrationRunRef.current !== runId) {
-          return;
-        }
-        if (options.autoAdvance) {
-          completeGuidedPage(pageIndex);
+        if (narrationRunRef.current === runId) {
+          setIsNarratorPlaying(false);
+          setNarrationPageIndex(null);
+          dispatchNarrationEnd();
         }
       };
 
       try {
+        dispatchNarrationStart();
+        setIsNarratorPlaying(true);
         await voice.play();
-        if (narrationRunRef.current === runId) {
-          setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        }
       } catch {
-        const fallbackDuration = estimateReadingDuration(page.text);
-        setAudioDurations((current) => ({ ...current, [page.pageNumber]: fallbackDuration / 1000 }));
-        setRevealedPages((current) => ({ ...current, [page.pageNumber]: true }));
-        if (options.autoAdvance) {
-          autoAdvanceTimerRef.current = window.setTimeout(() => {
-            if (narrationRunRef.current === runId) {
-              completeGuidedPage(pageIndex);
-            }
-          }, fallbackDuration);
+        if (narrationRunRef.current === runId) {
+          setIsNarratorPlaying(false);
+          setNarrationPageIndex(null);
+          dispatchNarrationEnd();
         }
       }
     },
+    [fetchAudioForPage, illustratedPages, isPremium, voiceEnabled],
+  );
+
+  const handleNarratorClick = useCallback(
+    async (pageIndex: number) => {
+      if (!accessToken) {
+        return;
+      }
+
+      if (!isPremium) {
+        stopNarration();
+        setShowNarratorModal(true);
+        await playNarratorTeaser();
+        return;
+      }
+
+      if (narrationPageIndex === pageIndex && isNarratorPlaying) {
+        stopNarration();
+        return;
+      }
+
+      await startPageNarration(pageIndex);
+    },
     [
-      completeGuidedPage,
-      estimateReadingDuration,
-      fetchAudioForPage,
-      getAudioDuration,
-      illustratedPages,
-      settings.voiceEnabled,
+      accessToken,
+      isNarratorPlaying,
+      isPremium,
+      narrationPageIndex,
+      playNarratorTeaser,
+      startPageNarration,
+      stopNarration,
     ],
   );
 
@@ -410,40 +533,8 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
       return;
     }
 
-    let timer: number | undefined;
-    if (settings.musicEnabled) {
-      timer = window.setTimeout(() => {
-        void playMusic();
-      }, 0);
-    } else {
-      pauseMusic();
-    }
-
-    return () => {
-      if (timer) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, [isOpen, pauseMusic, playMusic, settings.musicEnabled]);
-
-  useEffect(() => {
-    let timer: number | undefined;
-    if (isOpen && settings.voiceEnabled) {
-      timer = window.setTimeout(() => {
-        void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
-      }, 0);
-    } else if (isOpen && !settings.voiceEnabled) {
-      timer = window.setTimeout(() => {
-        void startPageNarration(activePageIndex, { autoAdvance: !hasCompletedFirstListen });
-      }, 0);
-    }
-
-    return () => {
-      if (timer) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, [activePageIndex, hasCompletedFirstListen, isOpen, settings.voiceEnabled, startPageNarration]);
+    stopNarration();
+  }, [activePageIndex, isOpen, stopNarration]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -495,30 +586,30 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     if (bookState !== "closed") {
       return;
     }
-    narrationRunRef.current += 1;
-    highestReachedRef.current = 0;
-    hasCompletedFirstListenRef.current = false;
-    setHighestReachedIndex(0);
-    setHasCompletedFirstListen(false);
-    setRevealedPages({});
+
+    stopNarration();
+    setShowUnlockModal(false);
     setBookState("opening");
-    setActivePageIndex(0);
-    void playMusic();
+    setActivePageIndex(initialPageIndex);
     window.setTimeout(() => {
       setBookState("open");
-    }, 1700);
+      if (initialPageIndex > 0) {
+        flipRef.current?.pageFlip()?.flip(initialPageIndex * 2, "top");
+      }
+    }, OPENING_DURATION_MS);
   }
 
   function handleFlip(event: { data?: number }) {
     const physicalPage = typeof event.data === "number" ? event.data : 0;
     const nextIndex = Math.floor(Math.max(physicalPage, 0) / 2);
-    const maxAllowedIndex = hasCompletedFirstListen ? illustratedPages.length - 1 : highestReachedRef.current;
-    const minAllowedIndex = hasCompletedFirstListen || canLookBack ? 0 : highestReachedRef.current;
-    const boundedIndex = Math.min(Math.max(nextIndex, minAllowedIndex), maxAllowedIndex);
-    setActivePageIndex(boundedIndex);
-    if (boundedIndex !== nextIndex) {
-      window.setTimeout(() => goToSpread(boundedIndex), 0);
+    const boundedIndex = Math.min(Math.max(nextIndex, 0), illustratedPages.length - 1);
+
+    if (boundedIndex > activePageIndex && !tryForwardNavigation(boundedIndex)) {
+      window.setTimeout(() => goToSpread(activePageIndex), 0);
+      return;
     }
+
+    setActivePageIndex(boundedIndex);
   }
 
   function flipPrevious() {
@@ -533,217 +624,236 @@ export default function InteractiveBook({ book, onReset }: InteractiveBookProps)
     if (!canGoNext) {
       return;
     }
-    const nextSpread = Math.min(activePageIndex + 1, illustratedPages.length - 1);
+
+    const nextIndex = activePageIndex + 1;
+    if (!tryForwardNavigation(nextIndex)) {
+      return;
+    }
+
+    const nextSpread = Math.min(nextIndex, illustratedPages.length - 1);
     flipRef.current?.pageFlip()?.flip(nextSpread * 2, "top");
   }
 
-  function toggleMusic() {
-    setSettings((current) => {
-      const next = { ...current, musicEnabled: !current.musicEnabled };
-      if (!next.musicEnabled) {
-        pauseMusic();
+  function handleClosePaywall() {
+    stopNarration();
+    setShowUnlockModal(false);
+  }
+
+  function handleCloseNarratorModal() {
+    teaserRef.current?.pause();
+    dispatchNarrationEnd();
+    setShowNarratorModal(false);
+  }
+
+  function toggleVoice() {
+    setVoiceEnabled((current) => {
+      const next = !current;
+      if (!next) {
+        stopNarration();
       }
       return next;
     });
   }
 
-  function toggleVoice() {
-    setSettings((current) => {
-      const next = { ...current, voiceEnabled: !current.voiceEnabled };
-      if (!next.voiceEnabled) {
-        voiceRef.current?.pause();
-      }
-      return next;
-    });
+  if (!illustratedPages.length || !activePage) {
+    return (
+      <main className="archive-shell flex min-h-screen items-center justify-center px-5 py-10">
+        <section className="glass-panel max-w-lg rounded-[2rem] p-8 text-center">
+          <h1 className="font-title text-2xl text-[#f7ebce]">The archive failed to open this page</h1>
+          <p className="mt-4 text-sm leading-7 text-[#9baabd]">
+            Some assets are still being prepared, or this legend uses an older archive shape. Please reload or return
+            home.
+          </p>
+          <button
+            type="button"
+            onClick={onReset}
+            className="gold-button mt-6 rounded-2xl px-6 py-3 text-xs font-bold uppercase tracking-[0.22em]"
+          >
+            Return
+          </button>
+        </section>
+      </main>
+    );
   }
 
   return (
     <main className="archive-shell relative min-h-screen px-4 py-8 sm:px-6 lg:px-8">
-      {musicAvailable ? <audio ref={musicRef} src="/audio/mysterious-theme.mp3" loop preload="auto" /> : null}
-
       <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col items-center justify-center">
-        <AnimatePresence mode="wait">
-          {!isOpen ? (
-            <motion.section
-              key="cover"
-              initial={{ opacity: 0, y: 38, rotateX: 8 }}
-              animate={
-                bookState === "opening"
-                  ? { opacity: 1, y: -10, rotateX: 0, scale: 1.07 }
-                  : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
-              }
-              exit={{ opacity: 0, scale: 0.96, filter: "blur(10px)" }}
-              transition={{ duration: bookState === "opening" ? 1.45 : 0.85, ease: "easeOut" }}
-              className="book-scene flex w-full justify-center"
-            >
-              <motion.button
-                type="button"
-                onClick={handleOpen}
-                disabled={bookState === "opening"}
+        <div className="book-scene relative w-full">
+          {showOpenBook && bookState === "open" ? (
+            <div className="pointer-events-none absolute inset-0 z-0 flex justify-center">
+              <div className="relative h-full w-full max-w-4xl">
+                <BookAtmosphere intensity="open" />
+              </div>
+            </div>
+          ) : null}
+
+          <AnimatePresence>
+            {showOpenBook ? (
+              <motion.section
+                key="pages"
+                initial={{ opacity: 0, y: 28, scale: 0.94 }}
                 animate={
                   bookState === "opening"
-                    ? {
-                        rotateY: -13,
-                        boxShadow:
-                          "0 65px 140px rgba(0,0,0,0.82), 0 0 90px rgba(71,132,211,0.22), inset -24px 0 38px rgba(0,0,0,0.58)",
-                      }
-                    : { rotateY: 0 }
+                    ? { opacity: 0.2, y: 8, scale: 0.98 }
+                    : { opacity: 1, y: 0, scale: 1 }
                 }
-                transition={{ duration: 1.7, ease: [0.22, 1, 0.36, 1] }}
-                className="leather-surface manuscript-cover group relative min-h-[34rem] w-full max-w-[26rem] overflow-hidden rounded-[2rem] border border-[#d9bd78]/25 p-8 text-center shadow-[0_45px_100px_rgba(0,0,0,0.68)] transition duration-700 hover:-translate-y-2 hover:shadow-[0_55px_120px_rgba(0,0,0,0.78)] sm:min-h-[39rem]"
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: bookState === "opening" ? 1.6 : 0.85, ease: "easeOut" }}
+                className={cn(
+                  "w-full",
+                  bookState === "opening" ? "pointer-events-none absolute inset-x-0 top-0" : "relative",
+                )}
+                aria-hidden={bookState === "opening"}
               >
-                <motion.div
-                  className="pointer-events-none absolute inset-y-8 right-0 z-20 w-10 bg-[#7eb6ff]/20 blur-xl"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: bookState === "opening" ? [0, 0.95, 0.4] : 0 }}
-                  transition={{ duration: 1.45, ease: "easeInOut" }}
-                />
-                <motion.div
-                  className="pointer-events-none absolute inset-0 z-20 bg-[radial-gradient(circle_at_70%_50%,rgba(126,182,255,0.22),transparent_34%)]"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: bookState === "opening" ? 1 : 0 }}
-                  transition={{ duration: 1.2 }}
-                />
-                <div className="absolute inset-y-0 left-8 w-2 bg-gradient-to-b from-transparent via-[#d9bd78]/45 to-transparent" />
-                <div className="absolute inset-5 rounded-[1.5rem] border border-[#d9bd78]/30" />
-                <div className="absolute inset-9 rounded-[1.1rem] border border-[#d9bd78]/15" />
-                <div className="absolute left-1/2 top-[18%] h-24 w-24 -translate-x-1/2 rounded-full border border-[#d9bd78]/35 bg-black/20 shadow-[inset_0_4px_14px_rgba(255,240,180,0.16),0_18px_35px_rgba(0,0,0,0.45)]" />
-                <div className="absolute left-1/2 top-[18%] h-10 w-10 -translate-x-1/2 translate-y-7 rotate-45 border border-[#d9bd78]/40 bg-[#d9bd78]/10 shadow-[0_0_30px_rgba(217,189,120,0.16)]" />
-                <div className="relative z-10 flex h-full min-h-[29rem] flex-col items-center justify-between sm:min-h-[34rem]">
-                  <div className="flex gap-3">
-                    {coverMarks.map((mark) => (
-                      <span
-                        key={mark}
-                        className="flex h-9 w-9 items-center justify-center rounded-full border border-[#d9bd78]/30 text-xs text-[#d9bd78]/80"
-                      >
-                        {mark}
-                      </span>
-                    ))}
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-4 text-center sm:text-left">
+                  <div className="mx-auto sm:mx-0">
+                    <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
+                      Chapter {activePage.pageNumber}
+                    </p>
+                    <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{activePage.title}</h1>
+                    <p className="mt-2 text-sm text-[#a89068]/70">{characterName}</p>
                   </div>
-
-                  <div>
-                    <p className="font-title text-xs uppercase tracking-[0.42em] text-[#d9bd78]/80">Personal myth</p>
-                    <h1 className="font-title mt-6 text-4xl leading-tight text-[#f8e8c5] sm:text-5xl">{book.title}</h1>
-                    <p className="mx-auto mt-5 max-w-xs text-sm leading-7 text-[#bfc8d4]">{book.subtitle}</p>
-                  </div>
-
-                  <div>
-                    <p className="mx-auto mb-5 max-w-xs text-sm italic leading-7 text-[#b6a481]">{book.narratorIntro}</p>
-                    <span className="gold-button inline-flex rounded-full px-6 py-3 text-xs font-bold uppercase tracking-[0.24em]">
-                      {bookState === "opening" ? "The archive awakens" : "Open the book"}
-                    </span>
-                  </div>
+                  {isPremium && accessToken ? (
+                    <BookPremiumActions accessToken={accessToken} className="mx-auto sm:mx-0" />
+                  ) : null}
                 </div>
-              </motion.button>
-            </motion.section>
-          ) : (
-            <motion.section
-              key="pages"
-              initial={{ opacity: 0, y: 32, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.75, ease: "easeOut" }}
-              className="w-full"
-            >
-              <div className="mb-5 text-center">
-                <p className="font-title text-xs uppercase tracking-[0.36em] text-[#d9bd78]">
-                  {activePage.chapter}
-                </p>
-                <h1 className="font-title mt-2 text-3xl text-[#f7ebce] sm:text-4xl">{book.title}</h1>
-              </div>
 
-              <div className="book-scene mx-auto flex w-full max-w-6xl justify-center overflow-visible">
-                <HTMLFlipBook
-                  ref={flipRef}
-                  className="pageflip-root"
-                  style={{}}
-                  startPage={0}
-                  size="stretch"
-                  width={420}
-                  height={640}
-                  minWidth={300}
-                  maxWidth={460}
-                  minHeight={500}
-                  maxHeight={700}
-                  drawShadow
-                  flippingTime={950}
-                  usePortrait
-                  startZIndex={0}
-                  autoSize
-                  maxShadowOpacity={0.55}
-                  showCover={false}
-                  mobileScrollSupport
-                  clickEventForward
-                  useMouseEvents={!isGuidedFirstListen}
-                  swipeDistance={30}
-                  showPageCorners
-                  disableFlipByClick={isGuidedFirstListen}
-                  onFlip={handleFlip}
-                >
-                  {illustratedPages.flatMap((page, index) => [
-                    <div key={`${page.pageNumber}-image`} className="page">
-                      <BookPage
-                        page={page}
-                        side="image"
-                        isActive={index === activePageIndex}
-                        isImageLoading={Boolean(loadingImages[page.pageNumber])}
-                        isTextRevealed={Boolean(revealedPages[page.pageNumber])}
+                <div className="mx-auto flex w-full max-w-6xl justify-center overflow-visible">
+                  <HTMLFlipBook
+                    ref={flipRef}
+                    className="pageflip-root"
+                    style={{}}
+                    startPage={0}
+                    size="stretch"
+                    width={420}
+                    height={640}
+                    minWidth={300}
+                    maxWidth={460}
+                    minHeight={500}
+                    maxHeight={700}
+                    drawShadow
+                    flippingTime={950}
+                    usePortrait
+                    startZIndex={0}
+                    autoSize
+                    maxShadowOpacity={0.55}
+                    showCover={false}
+                    mobileScrollSupport
+                    clickEventForward
+                    useMouseEvents
+                    swipeDistance={30}
+                    showPageCorners
+                    disableFlipByClick={false}
+                    onFlip={handleFlip}
+                  >
+                    {illustratedPages.flatMap((page, index) => [
+                      <div key={`${page.pageNumber}-image`} className="page">
+                        <BookPage
+                          page={page}
+                          side="image"
+                          isActive={index === activePageIndex}
+                          isImageLoading={Boolean(loadingImages[page.pageNumber])}
+                          imageSealed={!isPremium && isSealedFreeImagePage(page.pageNumber)}
+                          onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
+                          isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
+                          isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
+                        />
+                      </div>,
+                      <div key={`${page.pageNumber}-text`} className="page">
+                        <BookPage
+                          page={page}
+                          side="text"
+                          isActive={index === activePageIndex}
+                          onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
+                          isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
+                          isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
+                        />
+                      </div>,
+                    ])}
+                  </HTMLFlipBook>
+                </div>
+
+                {isOpen ? (
+                  <>
+                    <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={flipPrevious}
+                        disabled={!canGoPrevious}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        onClick={flipNext}
+                        disabled={!canGoNext}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
+                      >
+                        Next page
+                      </button>
+                    </div>
+
+                    {isPremium ? (
+                      <AudioControls
+                        voiceEnabled={voiceEnabled}
+                        isLoadingVoice={isLoadingVoice}
+                        onToggleVoice={toggleVoice}
+                        onReplayVoice={() => void startPageNarration(activePageIndex)}
                       />
-                    </div>,
-                    <div key={`${page.pageNumber}-text`} className="page">
-                      <BookPage
-                        page={page}
-                        side="text"
-                        isActive={index === activePageIndex}
-                        isTextRevealed={Boolean(revealedPages[page.pageNumber])}
-                        audioDuration={audioDurations[page.pageNumber]}
-                      />
-                    </div>,
-                  ])}
-                </HTMLFlipBook>
-              </div>
+                    ) : null}
 
-              <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={flipPrevious}
-                  disabled={!canGoPrevious}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#d9bd78]/45 hover:text-[#f7ebce] disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={flipNext}
-                  disabled={!canGoNext}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] text-[#c9d3df] transition hover:border-[#d9bd78]/45 hover:text-[#f7ebce] disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  Next page
-                </button>
-              </div>
+                    {narratorError ? <p className="mt-3 text-center text-xs text-red-300">{narratorError}</p> : null}
 
-              {isGuidedFirstListen ? (
-                <p className="mx-auto mt-3 max-w-2xl text-center text-xs uppercase tracking-[0.22em] text-[#9baabd]">
-                  {highestReachedIndex < 4
-                    ? "First listening in progress - pages turn with the narrator."
-                    : "You may now look back, but the prophecy still unfolds forward with the voice."}
-                </p>
-              ) : null}
+                    {isFinalPage ? <ResultActions onReset={onReset} /> : null}
+                  </>
+                ) : null}
+              </motion.section>
+            ) : null}
+          </AnimatePresence>
 
-              <AudioControls
-                settings={settings}
-                musicAvailable={musicAvailable}
-                isLoadingVoice={isLoadingVoice}
-                onToggleMusic={toggleMusic}
-                onToggleVoice={toggleVoice}
-                onReplayVoice={() => void startPageNarration(activePageIndex, { autoAdvance: false })}
-              />
-
-              {isFinalPage ? <ResultActions onReset={onReset} /> : null}
-            </motion.section>
-          )}
-        </AnimatePresence>
+          <AnimatePresence>
+            {showCover ? (
+              <motion.section
+                key="cover"
+                initial={{ opacity: 0, y: 36, rotateX: 8 }}
+                animate={
+                  bookState === "opening"
+                    ? { opacity: 1, y: -16, rotateX: 0, scale: 1.06 }
+                    : { opacity: 1, y: 0, rotateX: 0, scale: 1 }
+                }
+                exit={{ opacity: 0, scale: 1.02, filter: "blur(10px)" }}
+                transition={{ duration: bookState === "opening" ? 1.9 : 0.95, ease: "easeOut" }}
+                className="relative z-10 flex w-full justify-center"
+              >
+                <MagicalBookCover
+                  bookState={bookState}
+                  openingDurationMs={OPENING_DURATION_MS}
+                  onOpen={handleOpen}
+                  escapeParticles={escapeParticles}
+                />
+              </motion.section>
+            ) : null}
+          </AnimatePresence>
+        </div>
       </div>
+
+      {accessToken && !isPremium ? (
+        <>
+          <UnlockFullStoryModal
+            book={safeBook}
+            accessToken={accessToken}
+            isOpen={showUnlockModal}
+            onClose={handleClosePaywall}
+          />
+          <NarratorUnlockModal
+            accessToken={accessToken}
+            isOpen={showNarratorModal}
+            onClose={handleCloseNarratorModal}
+          />
+        </>
+      ) : null}
     </main>
   );
 }

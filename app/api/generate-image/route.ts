@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import { buildFallbackIllustration, generateBookPageImage } from "@/lib/images";
 import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
@@ -15,13 +15,16 @@ export async function POST(request: Request) {
       typeof pageNumber !== "number" ||
       !Number.isInteger(pageNumber) ||
       pageNumber < 1 ||
-      pageNumber > ILLUSTRATED_PAGE_COUNT
+      pageNumber > FREE_IMAGE_PAGE_COUNT
     ) {
       return NextResponse.json({ imageUrl: null, error: "Invalid image request." }, { status: 400 });
     }
 
     const book = normalizeLoreBook(body.book);
-    const page = book.pages[pageNumber - 1];
+    const page = book.pages.find((item) => item.pageNumber === pageNumber);
+    if (!page) {
+      return NextResponse.json({ imageUrl: null, error: "Invalid image request." }, { status: 400 });
+    }
     const imageUrl = process.env.OPENAI_API_KEY
       ? await generateBookPageImage(book, page, {
           fallbackOnFailure: true,

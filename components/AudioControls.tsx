@@ -1,22 +1,17 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { AudioSettings } from "@/lib/types";
 
 type AudioControlsProps = {
-  settings: AudioSettings;
-  musicAvailable: boolean;
+  voiceEnabled: boolean;
   isLoadingVoice?: boolean;
-  onToggleMusic: () => void;
   onToggleVoice: () => void;
   onReplayVoice: () => void;
 };
 
 export default function AudioControls({
-  settings,
-  musicAvailable,
+  voiceEnabled,
   isLoadingVoice = false,
-  onToggleMusic,
   onToggleVoice,
   onReplayVoice,
 }: AudioControlsProps) {
@@ -26,20 +21,14 @@ export default function AudioControls({
       animate={{ opacity: 1, y: 0 }}
       className="mx-auto mt-6 flex w-full max-w-3xl flex-wrap items-center justify-center gap-3 rounded-2xl border border-white/10 bg-black/35 p-3 backdrop-blur-xl"
     >
-      {musicAvailable ? (
-        <ControlButton active={settings.musicEnabled} onClick={onToggleMusic}>
-          Music {settings.musicEnabled ? "on" : "off"}
-        </ControlButton>
-      ) : null}
-
-      <ControlButton active={settings.voiceEnabled} onClick={onToggleVoice}>
-        Voice {settings.voiceEnabled ? "on" : "off"}
+      <ControlButton active={voiceEnabled} onClick={onToggleVoice}>
+        Voice {voiceEnabled ? "on" : "off"}
       </ControlButton>
 
       <button
         type="button"
         onClick={onReplayVoice}
-        disabled={!settings.voiceEnabled || isLoadingVoice}
+        disabled={!voiceEnabled || isLoadingVoice}
         className="rounded-full border border-[#d9bd78]/25 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#f7ebce] transition hover:border-[#d9bd78]/60 hover:bg-[#d9bd78]/10 disabled:cursor-not-allowed disabled:opacity-45"
       >
         {isLoadingVoice ? "Summoning voice..." : "Replay narration"}

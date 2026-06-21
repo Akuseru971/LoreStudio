@@ -1,10 +1,26 @@
 import type { Metadata } from "next";
-import { Cinzel, Inter, Kalam } from "next/font/google";
+import { Cinzel, Cormorant_Garamond, EB_Garamond, Inter, Kalam } from "next/font/google";
 import "./globals.css";
 
 const cinzel = Cinzel({
   subsets: ["latin"],
   variable: "--font-cinzel",
+  display: "swap",
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["300", "400", "500"],
+  style: ["normal", "italic"],
+  variable: "--font-cormorant",
+  display: "swap",
+});
+
+const ebGaramond = EB_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-eb-garamond",
   display: "swap",
 });
 
@@ -32,7 +48,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${cinzel.variable} ${inter.variable} ${kalam.variable}`}>
+    <html
+      lang="en"
+      className={`${cinzel.variable} ${cormorant.variable} ${ebGaramond.variable} ${inter.variable} ${kalam.variable}`}
+    >
       <body>{children}</body>
     </html>
   );
