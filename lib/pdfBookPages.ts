@@ -20,6 +20,19 @@ export type PdfStoryPage = {
   imageSrc: string | null;
 };
 
+/** Image frame height (pt) — larger when body text is shorter. Never below 420. */
+export function getImageHeightForPage(textLength: number): number {
+  if (textLength <= 280) {
+    return 500;
+  }
+
+  if (textLength <= 420) {
+    return 460;
+  }
+
+  return 420;
+}
+
 export type PdfGenerationContext = {
   images?: Record<string, BookPageImage | string>;
   imageStatus?: Record<string, ImagePageStatus>;
