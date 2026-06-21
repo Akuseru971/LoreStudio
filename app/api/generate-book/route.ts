@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createFreeBook, mergeBookAssets } from "@/lib/bookStore";
 import { generateFreeBookImages } from "@/lib/freeImages";
 import { generateLoreBook, isDevOrPreview } from "@/lib/loreGeneration";
+import { normalizeBook } from "@/lib/normalizeBook";
 import { validateGenerateBookRequest } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -47,11 +48,15 @@ export async function POST(request: Request) {
     console.log("[FREE_IMAGES_DONE]", Date.now());
 
     const mergedBook = await mergeBookAssets(loreResult.book, updatedStoredBook.images, updatedStoredBook.audio);
+    const book = normalizeBook(mergedBook);
+    if (!book) {
+      throw new Error("The generated book could not be prepared for reading.");
+    }
 
     console.log("[API_GENERATE_BOOK_DONE]", Date.now());
 
     return NextResponse.json({
-      book: mergedBook,
+      book,
       accessToken,
       fallback: loreResult.fallback,
     });

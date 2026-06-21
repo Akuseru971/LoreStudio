@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getBookByAccessToken, mergeBookAssets } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
+import { normalizeBook } from "@/lib/normalizeBook";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 
 export const runtime = "nodejs";
 
@@ -23,9 +25,10 @@ export async function GET(request: Request) {
     const isPremium = hasPremiumAccess(storedBook.status);
     const sourceBook = isPremium ? storedBook.full_book || storedBook.free_book : storedBook.free_book;
     const normalized = getNormalizedImagesForStoredBook(storedBook);
-    const book = sourceBook
+    const mergedBook = sourceBook
       ? await mergeBookAssets(sourceBook, normalized.normalizedImages, storedBook.audio)
       : null;
+    const book = mergedBook ? normalizeBook(mergedBook) : null;
 
     return NextResponse.json({
       status: storedBook.status,
@@ -43,8 +46,14 @@ export async function GET(request: Request) {
       pageCount: isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT,
     });
   } catch (error) {
-    console.error("Failed to load book.", error);
-    const message = error instanceof Error ? error.message : "Unable to load book.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[API_BOOK_ERROR]", error);
+    const message = getSafeApiErrorMessage(error, "Unable to load book.");
+    return NextResponse.json(
+      {
+        error: message,
+        reason: isSupabaseSchemaError(error) ? "schema_out_of_date" : undefined,
+      },
+      { status: isSupabaseSchemaError(error) ? 503 : 500 },
+    );
   }
 }

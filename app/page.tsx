@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
+import ArchiveErrorBoundary from "@/components/ArchiveErrorBoundary";
 import IntroGate from "@/components/IntroGate";
 import InteractiveBook from "@/components/InteractiveBook";
 import LoadingRitual from "@/components/LoadingRitual";
@@ -21,6 +22,7 @@ import {
   isRitualLaunchVideoConfigured,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
+import { normalizeBook } from "@/lib/normalizeBook";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
 type AppStep =
@@ -166,13 +168,18 @@ export default function Home() {
       throw new Error(detail || "The archives refused to open. Try again.");
     }
 
+    const normalizedBook = normalizeBook(data.book);
+    if (!normalizedBook) {
+      throw new Error("The generated book could not be prepared for reading.");
+    }
+
     if (generationRunRef.current !== runId) {
       return;
     }
 
     console.log("[GENERATION_REQUEST_FINISHED]", Date.now());
 
-    setBook(data.book);
+    setBook(normalizedBook);
     setAccessToken(data.accessToken);
     setGenerationStatus("ready");
   }
@@ -324,7 +331,8 @@ export default function Home() {
         {step === "synopsis" ? (
           <motion.div key="synopsis" exit={{ opacity: 0, filter: "blur(12px)" }} transition={{ duration: 0.35 }}>
             <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
-            <SynopsisPreview
+            <ArchiveErrorBoundary onReset={handleEditAnswers} resetLabel="Edit answers">
+              <SynopsisPreview
               synopsis={approvedSynopsis}
               isLoading={synopsisLoading}
               error={synopsisError}
@@ -339,6 +347,7 @@ export default function Home() {
               }}
               isCreating={isGenerating}
             />
+            </ArchiveErrorBoundary>
           </motion.div>
         ) : null}
 
@@ -365,12 +374,14 @@ export default function Home() {
 
         {step === "book" && book && accessToken ? (
           <motion.div key="book" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
-            <InteractiveBook
-              book={book}
-              accessToken={accessToken}
-              onReset={reset}
-              onReadingStateChange={setBookIsOpen}
-            />
+            <ArchiveErrorBoundary onReset={reset}>
+              <InteractiveBook
+                book={book}
+                accessToken={accessToken}
+                onReset={reset}
+                onReadingStateChange={setBookIsOpen}
+              />
+            </ArchiveErrorBoundary>
           </motion.div>
         ) : null}
 

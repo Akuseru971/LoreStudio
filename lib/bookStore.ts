@@ -24,6 +24,7 @@ import type {
   StoredBook,
 } from "@/lib/types";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
+import { resolveApprovedSynopsis } from "@/lib/normalizeBook";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
@@ -61,13 +62,23 @@ function requireSupabase() {
 }
 
 function mapRow(row: Record<string, unknown>): StoredBook {
+  const formInput = (row.form_input as BookFormInput | null) ?? {
+    name: "Traveler",
+    gender: "unknown",
+    characterType: "Wanderer",
+    runeterraRegion: "Auto",
+  };
+
   return {
     id: String(row.id),
     access_token: String(row.access_token),
     email: row.email ? String(row.email) : null,
-    status: row.status as BookStatus,
-    form_input: row.form_input as BookFormInput,
-    approved_synopsis: (row.approved_synopsis as ApprovedSynopsis | null) ?? null,
+    status: (row.status as BookStatus) || "free",
+    form_input: formInput,
+    approved_synopsis: resolveApprovedSynopsis({
+      approved_synopsis: row.approved_synopsis as ApprovedSynopsis | null,
+      form_input: formInput,
+    }),
     free_book: (row.free_book as LoreBook | null) ?? null,
     full_book: (row.full_book as LoreBook | null) ?? null,
     free_pages: (row.free_pages as BookPage[] | null) ?? null,
@@ -95,16 +106,18 @@ function mapRow(row: Record<string, unknown>): StoredBook {
 }
 
 function splitFreeAndPremiumPages(book: LoreBook) {
-  const freePages = book.pages.slice(0, ILLUSTRATED_PAGE_COUNT);
-  const premiumPages = book.pages.slice(ILLUSTRATED_PAGE_COUNT);
+  const pages = Array.isArray(book.pages) ? book.pages : [];
+  const freePages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
+  const premiumPages = pages.slice(ILLUSTRATED_PAGE_COUNT);
   return { freePages, premiumPages };
 }
 
 function buildAssetMaps(book: LoreBook) {
   const images: Record<string, string> = {};
   const audio: Record<string, string> = {};
+  const pages = Array.isArray(book.pages) ? book.pages : [];
 
-  for (const page of book.pages) {
+  for (const page of pages) {
     if (page.imageUrl) {
       images[String(page.pageNumber)] = page.imageUrl;
     }
@@ -847,10 +860,11 @@ export async function mergeBookAssets(
   audio: Record<string, string>,
 ): Promise<LoreBook> {
   const resolvedAudio = await resolveAssetMap(audio);
-  const imagesInput = { images, pages: book.pages };
+  const sourcePages = Array.isArray(book.pages) ? book.pages : [];
+  const imagesInput = { images, pages: sourcePages };
 
   const pages = await Promise.all(
-    book.pages.map(async (page) => {
+    sourcePages.map(async (page) => {
       const image = getImageForPage(imagesInput, page.pageNumber);
       const imageUrl = (await resolveImageDisplayUrl(image)) || page.imageUrl || undefined;
 

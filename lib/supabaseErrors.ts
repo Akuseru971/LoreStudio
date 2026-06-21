@@ -10,7 +10,7 @@ export function isSupabaseSchemaError(error: unknown) {
 }
 
 export function getSupabaseSchemaErrorMessage() {
-  return "Database schema is out of date. Apply the latest Supabase migrations for PDF and MP3 status columns.";
+  return "Database schema is out of date. Apply the latest Supabase migrations for approved synopsis, PDF, and MP3 columns.";
 }
 
 export function getSafeApiErrorMessage(error: unknown, fallback: string) {

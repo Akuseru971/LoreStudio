@@ -445,8 +445,10 @@ export function dataUrlFromBase64(base64: string, mimeType: string) {
 }
 
 export function stripBookAssets<T extends { pages: Array<{ imageUrl?: string; audioUrl?: string | null }> }>(book: T): T {
+  const pages = Array.isArray(book.pages) ? book.pages : [];
+
   return {
     ...book,
-    pages: book.pages.map(({ imageUrl: _imageUrl, audioUrl: _audioUrl, ...page }) => page),
+    pages: pages.map(({ imageUrl: _imageUrl, audioUrl: _audioUrl, ...page }) => page),
   };
 }

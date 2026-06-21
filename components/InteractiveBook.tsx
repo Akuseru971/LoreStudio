@@ -22,6 +22,7 @@ import {
 } from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
 import { getDirectImageUrl, logBookImageRender } from "@/lib/book-images";
+import { normalizeBook } from "@/lib/normalizeBook";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -95,18 +96,24 @@ export default function InteractiveBook({
   initialPageIndex = 0,
   onReadingStateChange,
 }: InteractiveBookProps) {
+  const safeBook = useMemo(() => normalizeBook(book) ?? book, [book]);
+  const safePages = useMemo(
+    () => (Array.isArray(safeBook.pages) ? safeBook.pages : []),
+    [safeBook.pages],
+  );
+
   const [bookState, setBookState] = useState<"closed" | "opening" | "open">("closed");
   const [activePageIndex, setActivePageIndex] = useState(initialPageIndex);
   const [audioCache, setAudioCache] = useState<Record<number, string>>(() =>
     Object.fromEntries(
-      book.pages
+      safePages
         .filter((page) => Boolean(page.audioUrl))
         .map((page) => [page.pageNumber, page.audioUrl as string]),
     ),
   );
   const [imageCache, setImageCache] = useState<Record<number, string>>(() =>
     Object.fromEntries(
-      book.pages
+      safePages
         .filter((page) => Boolean(page.imageUrl))
         .map((page) => [page.pageNumber, page.imageUrl as string]),
     ),
@@ -129,7 +136,7 @@ export default function InteractiveBook({
 
   const pagesWithImages = useMemo(
     () =>
-      book.pages.map((page) => {
+      safePages.map((page) => {
         const imageUrl = imageCache[page.pageNumber] ?? page.imageUrl ?? null;
         logBookImageRender(page.pageNumber, imageUrl ? { pageNumber: page.pageNumber, status: "ready", url: imageUrl } : null);
         return {
@@ -137,7 +144,7 @@ export default function InteractiveBook({
           imageUrl,
         };
       }),
-    [book.pages, imageCache],
+    [safePages, imageCache],
   );
   const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT;
   const illustratedPages = useMemo(() => pagesWithImages.slice(0, pageLimit), [pagesWithImages, pageLimit]);
@@ -159,7 +166,7 @@ export default function InteractiveBook({
     [],
   );
 
-  const characterName = book.characterBible.name;
+  const characterName = safeBook.characterBible?.name || safeBook.title || "Your legend";
   const showCover = bookState !== "open";
   const showOpenBook = bookState === "opening" || bookState === "open";
 
@@ -228,7 +235,7 @@ export default function InteractiveBook({
         return;
       }
 
-      const page = book.pages.find((item) => item.pageNumber === pageNumber);
+      const page = safePages.find((item) => item.pageNumber === pageNumber);
       const cachedImage = imageCache[pageNumber] ?? page?.imageUrl;
       if (!page || cachedImage || requestedImagesRef.current.has(pageNumber)) {
         return;
@@ -241,7 +248,7 @@ export default function InteractiveBook({
         const response = await fetch("/api/generate-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ book, pageNumber }),
+          body: JSON.stringify({ book: safeBook, pageNumber }),
         });
         const data = (await response.json()) as { imageUrl?: string | null };
         if (data.imageUrl) {
@@ -256,7 +263,7 @@ export default function InteractiveBook({
         setLoadingImages((current) => ({ ...current, [pageNumber]: false }));
       }
     },
-    [book, imageCache, isPremium],
+    [safeBook, imageCache, isPremium],
   );
 
   const refreshBookImages = useCallback(async (): Promise<boolean> => {
@@ -276,13 +283,19 @@ export default function InteractiveBook({
       return false;
     }
 
+    const normalizedBook = normalizeBook(data.book);
+    if (!normalizedBook) {
+      return false;
+    }
+
+    const bookPages = Array.isArray(normalizedBook.pages) ? normalizedBook.pages : [];
     const imageMap = data.images || data.imageStatus || {};
     const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT;
     const nextCache: Record<number, string> = {};
 
     for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
       const state = imageMap[String(pageNumber)];
-      const page = data.book.pages.find((item) => item.pageNumber === pageNumber);
+      const page = bookPages.find((item) => item.pageNumber === pageNumber);
       const url = getDirectImageUrl(state) || page?.imageUrl || null;
       if (url) {
         nextCache[pageNumber] = url;
@@ -294,7 +307,7 @@ export default function InteractiveBook({
     const nextLoading: Record<number, boolean> = {};
     for (const pageNumber of PREMIUM_IMAGE_PAGE_NUMBERS) {
       const state = imageMap[String(pageNumber)];
-      const page = data.book.pages.find((item) => item.pageNumber === pageNumber);
+      const page = bookPages.find((item) => item.pageNumber === pageNumber);
       const hasImage = Boolean(getDirectImageUrl(state) || page?.imageUrl);
 
       if (state?.status === "generating" && !hasImage) {
@@ -321,9 +334,9 @@ export default function InteractiveBook({
   }, [accessToken, isPremium, refreshBookImages]);
 
   useEffect(() => {
-    const pagesToIllustrate = book.pages.slice(0, isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT);
+    const pagesToIllustrate = safePages.slice(0, isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT);
     void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
-  }, [book.pages, fetchImageForPage, isPremium]);
+  }, [safePages, fetchImageForPage, isPremium]);
 
   useEffect(() => {
     if (!isPremium || !accessToken) {
@@ -653,6 +666,27 @@ export default function InteractiveBook({
     });
   }
 
+  if (!illustratedPages.length || !activePage) {
+    return (
+      <main className="archive-shell flex min-h-screen items-center justify-center px-5 py-10">
+        <section className="glass-panel max-w-lg rounded-[2rem] p-8 text-center">
+          <h1 className="font-title text-2xl text-[#f7ebce]">The archive failed to open this page</h1>
+          <p className="mt-4 text-sm leading-7 text-[#9baabd]">
+            Some assets are still being prepared, or this legend uses an older archive shape. Please reload or return
+            home.
+          </p>
+          <button
+            type="button"
+            onClick={onReset}
+            className="gold-button mt-6 rounded-2xl px-6 py-3 text-xs font-bold uppercase tracking-[0.22em]"
+          >
+            Return
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="archive-shell relative min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col items-center justify-center">
@@ -819,7 +853,7 @@ export default function InteractiveBook({
       {accessToken && !isPremium ? (
         <>
           <UnlockFullStoryModal
-            book={book}
+            book={safeBook}
             accessToken={accessToken}
             isOpen={showUnlockModal}
             onClose={handleClosePaywall}

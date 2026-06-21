@@ -83,7 +83,10 @@ export default function SynopsisPreview({
                   <div className="sm:col-span-2">
                     <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Connected champion</dt>
                     <dd className="mt-1 text-sm text-[#e8dcc0]">
-                      {synopsis.championConnection.championName} — {synopsis.championConnection.connectionSummary}
+                      {synopsis.championConnection?.championName || "A regional champion"}
+                      {synopsis.championConnection?.connectionSummary
+                        ? ` — ${synopsis.championConnection.connectionSummary}`
+                        : null}
                     </dd>
                   </div>
                 </dl>
