@@ -724,6 +724,19 @@ button {
   border-radius: 4px 14px 14px 4px;
 }
 
+.mobile-book-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto;
+}
+
+.mobile-book-image-frame {
+  min-height: min(52vw, 320px);
+}
+
+.mobile-book-nav {
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.35);
+}
+
 .ritual-particle {
   position: absolute;
   width: 3px;
