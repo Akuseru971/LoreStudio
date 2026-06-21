@@ -9,6 +9,7 @@ import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
 import MagicalBookCover from "@/components/MagicalBookCover";
 import BookPremiumActions from "@/components/BookPremiumActions";
+import MobileBookReader from "@/components/MobileBookReader";
 import NarratorUnlockModal from "@/components/NarratorUnlockModal";
 import ResultActions from "@/components/ResultActions";
 import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
@@ -24,6 +25,7 @@ import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-ev
 import { getDirectImageUrl, logBookImageRender } from "@/lib/book-image-utils";
 import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio, generatePremiumImages } from "@/lib/client/api";
 import { normalizeBook } from "@/lib/normalizeBook";
+import { useIsMobile } from "@/lib/useIsMobile";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +100,7 @@ export default function InteractiveBook({
   onReadingStateChange,
 }: InteractiveBookProps) {
   const safeBook = useMemo(() => normalizeBook(book) ?? book, [book]);
+  const isMobile = useIsMobile();
   const safePages = useMemo(
     () => (Array.isArray(safeBook.pages) ? safeBook.pages : []),
     [safeBook.pages],
@@ -316,6 +319,11 @@ export default function InteractiveBook({
   }, [accessToken, isPremium]);
 
   const refreshPremiumImages = refreshBookImages;
+
+  const imageSealedForPage = useCallback(
+    (pageNumber: number) => !isPremium && isSealedFreeImagePage(pageNumber),
+    [isPremium],
+  );
 
   useEffect(() => {
     if (!accessToken) {
@@ -591,12 +599,13 @@ export default function InteractiveBook({
     setShowUnlockModal(false);
     setBookState("opening");
     setActivePageIndex(initialPageIndex);
+    const openingDelay = isMobile ? 900 : OPENING_DURATION_MS;
     window.setTimeout(() => {
       setBookState("open");
-      if (initialPageIndex > 0) {
+      if (!isMobile && initialPageIndex > 0) {
         flipRef.current?.pageFlip()?.flip(initialPageIndex * 2, "top");
       }
-    }, OPENING_DURATION_MS);
+    }, openingDelay);
   }
 
   function handleFlip(event: { data?: number }) {
@@ -616,6 +625,12 @@ export default function InteractiveBook({
     if (!canGoPrevious) {
       return;
     }
+
+    if (isMobile) {
+      setActivePageIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+
     const previousSpread = Math.max(activePageIndex - 1, 0);
     flipRef.current?.pageFlip()?.flip(previousSpread * 2, "top");
   }
@@ -627,6 +642,11 @@ export default function InteractiveBook({
 
     const nextIndex = activePageIndex + 1;
     if (!tryForwardNavigation(nextIndex)) {
+      return;
+    }
+
+    if (isMobile) {
+      setActivePageIndex(nextIndex);
       return;
     }
 
@@ -699,7 +719,7 @@ export default function InteractiveBook({
                     : { opacity: 1, y: 0, scale: 1 }
                 }
                 exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: bookState === "opening" ? 1.6 : 0.85, ease: "easeOut" }}
+                transition={{ duration: isMobile ? 0.45 : bookState === "opening" ? 1.6 : 0.85, ease: "easeOut" }}
                 className={cn(
                   "w-full",
                   bookState === "opening" ? "pointer-events-none absolute inset-x-0 top-0" : "relative",
@@ -720,61 +740,78 @@ export default function InteractiveBook({
                 </div>
 
                 <div className="mx-auto flex w-full max-w-6xl justify-center overflow-visible">
-                  <HTMLFlipBook
-                    ref={flipRef}
-                    className="pageflip-root"
-                    style={{}}
-                    startPage={0}
-                    size="stretch"
-                    width={420}
-                    height={640}
-                    minWidth={300}
-                    maxWidth={460}
-                    minHeight={500}
-                    maxHeight={700}
-                    drawShadow
-                    flippingTime={950}
-                    usePortrait
-                    startZIndex={0}
-                    autoSize
-                    maxShadowOpacity={0.55}
-                    showCover={false}
-                    mobileScrollSupport
-                    clickEventForward
-                    useMouseEvents
-                    swipeDistance={30}
-                    showPageCorners
-                    disableFlipByClick={false}
-                    onFlip={handleFlip}
-                  >
-                    {illustratedPages.flatMap((page, index) => [
-                      <div key={`${page.pageNumber}-image`} className="page">
-                        <BookPage
-                          page={page}
-                          side="image"
-                          isActive={index === activePageIndex}
-                          isImageLoading={Boolean(loadingImages[page.pageNumber])}
-                          imageSealed={!isPremium && isSealedFreeImagePage(page.pageNumber)}
-                          onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
-                          isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
-                          isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
-                        />
-                      </div>,
-                      <div key={`${page.pageNumber}-text`} className="page">
-                        <BookPage
-                          page={page}
-                          side="text"
-                          isActive={index === activePageIndex}
-                          onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
-                          isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
-                          isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
-                        />
-                      </div>,
-                    ])}
-                  </HTMLFlipBook>
+                  {isMobile ? (
+                    <MobileBookReader
+                      pages={illustratedPages}
+                      activePageIndex={activePageIndex}
+                      loadingImages={loadingImages}
+                      imageSealedForPage={imageSealedForPage}
+                      onNarratorClick={accessToken ? (pageIndex) => void handleNarratorClick(pageIndex) : undefined}
+                      isNarratorLoading={isLoadingVoice}
+                      isNarratorPlaying={isNarratorPlaying}
+                      narrationPageIndex={narrationPageIndex}
+                      onPrevious={flipPrevious}
+                      onNext={flipNext}
+                      canGoPrevious={canGoPrevious}
+                      canGoNext={canGoNext}
+                    />
+                  ) : (
+                    <HTMLFlipBook
+                      ref={flipRef}
+                      className="pageflip-root"
+                      style={{}}
+                      startPage={0}
+                      size="stretch"
+                      width={420}
+                      height={640}
+                      minWidth={300}
+                      maxWidth={460}
+                      minHeight={500}
+                      maxHeight={700}
+                      drawShadow
+                      flippingTime={950}
+                      usePortrait
+                      startZIndex={0}
+                      autoSize
+                      maxShadowOpacity={0.55}
+                      showCover={false}
+                      mobileScrollSupport
+                      clickEventForward
+                      useMouseEvents
+                      swipeDistance={30}
+                      showPageCorners
+                      disableFlipByClick={false}
+                      onFlip={handleFlip}
+                    >
+                      {illustratedPages.flatMap((page, index) => [
+                        <div key={`${page.pageNumber}-image`} className="page">
+                          <BookPage
+                            page={page}
+                            side="image"
+                            isActive={index === activePageIndex}
+                            isImageLoading={Boolean(loadingImages[page.pageNumber])}
+                            imageSealed={imageSealedForPage(page.pageNumber)}
+                            onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
+                            isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
+                            isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
+                          />
+                        </div>,
+                        <div key={`${page.pageNumber}-text`} className="page">
+                          <BookPage
+                            page={page}
+                            side="text"
+                            isActive={index === activePageIndex}
+                            onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
+                            isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
+                            isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
+                          />
+                        </div>,
+                      ])}
+                    </HTMLFlipBook>
+                  )}
                 </div>
 
-                {isOpen ? (
+                {isOpen && !isMobile ? (
                   <>
                     <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
                       <button
@@ -795,6 +832,23 @@ export default function InteractiveBook({
                       </button>
                     </div>
 
+                    {isPremium ? (
+                      <AudioControls
+                        voiceEnabled={voiceEnabled}
+                        isLoadingVoice={isLoadingVoice}
+                        onToggleVoice={toggleVoice}
+                        onReplayVoice={() => void startPageNarration(activePageIndex)}
+                      />
+                    ) : null}
+
+                    {narratorError ? <p className="mt-3 text-center text-xs text-red-300">{narratorError}</p> : null}
+
+                    {isFinalPage ? <ResultActions onReset={onReset} /> : null}
+                  </>
+                ) : null}
+
+                {isOpen && isMobile ? (
+                  <>
                     {isPremium ? (
                       <AudioControls
                         voiceEnabled={voiceEnabled}
