@@ -4,19 +4,19 @@ import {
   ensureBookPdf,
   getBookByAccessToken,
   markPdfFailed,
-  markPdfWaitingForImages,
   mergeBookAssets,
 } from "@/lib/bookStore";
-import { areBookImagesPending } from "@/lib/imageStatus";
+import { areBookImagesPending, buildPageImageStates } from "@/lib/imageStatus";
+import { areAllIllustrationsReady, hasFailedIllustrations } from "@/lib/pdfReadiness";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
-import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
 
-export type PdfDownloadStatus = "ready" | "preparing_images" | "generating_pdf" | "failed";
+export type PdfDownloadStatus = "ready" | "not_ready" | "generating_pdf" | "failed";
 
 export type PdfDownloadResponse = {
   status: PdfDownloadStatus;
   downloadUrl?: string;
   message?: string;
+  reason?: "illustrations_pending" | "illustrations_failed" | "premium_required";
 };
 
 const pdfGenerationTasks = new Map<string, Promise<void>>();
@@ -70,21 +70,34 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
   }
 
   if (!hasPremiumAccess(storedBook.status)) {
-    return { status: "failed", message: "Premium access is required." };
+    return {
+      status: "not_ready",
+      reason: "premium_required",
+      message: "Premium access is required.",
+    };
+  }
+
+  const imageStates = buildPageImageStates(storedBook);
+
+  if (hasFailedIllustrations(imageStates)) {
+    return {
+      status: "not_ready",
+      reason: "illustrations_failed",
+      message: "Some illustrations failed. Please retry generation.",
+    };
+  }
+
+  if (!areAllIllustrationsReady(imageStates) || areBookImagesPending(storedBook)) {
+    return {
+      status: "not_ready",
+      reason: "illustrations_pending",
+      message: "Illustrations are still being prepared.",
+    };
   }
 
   if (storedBook.pdf_storage_path) {
     const downloadUrl = await createSignedPdfUrl(storedBook.pdf_storage_path, 3600);
     return { status: "ready", downloadUrl };
-  }
-
-  if (areBookImagesPending(storedBook)) {
-    await markPdfWaitingForImages(storedBook.id);
-    triggerPremiumImageGeneration(accessToken);
-    return {
-      status: "preparing_images",
-      message: "Illustrations are being prepared.",
-    };
   }
 
   if (storedBook.pdf_status === "generating" || pdfGenerationTasks.has(storedBook.id)) {

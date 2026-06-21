@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
+import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
+import { buildPageImageStates } from "@/lib/imageStatus";
+import {
+  areAllIllustrationsReady,
+  countReadyIllustrations,
+  hasFailedIllustrations,
+  hasGeneratingIllustrations,
+} from "@/lib/pdfReadiness";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
@@ -19,13 +27,24 @@ export async function GET(request: Request) {
     }
 
     const isPremium = hasPremiumAccess(storedBook.status);
+    const imageStatus = buildPageImageStates(storedBook);
+    const illustrationsReadyCount = countReadyIllustrations(imageStatus);
+    const allIllustrationsReady = areAllIllustrationsReady(imageStatus);
 
     return NextResponse.json({
       status: storedBook.status,
       accessToken: storedBook.access_token,
       isPremium,
-      canDownloadPdf: isPremium,
+      canDownloadPdf: isPremium && allIllustrationsReady,
       canDownloadMp3: isPremium,
+      imageStatus,
+      illustrationsReadyCount,
+      illustrationsTotal: FULL_BOOK_PAGE_COUNT,
+      allIllustrationsReady,
+      hasFailedIllustrations: hasFailedIllustrations(imageStatus),
+      hasGeneratingIllustrations: hasGeneratingIllustrations(imageStatus),
+      pdfStatus: storedBook.pdf_status,
+      pdfStoragePath: storedBook.pdf_storage_path,
       characterName:
         storedBook.full_book?.characterBible.name || storedBook.free_book?.characterBible.name || null,
       title: storedBook.full_book?.title || storedBook.free_book?.title || null,
