@@ -102,6 +102,7 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     confirmation_email_sent_at: row.confirmation_email_sent_at ? String(row.confirmation_email_sent_at) : null,
     confirmation_email_status: (row.confirmation_email_status as ConfirmationEmailStatus | null) ?? "not_started",
     confirmation_email_error: row.confirmation_email_error ? String(row.confirmation_email_error) : null,
+    assets_ready_at: row.assets_ready_at ? String(row.assets_ready_at) : null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
@@ -504,7 +505,26 @@ export async function saveStripePayment(
 }
 
 export async function markBookReady(bookId: string) {
-  return updateBookStatus(bookId, "ready");
+  return markBookAssetsReady(bookId);
+}
+
+export async function markBookAssetsReady(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      status: "ready",
+      assets_ready_at: new Date().toISOString(),
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark book as ready.");
+  }
+
+  return mapRow(data);
 }
 
 export async function claimPageImageGeneration(bookId: string, pageNumber: number) {

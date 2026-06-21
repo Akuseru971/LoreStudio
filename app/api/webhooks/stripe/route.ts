@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus } from "@/lib/bookStore";
-import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { hasPremiumAccess, triggerFulfillment } from "@/lib/paymentVerification";
 import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
 import { getStripeClient } from "@/lib/stripe";
@@ -73,13 +72,10 @@ export async function POST(request: Request) {
       );
 
       if (!hasPremiumAccess(storedBook.status)) {
-        await updateBookStatus(storedBook.id, "paid");
+        await updateBookStatus(storedBook.id, "preparing_assets");
         void triggerFulfillment(accessToken);
       }
 
-      void sendConfirmationEmailIfNeeded(accessToken).catch((error) => {
-        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
-      });
       triggerPremiumImageGeneration(accessToken);
     }
 

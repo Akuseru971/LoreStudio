@@ -7,7 +7,7 @@ import {
 import { getStripeClient } from "@/lib/stripe";
 import type { BookStatus, StoredBook } from "@/lib/types";
 
-const PREMIUM_STATUSES: BookStatus[] = ["paid", "generating", "ready"];
+const PREMIUM_STATUSES: BookStatus[] = ["paid", "preparing_assets", "generating", "ready"];
 
 export function hasPremiumAccess(status: BookStatus) {
   return PREMIUM_STATUSES.includes(status);
@@ -93,7 +93,7 @@ export async function verifyStripeCheckoutSession(
     typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || null,
     email || null,
   );
-  await updateBookStatus(storedBook.id, "paid");
+  await updateBookStatus(storedBook.id, "preparing_assets");
   void triggerFulfillment(accessToken);
 
   const updatedBook = await getBookByAccessToken(accessToken);

@@ -9,6 +9,7 @@ import {
 } from "@/lib/bookStore";
 import { getImageForPage, isIllustrationReady } from "@/lib/book-images";
 import { generateBookPageImage } from "@/lib/images";
+import { finalizeBookIfReady } from "@/lib/bookCompletion";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
@@ -128,10 +129,17 @@ export async function generatePremiumImages(accessToken: string) {
 
   console.log("[IMAGE_READY_COUNT]", buildPageImageStates(finalBook));
 
+  const allReady = allBookImagesReady(finalBook);
+  if (allReady) {
+    await finalizeBookIfReady(accessToken).catch((error) => {
+      console.error("Failed to finalize book after premium image generation.", error);
+    });
+  }
+
   return {
     book: finalBook,
     images: buildPageImageStates(finalBook),
-    allReady: allBookImagesReady(finalBook),
+    allReady,
   };
 }
 
