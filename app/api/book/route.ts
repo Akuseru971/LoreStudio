@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, mergeBookAssets } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
-import { buildPageImageStates } from "@/lib/imageStatus";
+import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
@@ -22,6 +22,7 @@ export async function GET(request: Request) {
 
     const isPremium = hasPremiumAccess(storedBook.status);
     const sourceBook = isPremium ? storedBook.full_book || storedBook.free_book : storedBook.free_book;
+    const normalized = await getNormalizedImagesForStoredBook(storedBook);
     const book = sourceBook
       ? await mergeBookAssets(sourceBook, storedBook.images, storedBook.audio)
       : null;
@@ -31,10 +32,13 @@ export async function GET(request: Request) {
       accessToken: storedBook.access_token,
       email: storedBook.email,
       book,
-      imageStatus: buildPageImageStates(storedBook),
+      imageStatus: normalized.images,
+      images: normalized.images,
       isPremium,
-      canDownloadPdf: isPremium,
+      canDownloadPdf: isPremium && normalized.allIllustrationsReady,
       canDownloadMp3: isPremium,
+      readyIllustrationCount: normalized.readyIllustrationCount,
+      allIllustrationsReady: normalized.allIllustrationsReady,
       pageCount: isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT,
     });
   } catch (error) {

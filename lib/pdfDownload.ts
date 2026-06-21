@@ -6,8 +6,12 @@ import {
   markPdfFailed,
   mergeBookAssets,
 } from "@/lib/bookStore";
-import { areBookImagesPending, buildPageImageStates } from "@/lib/imageStatus";
-import { areAllIllustrationsReady, hasFailedIllustrations } from "@/lib/pdfReadiness";
+import {
+  areAllIllustrationsReady,
+  getNormalizedImagesForStoredBook,
+  hasFailedIllustrations,
+  logPdfReadyCheck,
+} from "@/lib/book-images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export type PdfDownloadStatus = "ready" | "not_ready" | "generating_pdf" | "failed";
@@ -77,9 +81,13 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     };
   }
 
-  const imageStates = buildPageImageStates(storedBook);
+  const normalized = await getNormalizedImagesForStoredBook(storedBook);
 
-  if (hasFailedIllustrations(imageStates)) {
+  if (!normalized.allIllustrationsReady) {
+    logPdfReadyCheck(normalized.input, "download-pdf");
+  }
+
+  if (hasFailedIllustrations(normalized.input)) {
     return {
       status: "not_ready",
       reason: "illustrations_failed",
@@ -87,7 +95,7 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     };
   }
 
-  if (!areAllIllustrationsReady(imageStates) || areBookImagesPending(storedBook)) {
+  if (!areAllIllustrationsReady(normalized.input)) {
     return {
       status: "not_ready",
       reason: "illustrations_pending",

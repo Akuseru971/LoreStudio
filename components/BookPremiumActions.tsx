@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
+import { getImageForPage, isIllustrationReady, logPdfReadyCheck } from "@/lib/book-images";
 import {
   getPdfButtonLabel,
   getPdfStatusMessage,
@@ -18,8 +19,10 @@ type BookPremiumActionsProps = {
 
 type BookStatusResponse = {
   isPremium?: boolean;
+  images?: Record<string, PageImageState>;
   imageStatus?: Record<string, PageImageState>;
   illustrationsReadyCount?: number;
+  readyIllustrationCount?: number;
   allIllustrationsReady?: boolean;
   hasFailedIllustrations?: boolean;
   pdfStatus?: PdfStatus;
@@ -73,12 +76,32 @@ export default function BookPremiumActions({
       throw new Error(data.error || "Unable to load book status.");
     }
 
+    const normalizedImages = data.images || data.imageStatus || {};
+    const readyCount = data.readyIllustrationCount ?? data.illustrationsReadyCount ?? 0;
+
     setIsPremium(Boolean(data.isPremium));
-    setImageStatus(data.imageStatus || {});
-    setIllustrationsReadyCount(data.illustrationsReadyCount ?? 0);
+    setImageStatus(normalizedImages);
+    setIllustrationsReadyCount(readyCount);
     setPdfStatus(data.pdfStatus || "not_started");
 
-    return data;
+    console.log("[PDF_READY_CHECK] images:", normalizedImages);
+    for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
+      const image = getImageForPage({ images: normalizedImages }, pageNumber);
+      console.log("[PDF_READY_CHECK_PAGE]", {
+        pageNumber,
+        image,
+        status: image?.status,
+        url: image?.url,
+        src: image?.src,
+        imageUrl: image?.imageUrl,
+        storagePath: image?.storagePath,
+        isReady: isIllustrationReady(image),
+      });
+    }
+
+    logPdfReadyCheck({ images: normalizedImages }, "client");
+
+    return { ...data, images: normalizedImages, readyIllustrationCount: readyCount };
   }, [accessToken]);
 
   const ensurePremiumImagesStarted = useCallback(async () => {
@@ -143,7 +166,7 @@ export default function BookPremiumActions({
     setPdfError(null);
 
     try {
-      await fetch("/api/generate-premium-images", {
+      await fetch("/api/retry-missing-images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken }),
@@ -215,7 +238,9 @@ export default function BookPremiumActions({
     }
   }, [accessToken]);
 
-  const showRetryIllustrations = pdfAvailability === "illustrations_failed";
+  const showRetryIllustrations =
+    pdfAvailability === "illustrations_failed" ||
+    (isPremium && illustrationsReadyCount < FULL_BOOK_PAGE_COUNT && pdfAvailability === "waiting_for_illustrations");
   const isPdfButtonDisabled =
     !isPdfReady || isDownloadingPdf || isDownloadingMp3 || isRetryingIllustrations;
 
@@ -237,7 +262,7 @@ export default function BookPremiumActions({
             disabled={isRetryingIllustrations || isDownloadingMp3}
             className="rounded-full border border-[#d9bd78]/35 bg-black/35 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-[#f7ebce] transition hover:border-[#d9bd78]/55 hover:bg-[#d9bd78]/10 disabled:cursor-wait disabled:opacity-60"
           >
-            {isRetryingIllustrations ? "Retrying illustrations..." : "Retry illustrations"}
+            {isRetryingIllustrations ? "Retrying illustrations..." : "Retry missing illustrations"}
           </button>
         ) : null}
         <button

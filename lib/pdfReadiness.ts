@@ -1,5 +1,10 @@
-import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import type { ImagePageStatus, PageImageState, PdfStatus } from "@/lib/types";
+import type { PageImageState, PdfStatus } from "@/lib/types";
+import {
+  areAllIllustrationsReady,
+  getReadyIllustrationCount,
+  hasFailedIllustrations,
+  type BookImagesInput,
+} from "@/lib/book-images";
 
 export type PdfAvailability =
   | "locked_unpaid"
@@ -9,57 +14,15 @@ export type PdfAvailability =
   | "ready"
   | "failed";
 
-export function areAllIllustrationsReady(images: Record<string, PageImageState>) {
-  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    const image = images[String(pageNumber)];
-
-    if (!image) {
-      return false;
-    }
-
-    if (image.status !== "ready") {
-      return false;
-    }
-
-    if (!image.url) {
-      return false;
-    }
-  }
-
-  return true;
-}
+export {
+  areAllIllustrationsReady,
+  getReadyIllustrationCount,
+  hasFailedIllustrations,
+  hasGeneratingIllustrations,
+} from "@/lib/book-images";
 
 export function countReadyIllustrations(images: Record<string, PageImageState>) {
-  let readyCount = 0;
-
-  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    const image = images[String(pageNumber)];
-    if (image?.status === "ready" && image.url) {
-      readyCount += 1;
-    }
-  }
-
-  return readyCount;
-}
-
-export function hasFailedIllustrations(images: Record<string, PageImageState>) {
-  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    if (images[String(pageNumber)]?.status === "failed") {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-export function hasGeneratingIllustrations(images: Record<string, PageImageState>) {
-  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    if (images[String(pageNumber)]?.status === "generating") {
-      return true;
-    }
-  }
-
-  return false;
+  return getReadyIllustrationCount({ images });
 }
 
 export function resolvePdfAvailability({
@@ -73,15 +36,17 @@ export function resolvePdfAvailability({
   pdfStatus?: PdfStatus;
   isDownloadingPdf?: boolean;
 }): PdfAvailability {
+  const imageInput: BookImagesInput = { images };
+
   if (!isPremium) {
     return "locked_unpaid";
   }
 
-  if (hasFailedIllustrations(images)) {
+  if (hasFailedIllustrations(imageInput)) {
     return "illustrations_failed";
   }
 
-  if (!areAllIllustrationsReady(images)) {
+  if (!areAllIllustrationsReady(imageInput)) {
     return "waiting_for_illustrations";
   }
 

@@ -1,5 +1,6 @@
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import type { ImagePageStatus, PageImageState, StoredBook } from "@/lib/types";
+import { getImageForPage, getImageUrl, isIllustrationReady, normalizeBookImages } from "@/lib/book-images";
 
 export function createDefaultImageStatusMap(): Record<string, ImagePageStatus> {
   return Object.fromEntries(
@@ -7,37 +8,33 @@ export function createDefaultImageStatusMap(): Record<string, ImagePageStatus> {
   );
 }
 
-export function resolvePageImageStatus(book: StoredBook, pageNumber: number): ImagePageStatus {
-  const key = String(pageNumber);
-  const storedStatus = book.image_status?.[key];
-  if (storedStatus) {
-    return storedStatus;
+export function resolvePageImageStatus(book: StoredBook, pageNumber: number) {
+  const image = getImageForPage(
+    {
+      images: book.images,
+      imageStatus: book.image_status,
+    },
+    pageNumber,
+  );
+
+  if (isIllustrationReady(image)) {
+    return "ready" as ImagePageStatus;
   }
 
-  if (book.images[key]) {
-    return "ready";
-  }
-
-  return "not_started";
+  return image?.status || "not_started";
 }
 
 export function buildPageImageStates(book: StoredBook): Record<string, PageImageState> {
-  const states: Record<string, PageImageState> = {};
-
-  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    const key = String(pageNumber);
-    states[key] = {
-      status: resolvePageImageStatus(book, pageNumber),
-      url: book.images[key] || null,
-    };
-  }
-
-  return states;
+  return normalizeBookImages({
+    images: book.images,
+    imageStatus: book.image_status,
+  });
 }
 
 export function allPremiumImagesReady(book: StoredBook) {
   for (let pageNumber = 5; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    if (resolvePageImageStatus(book, pageNumber) !== "ready" || !book.images[String(pageNumber)]) {
+    const image = getImageForPage({ images: book.images, imageStatus: book.image_status }, pageNumber);
+    if (!isIllustrationReady(image)) {
       return false;
     }
   }
@@ -47,7 +44,8 @@ export function allPremiumImagesReady(book: StoredBook) {
 
 export function allBookImagesReady(book: StoredBook) {
   for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    if (resolvePageImageStatus(book, pageNumber) !== "ready" || !book.images[String(pageNumber)]) {
+    const image = getImageForPage({ images: book.images, imageStatus: book.image_status }, pageNumber);
+    if (!isIllustrationReady(image)) {
       return false;
     }
   }
@@ -57,12 +55,12 @@ export function allBookImagesReady(book: StoredBook) {
 
 export function areBookImagesPending(book: StoredBook) {
   for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
-    const status = resolvePageImageStatus(book, pageNumber);
-    if (status === "generating") {
+    const image = getImageForPage({ images: book.images, imageStatus: book.image_status }, pageNumber);
+    if (image?.status === "generating" && !getImageUrl(image)) {
       return true;
     }
 
-    if (status !== "ready" || !book.images[String(pageNumber)]) {
+    if (!isIllustrationReady(image)) {
       return true;
     }
   }

@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { buildPageImageStates } from "@/lib/imageStatus";
-import {
-  areAllIllustrationsReady,
-  countReadyIllustrations,
-  hasFailedIllustrations,
-  hasGeneratingIllustrations,
-} from "@/lib/pdfReadiness";
+import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
@@ -27,22 +21,26 @@ export async function GET(request: Request) {
     }
 
     const isPremium = hasPremiumAccess(storedBook.status);
-    const imageStatus = buildPageImageStates(storedBook);
-    const illustrationsReadyCount = countReadyIllustrations(imageStatus);
-    const allIllustrationsReady = areAllIllustrationsReady(imageStatus);
+    const normalized = await getNormalizedImagesForStoredBook(storedBook);
+
+    if (!normalized.allIllustrationsReady) {
+      logPdfReadyCheck(normalized.input, "book-status");
+    }
 
     return NextResponse.json({
       status: storedBook.status,
       accessToken: storedBook.access_token,
       isPremium,
-      canDownloadPdf: isPremium && allIllustrationsReady,
+      canDownloadPdf: isPremium && normalized.allIllustrationsReady,
       canDownloadMp3: isPremium,
-      imageStatus,
-      illustrationsReadyCount,
+      images: normalized.images,
+      imageStatus: normalized.images,
+      illustrationsReadyCount: normalized.readyIllustrationCount,
+      readyIllustrationCount: normalized.readyIllustrationCount,
       illustrationsTotal: FULL_BOOK_PAGE_COUNT,
-      allIllustrationsReady,
-      hasFailedIllustrations: hasFailedIllustrations(imageStatus),
-      hasGeneratingIllustrations: hasGeneratingIllustrations(imageStatus),
+      allIllustrationsReady: normalized.allIllustrationsReady,
+      hasFailedIllustrations: normalized.hasFailedIllustrations,
+      hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
       pdfStatus: storedBook.pdf_status,
       pdfStoragePath: storedBook.pdf_storage_path,
       characterName:
