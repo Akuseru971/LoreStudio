@@ -11,7 +11,7 @@ import { normalizeLoreBook } from "@/lib/utils";
 
 const FREE_IMAGE_PAGES = Array.from({ length: FREE_IMAGE_PAGE_COUNT }, (_, index) => index + 1);
 
-async function generateAndStoreImageForPage({
+export async function generateAndStoreFreeImageForPage({
   accessToken,
   bookId,
   book,
@@ -70,25 +70,21 @@ export async function generateFreeBookImages(accessToken: string, book: LoreBook
     throw new Error("Book not found.");
   }
 
-  const results = await Promise.allSettled(
-    FREE_IMAGE_PAGES.map((pageNumber) =>
-      generateAndStoreImageForPage({
+  for (const pageNumber of FREE_IMAGE_PAGES) {
+    try {
+      await generateAndStoreFreeImageForPage({
         accessToken,
         bookId: storedBook.id,
         book,
         pageNumber,
-      }),
-    ),
-  );
-
-  results.forEach((result, index) => {
-    if (result.status === "rejected") {
+      });
+    } catch (error) {
       console.error("[IMAGE_GENERATION_ERROR]", {
-        pageNumber: FREE_IMAGE_PAGES[index],
-        message: result.reason instanceof Error ? result.reason.message : "Image generation failed.",
+        pageNumber,
+        message: error instanceof Error ? error.message : "Image generation failed.",
       });
     }
-  });
+  }
 
   const finalBook = await getBookByAccessToken(accessToken);
   if (!finalBook) {

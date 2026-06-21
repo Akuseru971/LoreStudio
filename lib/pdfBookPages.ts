@@ -5,8 +5,13 @@ import {
   isInlineAssetReference,
   isStorageAssetPath,
 } from "@/lib/bookAssets";
-import { getImageForPage, getImageUrl, type BookImagesInput } from "@/lib/book-images";
-import type { ImagePageStatus, LoreBook } from "@/lib/types";
+import {
+  getImageForPage,
+  logPdfImageCheck,
+  resolveImageDisplayUrl,
+  type BookImagesInput,
+} from "@/lib/book-images";
+import type { BookPageImage, ImagePageStatus, LoreBook } from "@/lib/types";
 
 export type PdfStoryPage = {
   pageNumber: number;
@@ -16,7 +21,7 @@ export type PdfStoryPage = {
 };
 
 export type PdfGenerationContext = {
-  images?: Record<string, string>;
+  images?: Record<string, BookPageImage | string>;
   imageStatus?: Record<string, ImagePageStatus>;
 };
 
@@ -53,6 +58,21 @@ export async function resolveRenderableImageSrc(url: string): Promise<string | n
   return trimmed;
 }
 
+export async function resolveImageUrlForPdf(image: Awaited<ReturnType<typeof getImageForPage>>) {
+  if (!image) {
+    return null;
+  }
+
+  logPdfImageCheck(image.pageNumber, image);
+
+  const displayUrl = await resolveImageDisplayUrl(image);
+  if (displayUrl) {
+    return resolveRenderableImageSrc(displayUrl);
+  }
+
+  return null;
+}
+
 export async function preparePdfStoryPages(
   book: LoreBook,
   context: PdfGenerationContext = {},
@@ -68,16 +88,17 @@ export async function preparePdfStoryPages(
   return Promise.all(
     storyPages.map(async (page) => {
       const image = getImageForPage(imagesInput, page.pageNumber);
-      const rawUrl = getImageUrl(image) || page.imageUrl || null;
       let imageSrc: string | null = null;
 
-      if (rawUrl) {
-        try {
-          imageSrc = await resolveRenderableImageSrc(rawUrl);
-        } catch (error) {
-          console.warn(`[PDF_IMAGE_RESOLVE_FAILED] page ${page.pageNumber}`, error);
-          imageSrc = null;
-        }
+      try {
+        imageSrc = await resolveImageUrlForPdf(image);
+      } catch (error) {
+        console.warn(`[PDF_IMAGE_RESOLVE_FAILED] page ${page.pageNumber}`, error);
+        imageSrc = null;
+      }
+
+      if (!imageSrc) {
+        console.warn("[PDF_IMAGE_MISSING]", { pageNumber: page.pageNumber, image });
       }
 
       return {

@@ -113,9 +113,18 @@ export type PdfStatus = "not_started" | "waiting_for_images" | "generating" | "r
 
 export type ImagePageStatus = "not_started" | "generating" | "ready" | "failed";
 
+export type BookPageImage = {
+  pageNumber: number;
+  status: ImagePageStatus;
+  url?: string | null;
+  storagePath?: string | null;
+  generatedAt?: string | null;
+};
+
 export type PageImageState = {
   status: ImagePageStatus;
   url?: string | null;
+  storagePath?: string | null;
 };
 
 export type ConfirmationEmailStatus = "not_started" | "sending" | "sent" | "failed" | "skipped";
@@ -130,7 +139,7 @@ export type StoredBook = {
   full_book: LoreBook | null;
   free_pages: BookPage[] | null;
   premium_pages: BookPage[] | null;
-  images: Record<string, string>;
+  images: Record<string, BookPageImage | string>;
   image_status: Record<string, ImagePageStatus>;
   audio: Record<string, string>;
   pdf_url: string | null;

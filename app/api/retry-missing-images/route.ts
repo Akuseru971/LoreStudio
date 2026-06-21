@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generatePremiumImages } from "@/lib/premiumImages";
+import { retryMissingImages } from "@/lib/retryMissingImages";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -22,10 +22,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await generatePremiumImages(body.accessToken);
+    const result = await retryMissingImages(body.accessToken);
     return NextResponse.json({
       images: result.images,
       allReady: result.allReady,
+      readyIllustrationCount: result.readyIllustrationCount,
+      missingPages: result.missingPages,
     });
   } catch (error) {
     console.error("Retry missing images failed.", error);

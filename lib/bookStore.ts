@@ -1,8 +1,27 @@
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
-import { persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
+import { createSignedAssetUrl, persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
+import {
+  getImageForPage,
+  getReadyIllustrationCount,
+  isIllustrationReady,
+  mergeUpdatedImage,
+  normalizeStoredBookImages,
+  resolveImageDisplayUrl,
+} from "@/lib/book-images";
 import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
-import type { BookFormInput, BookPage, BookStatus, ConfirmationEmailStatus, ImagePageStatus, LoreBook, Mp3Status, PdfStatus, StoredBook } from "@/lib/types";
+import type {
+  BookFormInput,
+  BookPage,
+  BookPageImage,
+  BookStatus,
+  ConfirmationEmailStatus,
+  ImagePageStatus,
+  LoreBook,
+  Mp3Status,
+  PdfStatus,
+  StoredBook,
+} from "@/lib/types";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { stripBookAssets } from "@/lib/utils";
 
@@ -51,7 +70,7 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     full_book: (row.full_book as LoreBook | null) ?? null,
     free_pages: (row.free_pages as BookPage[] | null) ?? null,
     premium_pages: (row.premium_pages as BookPage[] | null) ?? null,
-    images: (row.images as Record<string, string>) ?? {},
+    images: (row.images as Record<string, BookPageImage | string>) ?? {},
     image_status: (row.image_status as Record<string, ImagePageStatus>) ?? {},
     audio: (row.audio as Record<string, string>) ?? {},
     pdf_url: row.pdf_url ? String(row.pdf_url) : null,
@@ -124,6 +143,29 @@ export async function createFreeBook(formInput: BookFormInput, book: LoreBook) {
   return mapRow(data);
 }
 
+export async function saveNormalizedBookImages(
+  bookId: string,
+  images: Record<string, BookPageImage>,
+  imageStatus: Record<string, ImagePageStatus>,
+) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images,
+      image_status: imageStatus,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to save normalized book images.");
+  }
+
+  return mapRow(data);
+}
+
 export async function saveBookAsset(
   accessToken: string,
   pageNumber: number,
@@ -131,49 +173,91 @@ export async function saveBookAsset(
   assetRef: string,
 ) {
   const supabase = requireSupabase();
-  const storedBook = await getBookByAccessToken(accessToken);
-  if (!storedBook) {
-    throw new Error("Book not found.");
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const storedBook = await getBookByAccessToken(accessToken);
+    if (!storedBook) {
+      throw new Error("Book not found.");
+    }
+
+    console.log("[IMAGE_SAVE_START]", { bookId: storedBook.id, pageNumber, assetType, attempt });
+
+    const storagePath = await persistAssetMap(
+      storedBook.id,
+      { [String(pageNumber)]: assetRef },
+      assetType,
+    );
+    const persistedRef = storagePath[String(pageNumber)];
+    if (!persistedRef) {
+      throw new Error("Unable to persist book asset.");
+    }
+
+    console.log("[IMAGE_UPLOAD_DONE]", { bookId: storedBook.id, pageNumber, storagePath: persistedRef });
+
+    if (assetType === "audio") {
+      const nextAudio = {
+        ...storedBook.audio,
+        [String(pageNumber)]: persistedRef,
+      };
+
+      const { data, error } = await supabase
+        .from(BOOKS_TABLE)
+        .update({ audio: nextAudio })
+        .eq("id", storedBook.id)
+        .select("*")
+        .single();
+
+      if (error || !data) {
+        throw new Error(error?.message || "Unable to save book asset.");
+      }
+
+      return mapRow(data);
+    }
+
+    const signedUrl = await createSignedAssetUrl(persistedRef, 3600);
+    const normalized = normalizeStoredBookImages(storedBook);
+    const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
+      pageNumber,
+      status: "ready",
+      url: signedUrl,
+      storagePath: persistedRef,
+      generatedAt: new Date().toISOString(),
+    });
+    const nextImageStatus = {
+      ...normalized.imageStatus,
+      [String(pageNumber)]: "ready" as ImagePageStatus,
+    };
+
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .update({
+        images: updatedImages,
+        image_status: nextImageStatus,
+      })
+      .eq("id", storedBook.id)
+      .select("*")
+      .single();
+
+    if (!error && data) {
+      console.log("[IMAGE_BOOK_UPDATE_DONE]", {
+        bookId: storedBook.id,
+        pageNumber,
+        url: signedUrl,
+        storagePath: persistedRef,
+      });
+      console.log("[IMAGE_READY_COUNT]", getReadyIllustrationCount({
+        images: updatedImages,
+        imageStatus: nextImageStatus,
+      }));
+      return mapRow(data);
+    }
+
+    if (attempt === 3) {
+      throw new Error(error?.message || "Unable to save book asset.");
+    }
   }
 
-  const storagePath = await persistAssetMap(
-    storedBook.id,
-    { [String(pageNumber)]: assetRef },
-    assetType,
-  );
-  const persistedRef = storagePath[String(pageNumber)];
-  if (!persistedRef) {
-    throw new Error("Unable to persist book asset.");
-  }
-
-  const column = assetType === "image" ? "images" : "audio";
-  const nextAssets = {
-    ...storedBook[column],
-    [String(pageNumber)]: persistedRef,
-  };
-  const nextImageStatus =
-    assetType === "image"
-      ? {
-          ...storedBook.image_status,
-          [String(pageNumber)]: "ready" as ImagePageStatus,
-        }
-      : storedBook.image_status;
-
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .update({
-      [column]: nextAssets,
-      ...(assetType === "image" ? { image_status: nextImageStatus } : {}),
-    })
-    .eq("id", storedBook.id)
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message || "Unable to save book asset.");
-  }
-
-  return mapRow(data);
+  throw new Error("Unable to save book asset.");
 }
 
 export async function getBookById(bookId: string) {
@@ -197,7 +281,27 @@ export async function getBookByAccessToken(accessToken: string) {
     throw new Error(error.message);
   }
 
-  return data ? mapRow(data) : null;
+  if (!data) {
+    return null;
+  }
+
+  const storedBook = mapRow(data);
+  const normalized = normalizeStoredBookImages(storedBook);
+
+  if (!normalized.changed) {
+    return storedBook;
+  }
+
+  try {
+    return await saveNormalizedBookImages(storedBook.id, normalized.images, normalized.imageStatus);
+  } catch (repairError) {
+    console.warn("[IMAGE_NORMALIZE_PERSIST_FAILED]", repairError);
+    return {
+      ...storedBook,
+      images: normalized.images,
+      image_status: normalized.imageStatus,
+    };
+  }
 }
 
 export async function updateBookStatus(bookId: string, status: BookStatus) {
@@ -255,12 +359,39 @@ export async function saveFullBook(
     throw new Error("Book not found.");
   }
 
+  const normalized = normalizeStoredBookImages(storedBook);
+  const mergedImages = { ...normalized.images };
+
+  for (const [pageKey, storagePath] of Object.entries(uploadedImages)) {
+    const pageNumber = Number(pageKey);
+    if (!Number.isInteger(pageNumber)) {
+      continue;
+    }
+
+    const signedUrl = await createSignedAssetUrl(storagePath, 3600);
+    mergedImages[pageKey] = {
+      pageNumber,
+      status: "ready",
+      url: signedUrl,
+      storagePath,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const nextImageStatus = { ...normalized.imageStatus };
+  for (const pageKey of Object.keys(mergedImages)) {
+    if (isIllustrationReady(mergedImages[pageKey])) {
+      nextImageStatus[pageKey] = "ready";
+    }
+  }
+
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
     .update({
       full_book: leanBook,
       premium_pages: premiumPages,
-      images: { ...storedBook.images, ...uploadedImages },
+      images: mergedImages,
+      image_status: nextImageStatus,
       audio: { ...storedBook.audio, ...uploadedAudio },
     })
     .eq("id", bookId)
@@ -695,26 +826,37 @@ export async function ensureBookPdf(bookId: string, book: LoreBook) {
   }
 
   const { generateBookPdf } = await import("@/lib/pdf");
+  const normalized = normalizeStoredBookImages(storedBook);
   const pdfBuffer = await generateBookPdf(book, {
-    images: storedBook.images,
-    imageStatus: storedBook.image_status,
+    images: normalized.images,
+    imageStatus: normalized.imageStatus,
   });
   return uploadBookPdf(bookId, pdfBuffer);
 }
 
 export async function mergeBookAssets(
   book: LoreBook,
-  images: Record<string, string>,
+  images: Record<string, BookPageImage | string>,
   audio: Record<string, string>,
 ): Promise<LoreBook> {
-  const [resolvedImages, resolvedAudio] = await Promise.all([resolveAssetMap(images), resolveAssetMap(audio)]);
+  const resolvedAudio = await resolveAssetMap(audio);
+  const imagesInput = { images, pages: book.pages };
+
+  const pages = await Promise.all(
+    book.pages.map(async (page) => {
+      const image = getImageForPage(imagesInput, page.pageNumber);
+      const imageUrl = (await resolveImageDisplayUrl(image)) || page.imageUrl || undefined;
+
+      return {
+        ...page,
+        imageUrl,
+        audioUrl: resolvedAudio[String(page.pageNumber)] ?? page.audioUrl ?? null,
+      };
+    }),
+  );
 
   return {
     ...book,
-    pages: book.pages.map((page) => ({
-      ...page,
-      imageUrl: resolvedImages[String(page.pageNumber)] || page.imageUrl,
-      audioUrl: resolvedAudio[String(page.pageNumber)] ?? page.audioUrl ?? null,
-    })),
+    pages,
   };
 }

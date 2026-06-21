@@ -22,9 +22,9 @@ export async function GET(request: Request) {
 
     const isPremium = hasPremiumAccess(storedBook.status);
     const sourceBook = isPremium ? storedBook.full_book || storedBook.free_book : storedBook.free_book;
-    const normalized = await getNormalizedImagesForStoredBook(storedBook);
+    const normalized = getNormalizedImagesForStoredBook(storedBook);
     const book = sourceBook
-      ? await mergeBookAssets(sourceBook, storedBook.images, storedBook.audio)
+      ? await mergeBookAssets(sourceBook, normalized.normalizedImages, storedBook.audio)
       : null;
 
     return NextResponse.json({
@@ -39,6 +39,7 @@ export async function GET(request: Request) {
       canDownloadMp3: isPremium,
       readyIllustrationCount: normalized.readyIllustrationCount,
       allIllustrationsReady: normalized.allIllustrationsReady,
+      missingPages: normalized.missingPages,
       pageCount: isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT,
     });
   } catch (error) {

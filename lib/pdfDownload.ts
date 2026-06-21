@@ -85,7 +85,7 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     };
   }
 
-  const normalized = await getNormalizedImagesForStoredBook(storedBook);
+  const normalized = getNormalizedImagesForStoredBook(storedBook);
 
   if (!normalized.allIllustrationsReady) {
     logPdfReadyCheck(normalized.input, "download-pdf");

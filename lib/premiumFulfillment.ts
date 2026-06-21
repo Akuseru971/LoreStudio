@@ -11,6 +11,7 @@ import {
 } from "@/lib/bookStore";
 import { generateNarrationAudio } from "@/lib/elevenlabs";
 import { ensureAllBookImagesReady } from "@/lib/premiumImages";
+import { normalizeStoredBookImages } from "@/lib/book-images";
 import { generateBookPdf } from "@/lib/pdf";
 import type { LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
@@ -72,9 +73,11 @@ export async function fulfillPremiumBook(accessToken: string) {
     await saveFullBook(storedBook.id, audioBook, { audio });
 
     const { book: illustratedBook } = await ensureAllBookImagesReady(accessToken);
+    const latestBook = await getBookByAccessToken(accessToken);
+    const normalized = latestBook ? normalizeStoredBookImages(latestBook) : null;
     const pdfBuffer = await generateBookPdf(illustratedBook, {
-      images: storedBook.images,
-      imageStatus: storedBook.image_status,
+      images: normalized?.images || latestBook?.images,
+      imageStatus: normalized?.imageStatus || latestBook?.image_status,
     });
     await uploadBookPdf(storedBook.id, pdfBuffer);
 

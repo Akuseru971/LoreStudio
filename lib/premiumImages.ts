@@ -1,21 +1,20 @@
-import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { PREMIUM_IMAGE_PAGE_NUMBERS } from "@/lib/image-config";
+import {
+  claimPageImageGeneration,
+  getBookByAccessToken,
+  markPageImageFailed,
+  saveBookAsset,
+} from "@/lib/bookStore";
+import { getImageForPage, isIllustrationReady } from "@/lib/book-images";
+import { generateBookPageImage } from "@/lib/images";
+import { hasPremiumAccess } from "@/lib/paymentVerification";
+import type { LoreBook } from "@/lib/types";
+import { normalizeLoreBook } from "@/lib/utils";
 import {
   allBookImagesReady,
   buildPageImageStates,
   resolvePageImageStatus,
 } from "@/lib/imageStatus";
-import {
-  claimPageImageGeneration,
-  getBookByAccessToken,
-  markPageImageFailed,
-  mergeBookAssets,
-  saveBookAsset,
-} from "@/lib/bookStore";
-import { generateBookPageImage } from "@/lib/images";
-import { hasPremiumAccess } from "@/lib/paymentVerification";
-import type { LoreBook } from "@/lib/types";
-import { normalizeLoreBook } from "@/lib/utils";
 
 async function generateSinglePremiumImage(accessToken: string, pageNumber: number) {
   const storedBook = await getBookByAccessToken(accessToken);
@@ -27,11 +26,20 @@ async function generateSinglePremiumImage(accessToken: string, pageNumber: numbe
     throw new Error("Premium access is required.");
   }
 
-  const status = resolvePageImageStatus(storedBook, pageNumber);
-  if (status === "ready" && storedBook.images[String(pageNumber)]) {
+  const image = getImageForPage(
+    {
+      images: storedBook.images,
+      imageStatus: storedBook.image_status,
+      pages: (storedBook.full_book || storedBook.free_book)?.pages,
+    },
+    pageNumber,
+  );
+
+  if (isIllustrationReady(image)) {
     return storedBook;
   }
 
+  const status = resolvePageImageStatus(storedBook, pageNumber);
   if (status === "generating") {
     return storedBook;
   }
@@ -86,11 +94,20 @@ export async function generatePremiumImages(accessToken: string) {
       break;
     }
 
-    const status = resolvePageImageStatus(latestBook, pageNumber);
-    if (status === "ready" && latestBook.images[String(pageNumber)]) {
+    const image = getImageForPage(
+      {
+        images: latestBook.images,
+        imageStatus: latestBook.image_status,
+        pages: (latestBook.full_book || latestBook.free_book)?.pages,
+      },
+      pageNumber,
+    );
+
+    if (isIllustrationReady(image)) {
       continue;
     }
 
+    const status = resolvePageImageStatus(latestBook, pageNumber);
     if (status === "generating") {
       continue;
     }
@@ -98,7 +115,7 @@ export async function generatePremiumImages(accessToken: string) {
     try {
       await generateSinglePremiumImage(accessToken, pageNumber);
     } catch (error) {
-      console.error(`Premium image generation failed for page ${pageNumber}.`, error);
+      console.error(`[IMAGE_GENERATION_ERROR] Premium image generation failed for page ${pageNumber}.`, error);
     }
   }
 
@@ -106,6 +123,8 @@ export async function generatePremiumImages(accessToken: string) {
   if (!finalBook) {
     throw new Error("Book not found.");
   }
+
+  console.log("[IMAGE_READY_COUNT]", buildPageImageStates(finalBook));
 
   return {
     book: finalBook,
@@ -125,6 +144,7 @@ export async function ensureAllBookImagesReady(accessToken: string, maxWaitMs = 
         throw new Error("Book content is missing.");
       }
 
+      const { mergeBookAssets } = await import("@/lib/bookStore");
       const mergedBook = await mergeBookAssets(sourceBook, result.book.images, result.book.audio);
       return { book: mergedBook, storedBook: result.book };
     }

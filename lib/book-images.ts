@@ -1,14 +1,10 @@
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { mergeBookAssets } from "@/lib/bookStore";
-import type { BookPage, ImagePageStatus, LoreBook, PageImageState, StoredBook } from "@/lib/types";
+import { createSignedAssetUrl, isInlineAssetReference, isStorageAssetPath } from "@/lib/bookAssets";
+import type { BookPage, BookPageImage, ImagePageStatus, LoreBook, PageImageState, StoredBook } from "@/lib/types";
 
-export type NormalizedPageImage = {
-  pageNumber: number;
-  status: ImagePageStatus;
-  url: string | null;
+export type NormalizedPageImage = BookPageImage & {
   imageUrl?: string | null;
   src?: string | null;
-  storagePath?: string | null;
 };
 
 export type BookImagesInput = {
@@ -17,34 +13,53 @@ export type BookImagesInput = {
   pages?: Array<Pick<BookPage, "pageNumber" | "imageUrl">>;
 };
 
+export type NormalizedBookImages = {
+  images: Record<string, BookPageImage>;
+  imageStatus: Record<string, ImagePageStatus>;
+  changed: boolean;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function getImageUrl(image: unknown): string | null {
-  if (!image) {
-    return null;
-  }
-
-  if (typeof image === "string" && image.trim()) {
-    return image.trim();
+export function getImageStoragePath(image: unknown): string | null {
+  if (typeof image === "string" && isStorageAssetPath(image)) {
+    return image;
   }
 
   if (!isRecord(image)) {
     return null;
   }
 
-  const candidates = [
-    image.url,
-    image.imageUrl,
-    image.src,
-    image.publicUrl,
-    image.signedUrl,
-    image.storagePath,
-  ];
+  if (typeof image.storagePath === "string" && image.storagePath.trim()) {
+    return image.storagePath.trim();
+  }
+
+  return null;
+}
+
+export function getDirectImageUrl(image: unknown): string | null {
+  if (!image) {
+    return null;
+  }
+
+  if (typeof image === "string") {
+    const trimmed = image.trim();
+    if (!trimmed || isStorageAssetPath(trimmed)) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  if (!isRecord(image)) {
+    return null;
+  }
+
+  const candidates = [image.url, image.imageUrl, image.src, image.publicUrl, image.signedUrl, image.storageUrl];
 
   for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
+    if (typeof candidate === "string" && candidate.trim() && !isStorageAssetPath(candidate.trim())) {
       return candidate.trim();
     }
   }
@@ -52,17 +67,58 @@ export function getImageUrl(image: unknown): string | null {
   return null;
 }
 
-function coerceImageRecord(image: unknown, pageNumber: number): NormalizedPageImage | null {
+export function getImageUrl(image: unknown): string | null {
+  return getDirectImageUrl(image) || getImageStoragePath(image);
+}
+
+export async function resolveImageDisplayUrl(image: NormalizedPageImage | null): Promise<string | null> {
+  if (!image) {
+    return null;
+  }
+
+  const directUrl = getDirectImageUrl(image);
+  if (directUrl) {
+    return directUrl;
+  }
+
+  const storagePath = getImageStoragePath(image);
+  if (!storagePath) {
+    return null;
+  }
+
+  if (isInlineAssetReference(storagePath)) {
+    return storagePath;
+  }
+
+  return createSignedAssetUrl(storagePath, 3600);
+}
+
+function coerceCanonicalImage(image: unknown, pageNumber: number): BookPageImage | null {
   if (!image) {
     return null;
   }
 
   if (typeof image === "string") {
+    const trimmed = image.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (isStorageAssetPath(trimmed)) {
+      return {
+        pageNumber,
+        status: "ready",
+        storagePath: trimmed,
+        url: null,
+      };
+    }
+
     return {
       pageNumber,
       status: "ready",
-      url: image,
-      storagePath: image.startsWith("books/") ? image : null,
+      url: trimmed,
+      storagePath: null,
+      generatedAt: null,
     };
   }
 
@@ -73,15 +129,19 @@ function coerceImageRecord(image: unknown, pageNumber: number): NormalizedPageIm
   const explicitPageNumber =
     typeof image.pageNumber === "number" ? image.pageNumber : typeof image.page === "number" ? image.page : pageNumber;
 
-  const url = getImageUrl(image);
+  const storagePath = getImageStoragePath(image);
+  const directUrl = getDirectImageUrl(image);
+  const usable = Boolean(storagePath || directUrl);
+  const rawStatus = (image.status as ImagePageStatus) || (usable ? "ready" : "not_started");
+  const status: ImagePageStatus =
+    rawStatus === "ready" && !usable ? "not_started" : usable ? "ready" : rawStatus;
 
   return {
     pageNumber: explicitPageNumber,
-    status: (image.status as ImagePageStatus) || (url ? "ready" : "not_started"),
-    url,
-    imageUrl: typeof image.imageUrl === "string" ? image.imageUrl : null,
-    src: typeof image.src === "string" ? image.src : null,
-    storagePath: typeof image.storagePath === "string" ? image.storagePath : null,
+    status,
+    url: directUrl,
+    storagePath,
+    generatedAt: typeof image.generatedAt === "string" ? image.generatedAt : null,
   };
 }
 
@@ -92,7 +152,7 @@ function readRawImageForPage(images: BookImagesInput["images"], pageNumber: numb
 
   if (Array.isArray(images)) {
     const byPageNumber = images.find((item) => {
-      const record = coerceImageRecord(item, pageNumber);
+      const record = coerceCanonicalImage(item, pageNumber);
       return record?.pageNumber === pageNumber;
     });
 
@@ -109,10 +169,7 @@ function readRawImageForPage(images: BookImagesInput["images"], pageNumber: numb
 
   const oneBasedKey = String(pageNumber);
   const direct =
-    images[oneBasedKey] ??
-    images[pageNumber] ??
-    images[`page${pageNumber}`] ??
-    images[`page_${pageNumber}`];
+    images[oneBasedKey] ?? images[pageNumber] ?? images[`page${pageNumber}`] ?? images[`page_${pageNumber}`];
 
   if (direct) {
     return direct;
@@ -124,7 +181,7 @@ function readRawImageForPage(images: BookImagesInput["images"], pageNumber: numb
     return null;
   }
 
-  const coerced = coerceImageRecord(zeroBased, pageNumber);
+  const coerced = coerceCanonicalImage(zeroBased, pageNumber);
   if (coerced?.pageNumber === pageNumber) {
     return zeroBased;
   }
@@ -140,50 +197,62 @@ export function getImageForPage(book: BookImagesInput, pageNumber: number): Norm
   const rawImage = readRawImageForPage(book.images, pageNumber);
   const pageFromBook = book.pages?.find((page) => page.pageNumber === pageNumber);
   const pageImageUrl = pageFromBook?.imageUrl || null;
-  const coerced = coerceImageRecord(rawImage, pageNumber);
-  const url = getImageUrl(coerced) || pageImageUrl || getImageUrl(rawImage);
+  const coerced = coerceCanonicalImage(rawImage, pageNumber);
+  const pageCoerced = pageImageUrl ? coerceCanonicalImage(pageImageUrl, pageNumber) : null;
+  const mergedUrl = getDirectImageUrl(coerced) || getDirectImageUrl(pageCoerced) || getDirectImageUrl(pageImageUrl);
+  const mergedStoragePath = getImageStoragePath(coerced) || getImageStoragePath(pageCoerced);
   const storedStatus = book.imageStatus?.[String(pageNumber)];
+  const usable = Boolean(mergedUrl || mergedStoragePath);
 
-  if (!url && !coerced && !storedStatus) {
+  if (!usable && !coerced && !pageCoerced && !storedStatus) {
     return null;
   }
 
-  const normalizedStatus: ImagePageStatus = url
+  const status: ImagePageStatus = usable
     ? "ready"
-    : storedStatus || coerced?.status || "not_started";
+    : storedStatus || coerced?.status || pageCoerced?.status || "not_started";
 
   return {
     pageNumber,
-    status: normalizedStatus,
-    url,
+    status: status === "ready" && !usable ? "not_started" : status,
+    url: mergedUrl,
+    storagePath: mergedStoragePath,
+    generatedAt: coerced?.generatedAt || pageCoerced?.generatedAt || null,
     imageUrl: pageImageUrl,
-    src: coerced?.src ?? null,
-    storagePath:
-      coerced?.storagePath ||
-      (typeof rawImage === "string" && rawImage.startsWith("books/") ? rawImage : null),
+    src: coerced?.url ?? null,
   };
 }
 
-export function isIllustrationReady(image: NormalizedPageImage | null) {
+export function isIllustrationReady(image: NormalizedPageImage | BookPageImage | null) {
   if (!image) {
     return false;
   }
 
-  const hasUsableUrl = Boolean(getImageUrl(image));
-
-  if (image.status === "ready" && hasUsableUrl) {
+  if (getImageStoragePath(image)) {
     return true;
   }
 
-  if (!image.status && hasUsableUrl) {
-    return true;
-  }
-
-  if (hasUsableUrl) {
+  const directUrl = getDirectImageUrl(image);
+  if (directUrl) {
     return true;
   }
 
   return false;
+}
+
+export function mergeUpdatedImage(
+  currentImages: Record<string, BookPageImage>,
+  pageNumber: number,
+  imageData: BookPageImage,
+): Record<string, BookPageImage> {
+  return {
+    ...currentImages,
+    [String(pageNumber)]: {
+      ...currentImages[String(pageNumber)],
+      ...imageData,
+      pageNumber,
+    },
+  };
 }
 
 export function normalizeBookImages(book: BookImagesInput): Record<string, PageImageState> {
@@ -191,20 +260,76 @@ export function normalizeBookImages(book: BookImagesInput): Record<string, PageI
 
   for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
     const image = getImageForPage(book, pageNumber);
-    const url = image ? getImageUrl(image) : null;
+    const url = image ? getDirectImageUrl(image) : null;
+    const storagePath = image ? getImageStoragePath(image) : null;
 
     normalized[String(pageNumber)] = image
       ? {
           status: isIllustrationReady(image) ? "ready" : image.status || "not_started",
           url,
+          storagePath,
         }
       : {
           status: "not_started",
           url: null,
+          storagePath: null,
         };
   }
 
   return normalized;
+}
+
+export function normalizeStoredBookImages(storedBook: Pick<StoredBook, "images" | "image_status" | "free_book" | "full_book">): NormalizedBookImages {
+  const sourceBook = storedBook.full_book || storedBook.free_book;
+  const pages = sourceBook?.pages;
+
+  const images: Record<string, BookPageImage> = {};
+  const imageStatus: Record<string, ImagePageStatus> = {};
+  let changed = false;
+
+  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
+    const key = String(pageNumber);
+    const image = getImageForPage(
+      {
+        images: storedBook.images,
+        imageStatus: storedBook.image_status,
+        pages,
+      },
+      pageNumber,
+    );
+
+    const raw = readRawImageForPage(storedBook.images, pageNumber);
+    const rawWasString = typeof raw === "string";
+    const rawWasLegacyKey = isRecord(storedBook.images) && raw !== storedBook.images[key];
+
+    if (!image) {
+      images[key] = {
+        pageNumber,
+        status: storedBook.image_status[key] || "not_started",
+        url: null,
+        storagePath: null,
+      };
+      imageStatus[key] = images[key].status;
+      continue;
+    }
+
+    const canonical: BookPageImage = {
+      pageNumber,
+      status: isIllustrationReady(image) ? "ready" : image.status || "not_started",
+      url: getDirectImageUrl(image),
+      storagePath: getImageStoragePath(image),
+      generatedAt: image.generatedAt || null,
+    };
+
+    images[key] = canonical;
+    imageStatus[key] = canonical.status;
+
+    if (rawWasString || rawWasLegacyKey || canonical.status !== storedBook.image_status[key]) {
+      changed = true;
+    }
+  }
+
+  return { images, imageStatus, changed };
 }
 
 export function getReadyIllustrationCount(book: BookImagesInput) {
@@ -224,10 +349,23 @@ export function areAllIllustrationsReady(book: BookImagesInput) {
   return getReadyIllustrationCount(book) === FULL_BOOK_PAGE_COUNT;
 }
 
+export function getMissingIllustrationPages(book: BookImagesInput) {
+  const missing: number[] = [];
+
+  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
+    const image = getImageForPage(book, pageNumber);
+    if (!isIllustrationReady(image)) {
+      missing.push(pageNumber);
+    }
+  }
+
+  return missing;
+}
+
 export function hasFailedIllustrations(book: BookImagesInput) {
   for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
     const image = getImageForPage(book, pageNumber);
-    if (image?.status === "failed" && !getImageUrl(image)) {
+    if (image?.status === "failed" && !isIllustrationReady(image)) {
       return true;
     }
   }
@@ -238,7 +376,7 @@ export function hasFailedIllustrations(book: BookImagesInput) {
 export function hasGeneratingIllustrations(book: BookImagesInput) {
   for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
     const image = getImageForPage(book, pageNumber);
-    if (image?.status === "generating" && !getImageUrl(image)) {
+    if (image?.status === "generating" && !isIllustrationReady(image)) {
       return true;
     }
   }
@@ -246,43 +384,50 @@ export function hasGeneratingIllustrations(book: BookImagesInput) {
   return false;
 }
 
+export function logBookImageRender(pageNumber: number, image: NormalizedPageImage | null, context = "client") {
+  console.log("[BOOK_IMAGE_RENDER]", {
+    context,
+    pageNumber,
+    image,
+    imageUrl: image ? getDirectImageUrl(image) : null,
+    storagePath: image ? getImageStoragePath(image) : null,
+    ready: isIllustrationReady(image),
+  });
+}
+
+export function logPdfImageCheck(pageNumber: number, image: NormalizedPageImage | null) {
+  console.log("[PDF_IMAGE_CHECK]", {
+    pageNumber,
+    image,
+    imageUrl: image ? getDirectImageUrl(image) : null,
+    storagePath: image ? getImageStoragePath(image) : null,
+    ready: isIllustrationReady(image),
+  });
+}
+
 export function logPdfReadyCheck(book: BookImagesInput, context = "server") {
   console.log(`[PDF_READY_CHECK] ${context} images:`, book.images);
 
   for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
     const image = getImageForPage(book, pageNumber);
-
-    console.log("[PDF_READY_CHECK_PAGE]", {
-      pageNumber,
-      image,
-      status: image?.status,
-      url: image?.url,
-      src: image?.src,
-      imageUrl: image?.imageUrl,
-      storagePath: image?.storagePath,
-      isReady: isIllustrationReady(image),
-    });
+    logPdfImageCheck(pageNumber, image);
   }
 
   console.log("[PDF_READY_CHECK_SUMMARY]", {
     readyCount: getReadyIllustrationCount(book),
     allReady: areAllIllustrationsReady(book),
+    missingPages: getMissingIllustrationPages(book),
   });
 }
 
-export async function getNormalizedImagesForStoredBook(storedBook: StoredBook) {
+export function getNormalizedImagesForStoredBook(storedBook: StoredBook) {
+  const normalizedRecord = normalizeStoredBookImages(storedBook);
   const sourceBook = storedBook.full_book || storedBook.free_book;
-  let pages: LoreBook["pages"] | undefined = sourceBook?.pages;
-
-  if (sourceBook) {
-    const mergedBook = await mergeBookAssets(sourceBook, storedBook.images, storedBook.audio);
-    pages = mergedBook.pages;
-  }
 
   const input: BookImagesInput = {
-    images: storedBook.images,
-    imageStatus: storedBook.image_status,
-    pages,
+    images: normalizedRecord.images,
+    imageStatus: normalizedRecord.imageStatus,
+    pages: sourceBook?.pages,
   };
 
   return {
@@ -292,5 +437,54 @@ export async function getNormalizedImagesForStoredBook(storedBook: StoredBook) {
     allIllustrationsReady: areAllIllustrationsReady(input),
     hasFailedIllustrations: hasFailedIllustrations(input),
     hasGeneratingIllustrations: hasGeneratingIllustrations(input),
+    missingPages: getMissingIllustrationPages(input),
+    normalizedImages: normalizedRecord.images,
+    normalizedImageStatus: normalizedRecord.imageStatus,
+    imagesChanged: normalizedRecord.changed,
+  };
+}
+
+export async function repairStoredBookImages(storedBook: StoredBook) {
+  const normalizedRecord = normalizeStoredBookImages(storedBook);
+  const repairedImages: Record<string, BookPageImage> = { ...normalizedRecord.images };
+  const imageStatus: Record<string, ImagePageStatus> = {};
+
+  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
+    const key = String(pageNumber);
+    const image = repairedImages[key];
+    if (!image || !isIllustrationReady(image)) {
+      imageStatus[key] = image?.status || "not_started";
+      continue;
+    }
+
+    let nextImage = image;
+    if (!getDirectImageUrl(image) && getImageStoragePath(image)) {
+      try {
+        const signedUrl = await resolveImageDisplayUrl(image);
+        nextImage = {
+          ...image,
+          url: signedUrl,
+          status: "ready",
+        };
+        repairedImages[key] = nextImage;
+      } catch (error) {
+        console.warn("[IMAGE_REPAIR_URL_FAILED]", { pageNumber, error });
+      }
+    }
+
+    imageStatus[key] = isIllustrationReady(nextImage) ? "ready" : nextImage.status || "not_started";
+  }
+
+  return {
+    images: repairedImages,
+    imageStatus,
+    readyIllustrationCount: getReadyIllustrationCount({
+      images: repairedImages,
+      imageStatus,
+    }),
+    missingPages: getMissingIllustrationPages({
+      images: repairedImages,
+      imageStatus,
+    }),
   };
 }

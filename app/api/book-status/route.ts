@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     }
 
     const isPremium = hasPremiumAccess(storedBook.status);
-    const normalized = await getNormalizedImagesForStoredBook(storedBook);
+    const normalized = getNormalizedImagesForStoredBook(storedBook);
 
     if (!normalized.allIllustrationsReady) {
       logPdfReadyCheck(normalized.input, "book-status");
@@ -42,6 +42,7 @@ export async function GET(request: Request) {
       allIllustrationsReady: normalized.allIllustrationsReady,
       hasFailedIllustrations: normalized.hasFailedIllustrations,
       hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
+      missingPages: normalized.missingPages,
       pdfStatus: storedBook.pdf_status || "not_started",
       pdfStoragePath: storedBook.pdf_storage_path,
       characterName:

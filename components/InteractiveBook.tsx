@@ -21,6 +21,7 @@ import {
   PREMIUM_IMAGE_PAGE_NUMBERS,
 } from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
+import { getDirectImageUrl, logBookImageRender } from "@/lib/book-images";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -128,10 +129,14 @@ export default function InteractiveBook({
 
   const pagesWithImages = useMemo(
     () =>
-      book.pages.map((page) => ({
-        ...page,
-        imageUrl: imageCache[page.pageNumber] ?? page.imageUrl,
-      })),
+      book.pages.map((page) => {
+        const imageUrl = imageCache[page.pageNumber] ?? page.imageUrl ?? null;
+        logBookImageRender(page.pageNumber, imageUrl ? { pageNumber: page.pageNumber, status: "ready", url: imageUrl } : null);
+        return {
+          ...page,
+          imageUrl,
+        };
+      }),
     [book.pages, imageCache],
   );
   const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT;
@@ -254,56 +259,66 @@ export default function InteractiveBook({
     [book, imageCache, isPremium],
   );
 
-  const refreshPremiumImages = useCallback(async (): Promise<boolean> => {
-    if (!accessToken || !isPremium) {
+  const refreshBookImages = useCallback(async (): Promise<boolean> => {
+    if (!accessToken) {
       return true;
     }
 
     const response = await fetch("/api/book?token=" + encodeURIComponent(accessToken));
     const data = (await response.json()) as {
       book?: LoreBook | null;
-      imageStatus?: Record<string, { status: ImagePageStatus; url?: string | null }>;
+      images?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
+      imageStatus?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
+      allIllustrationsReady?: boolean;
     };
 
     if (!response.ok || !data.book) {
       return false;
     }
 
+    const imageMap = data.images || data.imageStatus || {};
+    const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT;
     const nextCache: Record<number, string> = {};
-    for (const page of data.book.pages) {
-      if (page.imageUrl) {
-        nextCache[page.pageNumber] = page.imageUrl;
+
+    for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+      const state = imageMap[String(pageNumber)];
+      const page = data.book.pages.find((item) => item.pageNumber === pageNumber);
+      const url = getDirectImageUrl(state) || page?.imageUrl || null;
+      if (url) {
+        nextCache[pageNumber] = url;
       }
     }
 
     setImageCache((current) => ({ ...current, ...nextCache }));
 
-    const imageStatus = data.imageStatus || {};
-    let allPremiumReady = true;
-
     const nextLoading: Record<number, boolean> = {};
     for (const pageNumber of PREMIUM_IMAGE_PAGE_NUMBERS) {
-      const state = imageStatus[String(pageNumber)];
+      const state = imageMap[String(pageNumber)];
       const page = data.book.pages.find((item) => item.pageNumber === pageNumber);
+      const hasImage = Boolean(getDirectImageUrl(state) || page?.imageUrl);
 
-      if (state?.status === "generating") {
+      if (state?.status === "generating" && !hasImage) {
         nextLoading[pageNumber] = true;
-        allPremiumReady = false;
         continue;
       }
 
-      if (state?.status === "ready" && page?.imageUrl) {
-        nextLoading[pageNumber] = false;
-        continue;
-      }
-
-      allPremiumReady = false;
+      nextLoading[pageNumber] = false;
     }
 
     setLoadingImages((current) => ({ ...current, ...nextLoading }));
 
-    return allPremiumReady;
+    return Boolean(data.allIllustrationsReady);
   }, [accessToken, isPremium]);
+
+  const refreshPremiumImages = refreshBookImages;
+
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+
+    void refreshBookImages();
+  }, [accessToken, isPremium, refreshBookImages]);
 
   useEffect(() => {
     const pagesToIllustrate = book.pages.slice(0, isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT);
