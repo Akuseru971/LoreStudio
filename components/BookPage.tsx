@@ -33,9 +33,6 @@ export default function BookPage({
         page={page}
         isImageLoading={isImageLoading}
         imageSealed={imageSealed}
-        onNarratorClick={onNarratorClick}
-        isNarratorLoading={isNarratorLoading}
-        isNarratorPlaying={isNarratorPlaying}
       />
     );
   }
@@ -91,16 +88,10 @@ function ImageLeaf({
   page,
   isImageLoading,
   imageSealed,
-  onNarratorClick,
-  isNarratorLoading,
-  isNarratorPlaying,
 }: {
   page: BookPageType;
   isImageLoading: boolean;
   imageSealed: boolean;
-  onNarratorClick?: () => void;
-  isNarratorLoading?: boolean;
-  isNarratorPlaying?: boolean;
 }) {
   return (
     <article className="page parchment-surface page-shadow relative flex h-full w-full flex-col overflow-hidden p-4 text-[#20170d] sm:p-5">
@@ -109,24 +100,15 @@ function ImageLeaf({
       <div className="relative z-10 flex h-full flex-col">
         <header className="mb-3 flex items-start justify-between gap-2 border-b border-[#6b4a24]/15 pb-2.5">
           <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">Illustration</p>
-          <div className="flex items-center gap-2">
-            {onNarratorClick ? (
-              <NarratorButton
-                onClick={onNarratorClick}
-                isLoading={isNarratorLoading}
-                isPlaying={isNarratorPlaying}
-              />
-            ) : null}
-            <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
-              {String(page.pageNumber).padStart(2, "0")} / 8
-            </p>
-          </div>
+          <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
+            {String(page.pageNumber).padStart(2, "0")} / 8
+          </p>
         </header>
 
         <div className="manuscript-frame relative min-h-0 flex-1">
           {page.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={page.imageUrl} alt={page.title} className="relative z-0 h-full w-full object-cover" />
+            <img src={page.imageUrl} alt={page.title} className="relative z-0 h-full w-full object-contain" />
           ) : imageSealed ? (
             <SealedCliffhangerPlaceholder pageNumber={page.pageNumber} title={page.title} />
           ) : (

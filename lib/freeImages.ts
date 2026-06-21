@@ -72,21 +72,21 @@ export async function generateFreeBookImages(accessToken: string, book: LoreBook
     throw new Error("Book not found.");
   }
 
-  for (const pageNumber of FREE_IMAGE_PAGES) {
-    try {
-      await generateAndStoreFreeImageForPage({
+  await Promise.allSettled(
+    FREE_IMAGE_PAGES.map((pageNumber) =>
+      generateAndStoreFreeImageForPage({
         accessToken,
         bookId: storedBook.id,
         book,
         pageNumber,
-      });
-    } catch (error) {
-      console.error("[IMAGE_GENERATION_ERROR]", {
-        pageNumber,
-        message: error instanceof Error ? error.message : "Image generation failed.",
-      });
-    }
-  }
+      }).catch((error) => {
+        console.error("[IMAGE_GENERATION_ERROR]", {
+          pageNumber,
+          message: error instanceof Error ? error.message : "Image generation failed.",
+        });
+      }),
+    ),
+  );
 
   const finalBook = await getBookByAccessToken(accessToken);
   if (!finalBook) {
