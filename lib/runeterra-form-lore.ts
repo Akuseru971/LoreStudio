@@ -295,3 +295,89 @@ export function getCharacterTypeLore(characterType: string): CharacterTypeLoreEn
 
   return CHARACTER_TYPE_LORE[characterType as keyof typeof CHARACTER_TYPE_LORE] ?? null;
 }
+
+const CHAMPION_SLUG_OVERRIDES: Record<string, string> = {
+  "jarvan iv": "JarvanIV",
+  "miss fortune": "MissFortune",
+  "dr. mundo": "DrMundo",
+  "nunu & willump": "Nunu",
+  "master yi": "MasterYi",
+  "renata glasc": "Renata",
+  "tahm kench": "TahmKench",
+  "twisted fate": "TwistedFate",
+  "aurelion sol": "AurelionSol",
+  "kai'sa": "Kaisa",
+  kaisa: "Kaisa",
+  "k'sante": "KSante",
+  ksante: "KSante",
+  "cho'gath": "Chogath",
+  chogath: "Chogath",
+  "rek'sai": "RekSai",
+  reksai: "RekSai",
+  "vel'koz": "Velkoz",
+  velkoz: "Velkoz",
+  "kha'zix": "Khazix",
+  khazix: "Khazix",
+  "bel'veth": "Belveth",
+  belveth: "Belveth",
+};
+
+function normalizeChampionKey(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[''`´]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toDdragonSlug(name: string) {
+  const cleaned = name
+    .replace(/[''`´]/g, "")
+    .replace(/\./g, "")
+    .replace(/&/g, "and")
+    .trim();
+
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join("");
+}
+
+function buildChampionSlugMap() {
+  const map = new Map<string, string>(Object.entries(CHAMPION_SLUG_OVERRIDES));
+
+  for (const entry of Object.values(CHARACTER_TYPE_LORE)) {
+    const slug = entry.championImage.split("/").pop()?.replace(/\.png$/i, "");
+    if (slug) {
+      map.set(normalizeChampionKey(entry.champion), slug);
+    }
+  }
+
+  for (const champions of Object.values(REGION_CHAMPIONS)) {
+    for (const championName of champions) {
+      const key = normalizeChampionKey(championName);
+      if (!map.has(key)) {
+        map.set(key, CHAMPION_SLUG_OVERRIDES[key] ?? toDdragonSlug(championName));
+      }
+    }
+  }
+
+  return map;
+}
+
+const CHAMPION_SLUG_MAP = buildChampionSlugMap();
+
+export function getChampionImage(championName: string | null | undefined): string | null {
+  if (!championName || typeof championName !== "string") {
+    return null;
+  }
+
+  const key = normalizeChampionKey(championName);
+  const slug = CHAMPION_SLUG_MAP.get(key);
+  if (!slug) {
+    return null;
+  }
+
+  return `${CHAMPION_IMAGE_BASE}/${slug}.png`;
+}

@@ -1,3 +1,5 @@
+import { cleanGeneratedText } from "@/lib/clean-generated-text";
+
 const IMMERSION_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bchoices made on page \d+\b/gi, "choices made that night"],
   [/\bthe name on page \d+\b/gi, "the name he had heard in the tunnels"],
@@ -42,7 +44,7 @@ export function containsImmersiveBreak(text: string) {
 }
 
 export function polishImmersiveStoryText(text: string, maxLength = 700) {
-  let polished = text.replace(/\s+/g, " ").trim();
+  let polished = cleanGeneratedText(text.replace(/\s+/g, " ").trim());
 
   for (const [pattern, replacement] of IMMERSION_REPLACEMENTS) {
     polished = polished.replace(pattern, replacement);

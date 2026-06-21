@@ -1,4 +1,5 @@
 import type { BookFormInput, BookPage, ApprovedSynopsis, LoreBook } from "@/lib/types";
+import { NO_DASH_WRITING_RULE } from "@/lib/clean-generated-text";
 import { PAGE_TITLE_PROMPT_RULES, PAGE_TITLE_SELF_CHECK } from "@/lib/page-titles";
 import {
   ANTI_REPETITION_VALIDATION,
@@ -54,6 +55,7 @@ Style:
 - no meta language
 - no page references inside text
 - no generic chapter titles
+- ${NO_DASH_WRITING_RULE.replace(/\n/g, "\n- ")}
 
 Length:
 - exactly 8 pages
@@ -226,6 +228,7 @@ Style:
 - no page references inside text
 - no generic chapter titles
 - no repeated sentence patterns
+- ${NO_DASH_WRITING_RULE.replace(/\n/g, "\n- ")}
 
 Length:
 - exactly 8 pages

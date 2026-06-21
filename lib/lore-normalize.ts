@@ -1,4 +1,5 @@
 import { polishImmersiveStoryText } from "@/lib/immersive-text";
+import { cleanGeneratedText } from "@/lib/clean-generated-text";
 import { isGenericPageTitle } from "@/lib/page-titles";
 import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import { sanitizeText } from "@/lib/sanitize-text";
@@ -136,13 +137,17 @@ function normalizeChampionConnection(book: LegacyLoreBook, storyEngine: StoryEng
     connectionType:
       sanitizeText(source.connectionType, 160) || storyEngine.championConnectionType || "structural influence",
     connectionSummary:
-      sanitizeText(source.connectionSummary, 300) ||
-      sanitizeText(book.biographyArc?.championConnectionPage5, 300) ||
-      "A champion's public history reshaped the world around the protagonist.",
+      cleanGeneratedText(
+        sanitizeText(source.connectionSummary, 300) ||
+          sanitizeText(book.biographyArc?.championConnectionPage5, 300) ||
+          "A champion's public history reshaped the world around the protagonist.",
+      ),
     whyItMatters:
-      sanitizeText(source.whyItMatters, 300) ||
-      sanitizeText(source.connectionSummary, 300) ||
-      "The champion never needed to appear; their legend was enough to change everything.",
+      cleanGeneratedText(
+        sanitizeText(source.whyItMatters, 300) ||
+          sanitizeText(source.connectionSummary, 300) ||
+          "The champion never needed to appear; their legend was enough to change everything.",
+      ),
     canonSafetyNote:
       sanitizeText(source.canonSafetyNote, 300) ||
       "The protagonist remains original and no major canon events were altered.",
