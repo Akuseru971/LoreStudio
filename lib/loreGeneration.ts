@@ -1,11 +1,18 @@
 import "server-only";
 
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
+import {
+  cleanBookVisibleText,
+  collectBookImmersionViolations,
+  type ImmersionViolation,
+} from "@/lib/immersive-text";
+import { repairMetaTextPages } from "@/lib/metaTextRepair";
 import { openai } from "@/lib/server/openai";
 import { TEXT_MODEL } from "@/lib/server/generation-config";
 import {
   attemptPage5CliffhangerRepair,
   isCliffhangerOnlyFailure,
+  PAGE_5_CLIFFHANGER_ERROR,
   validatePage5Cliffhanger,
 } from "@/lib/page5Cliffhanger";
 import { buildLorePrompt } from "@/lib/prompts";
@@ -13,13 +20,12 @@ import { validateGeneratedStory } from "@/lib/story-engine";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
-const IMMERSION_BANNED_PATTERN =
-  /\b(page\s*\d+|previous page|next page|this page|chapter|unlock|payment|reader|generated|prompt|ai)\b/i;
-
 export type GenerateLoreResult = {
   book: LoreBook;
   fallback: boolean;
 };
+
+const META_TEXT_ERROR_PREFIX = "contains immersion-breaking meta text";
 
 export function isFallbackLoreEnabled() {
   return process.env.ENABLE_FALLBACK_LORE === "true";
@@ -140,6 +146,29 @@ function getResponseText(response: unknown) {
   );
 }
 
+function logImmersionViolations(violations: ImmersionViolation[]) {
+  for (const violation of violations) {
+    console.error("[IMMERSION_VALIDATION_FAILED]", {
+      pageNumber: violation.pageNumber,
+      field: violation.field,
+      offendingPhrases: violation.offendingPhrases,
+      textPreview: violation.textPreview,
+    });
+  }
+}
+
+function immersionErrorsFromViolations(violations: ImmersionViolation[]) {
+  const pageNumbers = Array.from(new Set(violations.map((violation) => violation.pageNumber))).sort(
+    (left, right) => left - right,
+  );
+
+  return pageNumbers.map((pageNumber) => `Page ${pageNumber} ${META_TEXT_ERROR_PREFIX}.`);
+}
+
+function getMetaTextPageNumbers(violations: ImmersionViolation[]) {
+  return Array.from(new Set(violations.map((violation) => violation.pageNumber))).sort((left, right) => left - right);
+}
+
 function validateLoreStructure(book: Partial<LoreBook>) {
   const errors: string[] = [];
 
@@ -156,11 +185,12 @@ function validateLoreStructure(book: Partial<LoreBook>) {
     if (!page.title?.trim() || !page.text?.trim() || !page.imagePrompt?.trim()) {
       errors.push(`Page ${pageNumber} is missing title, text, or imagePrompt.`);
     }
-
-    if (IMMERSION_BANNED_PATTERN.test(page.text || "") || IMMERSION_BANNED_PATTERN.test(page.title || "")) {
-      errors.push(`Page ${pageNumber} contains immersion-breaking meta text.`);
-    }
   });
+
+  const immersionViolations = collectBookImmersionViolations(book);
+  if (immersionViolations.length > 0) {
+    errors.push(...immersionErrorsFromViolations(immersionViolations));
+  }
 
   const pageFive = book.pages?.[4];
   const championName = book.championConnection?.championName?.trim();
@@ -174,20 +204,45 @@ function validateLoreStructure(book: Partial<LoreBook>) {
 }
 
 async function finalizeLoreBook(parsed: Partial<LoreBook>, input: BookFormInput) {
-  let workingBook: Partial<LoreBook> = {
+  let workingBook: Partial<LoreBook> = cleanBookVisibleText({
     ...parsed,
     pages: parsed.pages ? [...parsed.pages] : [],
-  };
+  });
 
-  let structureErrors = validateLoreStructure(workingBook);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const immersionViolations = collectBookImmersionViolations(workingBook);
+    const metaPageNumbers = getMetaTextPageNumbers(immersionViolations);
 
-  if (isCliffhangerOnlyFailure(structureErrors)) {
-    workingBook = await attemptPage5CliffhangerRepair(workingBook, input);
-    structureErrors = validateLoreStructure(workingBook);
+    if (metaPageNumbers.length > 0) {
+      logImmersionViolations(immersionViolations);
+      try {
+        workingBook = cleanBookVisibleText(await repairMetaTextPages(workingBook, metaPageNumbers));
+        continue;
+      } catch (error) {
+        console.error("[META_TEXT_REPAIR_ERROR]", error);
+      }
+    }
+
+    const structureErrors = validateLoreStructure(workingBook);
+    const nonMetaErrors = structureErrors.filter((error) => !error.includes(META_TEXT_ERROR_PREFIX));
+
+    if (structureErrors.length === 0) {
+      break;
+    }
+
+    if (metaPageNumbers.length === 0 && isCliffhangerOnlyFailure(structureErrors)) {
+      workingBook = cleanBookVisibleText(await attemptPage5CliffhangerRepair(workingBook, input));
+      continue;
+    }
+
+    if (nonMetaErrors.length > 0 || attempt === 2) {
+      throw new Error(`Generated lore failed validation: ${structureErrors.join(" ")}`);
+    }
   }
 
-  if (structureErrors.length > 0) {
-    throw new Error(`Generated lore failed validation: ${structureErrors.join(" ")}`);
+  const finalErrors = validateLoreStructure(workingBook);
+  if (finalErrors.length > 0) {
+    throw new Error(`Generated lore failed validation: ${finalErrors.join(" ")}`);
   }
 
   const normalized = normalizeLoreBook(workingBook);
@@ -304,3 +359,5 @@ export async function generateLoreBook(
 
   throw lastError instanceof Error ? lastError : new Error("Lore generation failed.");
 }
+
+export { PAGE_5_CLIFFHANGER_ERROR };
