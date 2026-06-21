@@ -63,6 +63,7 @@ export default function BookPremiumActions({
   const statusPollRef = useRef(0);
   const pollIntervalRef = useRef<number | null>(null);
   const premiumGenerationStartedRef = useRef(false);
+  const pdfDownloadLockRef = useRef(false);
 
   const pdfAvailability = resolvePdfAvailability({
     isPremium,
@@ -179,10 +180,11 @@ export default function BookPremiumActions({
   }, [accessToken, refreshBookStatus]);
 
   const handleDownloadPdf = useCallback(async () => {
-    if (!isPdfReady) {
+    if (!isPdfReady || isDownloadingPdf || pdfDownloadLockRef.current) {
       return;
     }
 
+    pdfDownloadLockRef.current = true;
     setIsDownloadingPdf(true);
     setPdfError(null);
 
@@ -209,9 +211,10 @@ export default function BookPremiumActions({
     } catch {
       setPdfError("PDF could not be generated.");
     } finally {
+      pdfDownloadLockRef.current = false;
       setIsDownloadingPdf(false);
     }
-  }, [accessToken, isPdfReady, refreshBookStatus]);
+  }, [accessToken, isDownloadingPdf, isPdfReady, refreshBookStatus]);
 
   const handleDownloadMp3 = useCallback(async () => {
     setIsDownloadingMp3(true);
