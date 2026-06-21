@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { hasPremiumAccess, triggerFulfillment, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
+import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
 import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
 
@@ -26,7 +26,29 @@ export async function POST(request: Request) {
   try {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
     const book = result.book;
-    const emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
+
+    let emailResult: Awaited<ReturnType<typeof sendConfirmationEmailIfNeeded>> = {
+      sent: false,
+      skipped: true,
+      failed: false,
+      reason: "unexpected_error",
+      recoveryEmailAvailable: false,
+    };
+
+    try {
+      emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
+    } catch (error) {
+      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+      emailResult = {
+        sent: false,
+        skipped: false,
+        failed: true,
+        reason: "unexpected_error",
+        recoveryEmailAvailable: false,
+        error: error instanceof Error ? error.message : "Unable to send confirmation email.",
+      };
+    }
+
     if (hasPremiumAccess(book.status)) {
       triggerPremiumImageGeneration(body.accessToken);
     }
@@ -41,6 +63,7 @@ export async function POST(request: Request) {
       accessToken: book.access_token,
       confirmationEmailSent: emailResult.sent,
       confirmationEmailSkipped: emailResult.skipped,
+      confirmationEmailFailed: emailResult.failed,
       recoveryEmailAvailable: Boolean(emailResult.recoveryEmailAvailable || emailResult.sent),
     });
   } catch (error) {

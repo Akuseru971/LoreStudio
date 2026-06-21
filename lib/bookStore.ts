@@ -41,6 +41,7 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     stripe_payment_intent_id: row.stripe_payment_intent_id ? String(row.stripe_payment_intent_id) : null,
     confirmation_email_sent_at: row.confirmation_email_sent_at ? String(row.confirmation_email_sent_at) : null,
     confirmation_email_status: (row.confirmation_email_status as ConfirmationEmailStatus | null) ?? "not_started",
+    confirmation_email_error: row.confirmation_email_error ? String(row.confirmation_email_error) : null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
@@ -414,6 +415,7 @@ export async function markConfirmationEmailSent(bookId: string) {
     .update({
       confirmation_email_status: "sent",
       confirmation_email_sent_at: new Date().toISOString(),
+      confirmation_email_error: null,
     })
     .eq("id", bookId)
     .select("*")
@@ -426,11 +428,14 @@ export async function markConfirmationEmailSent(bookId: string) {
   return mapRow(data);
 }
 
-export async function markConfirmationEmailFailed(bookId: string) {
+export async function markConfirmationEmailFailed(bookId: string, errorMessage?: string) {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
-    .update({ confirmation_email_status: "failed" })
+    .update({
+      confirmation_email_status: "failed",
+      confirmation_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
+    })
     .eq("id", bookId)
     .select("*")
     .single();

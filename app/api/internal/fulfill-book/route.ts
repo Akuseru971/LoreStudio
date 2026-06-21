@@ -6,11 +6,16 @@ export const maxDuration = 300;
 
 type FulfillBody = {
   accessToken?: string;
-  secret?: string;
 };
 
 export async function POST(request: Request) {
   const expectedSecret = process.env.INTERNAL_FULFILLMENT_SECRET;
+  const secret = request.headers.get("x-internal-fulfillment-secret");
+
+  if (!expectedSecret || secret !== expectedSecret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: FulfillBody = {};
 
   try {
@@ -19,8 +24,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  if (!expectedSecret || body.secret !== expectedSecret || !body.accessToken) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!body.accessToken) {
+    return NextResponse.json({ error: "Missing access token." }, { status: 400 });
   }
 
   try {

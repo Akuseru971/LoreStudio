@@ -144,6 +144,7 @@ export type StoredBook = {
   stripe_payment_intent_id: string | null;
   confirmation_email_sent_at: string | null;
   confirmation_email_status: ConfirmationEmailStatus;
+  confirmation_email_error: string | null;
   created_at: string;
   updated_at: string;
 };

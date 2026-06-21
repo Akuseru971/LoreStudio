@@ -18,19 +18,21 @@ function getAppUrl() {
 }
 
 export async function triggerFulfillment(accessToken: string) {
-  const secret = process.env.INTERNAL_FULFILLMENT_SECRET;
+  const secret = process.env.INTERNAL_FULFILLMENT_SECRET?.trim();
   if (!secret) {
-    console.warn("INTERNAL_FULFILLMENT_SECRET is not configured. Skipping async fulfillment trigger.");
+    console.warn(
+      "INTERNAL_FULFILLMENT_SECRET is not configured. Skipping async fulfillment trigger. Premium fulfillment will not run until this secret is set.",
+    );
     return;
   }
 
-  await fetch(`${getAppUrl()}/api/fulfill-book`, {
+  await fetch(`${getAppUrl()}/api/internal/fulfill-book`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      accessToken,
-      secret,
-    }),
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-fulfillment-secret": secret,
+    },
+    body: JSON.stringify({ accessToken }),
   }).catch((error) => {
     console.error("Failed to trigger fulfillment job.", error);
   });

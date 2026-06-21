@@ -77,7 +77,9 @@ export async function POST(request: Request) {
         void triggerFulfillment(accessToken);
       }
 
-      void sendConfirmationEmailIfNeeded(accessToken);
+      void sendConfirmationEmailIfNeeded(accessToken).catch((error) => {
+        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+      });
       triggerPremiumImageGeneration(accessToken);
     }
 

@@ -1,5 +1,7 @@
 import { Resend } from "resend";
 
+const BLOCKED_FROM_EMAIL_DOMAINS = ["gmail.com", "outlook.com", "yahoo.com"] as const;
+
 function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
@@ -10,6 +12,18 @@ function getResendClient() {
     return null;
   }
   return new Resend(apiKey);
+}
+
+export function validateFromEmail(fromEmail: string) {
+  const normalized = fromEmail.toLowerCase();
+
+  for (const domain of BLOCKED_FROM_EMAIL_DOMAINS) {
+    if (normalized.includes(domain)) {
+      return `FROM_EMAIL uses ${domain}. Resend requires a verified custom domain.`;
+    }
+  }
+
+  return null;
 }
 
 export type BookUnlockedEmailInput = {
@@ -29,11 +43,17 @@ export async function sendBookUnlockedEmail({
   idempotencyKey,
 }: Omit<BookUnlockedEmailInput, "characterName"> & { characterName?: string }) {
   const resend = getResendClient();
-  const fromEmail = process.env.FROM_EMAIL;
+  const fromEmail = process.env.FROM_EMAIL?.trim();
 
   if (!resend || !fromEmail) {
     console.warn("Confirmation email not sent: missing Resend configuration.");
     return { sent: false, error: "Email provider is not configured." };
+  }
+
+  const fromEmailError = validateFromEmail(fromEmail);
+  if (fromEmailError) {
+    console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", fromEmailError);
+    return { sent: false, error: fromEmailError };
   }
 
   const { data, error } = await resend.emails.send(
@@ -78,7 +98,7 @@ Keep this email safe. This private link lets you recover your legend without cre
   );
 
   if (error) {
-    console.error("Failed to send book unlocked email.", error);
+    console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
     return { sent: false, error: error.message };
   }
 

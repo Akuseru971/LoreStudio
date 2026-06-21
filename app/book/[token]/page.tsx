@@ -28,6 +28,7 @@ type VerifyPaymentResponse = {
   canDownloadPdf?: boolean;
   canDownloadMp3?: boolean;
   confirmationEmailSent?: boolean;
+  confirmationEmailFailed?: boolean;
   recoveryEmailAvailable?: boolean;
   status?: string;
   error?: string;
@@ -112,9 +113,11 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
           }
 
           if (!cancelled) {
-            const emailNotice = verifyData.recoveryEmailAvailable
-              ? "Your legend is unlocked. We also sent your private recovery link by email."
-              : "Your legend is unlocked.";
+            const emailNotice = verifyData.confirmationEmailSent || verifyData.recoveryEmailAvailable
+              ? "Your legend is unlocked. Your private recovery link was also sent by email."
+              : verifyData.confirmationEmailFailed
+                ? "Your legend is unlocked. Keep this page link safe to recover your book."
+                : "Your legend is unlocked.";
             setNotice(emailNotice);
             setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
             window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
