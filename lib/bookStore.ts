@@ -26,7 +26,7 @@ import type {
   StoredBook,
 } from "@/lib/types";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
-import { resolveApprovedSynopsis } from "@/lib/normalizeBook";
+import { resolveApprovedSynopsis } from "@/lib/synopsisValidation";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";

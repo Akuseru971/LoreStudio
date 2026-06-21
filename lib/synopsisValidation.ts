@@ -1,16 +1,5 @@
-import type { ApprovedSynopsis } from "@/lib/types";
-
-function sanitizeText(value: unknown, maxLength: number) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value
-    .replace(/[<>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-}
+import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
+import { sanitizeText } from "@/lib/sanitize-text";
 
 export function validateSynopsisPayload(payload: unknown): ApprovedSynopsis | null {
   if (!payload || typeof payload !== "object") {
@@ -53,4 +42,31 @@ export function validateSynopsisPayload(payload: unknown): ApprovedSynopsis | nu
 
 export function validateApprovedSynopsis(body: unknown): ApprovedSynopsis | null {
   return validateSynopsisPayload(body);
+}
+
+type ApprovedSynopsisSource = {
+  approved_synopsis?: ApprovedSynopsis | null;
+  form_input?: (BookFormInput & {
+    approvedSynopsis?: unknown;
+    approved_synopsis?: unknown;
+  }) | null;
+};
+
+export function resolveApprovedSynopsis(source: ApprovedSynopsisSource | null | undefined): ApprovedSynopsis | null {
+  if (!source) {
+    return null;
+  }
+
+  const direct = validateApprovedSynopsis(source.approved_synopsis);
+  if (direct) {
+    return direct;
+  }
+
+  const formInput = source.form_input;
+  if (!formInput || typeof formInput !== "object") {
+    return null;
+  }
+
+  const legacy = formInput.approvedSynopsis ?? formInput.approved_synopsis;
+  return validateApprovedSynopsis(legacy);
 }
