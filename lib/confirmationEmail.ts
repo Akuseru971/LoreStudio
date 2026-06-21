@@ -5,7 +5,8 @@ import {
   markConfirmationEmailSent,
   markConfirmationEmailSkipped,
 } from "@/lib/bookStore";
-import { buildBookUnlockedEmailUrls, sendBookUnlockedEmail } from "@/lib/email";
+import { isBookFullyReady } from "@/lib/book-readiness";
+import { buildBookReadyEmailUrls, sendBookReadyEmail } from "@/lib/email";
 
 function safeErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -26,6 +27,7 @@ export type ConfirmationEmailResult = {
     | "missing_email"
     | "already_claimed"
     | "book_not_found"
+    | "book_not_ready"
     | "unexpected_error";
   recoveryEmailAvailable: boolean;
   error?: string;
@@ -54,9 +56,19 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
       };
     }
 
+    if (!isBookFullyReady(storedBook)) {
+      return {
+        sent: false,
+        skipped: true,
+        failed: false,
+        reason: "book_not_ready",
+        recoveryEmailAvailable: false,
+      };
+    }
+
     if (!storedBook.email) {
       await markConfirmationEmailSkipped(storedBook.id).catch((error) => {
-        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+        console.error("[BOOK_READY_EMAIL_FAILED]", error);
       });
       return {
         sent: false,
@@ -78,20 +90,20 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
       };
     }
 
-    const urls = buildBookUnlockedEmailUrls(claimedBook.access_token);
-    const result = await sendBookUnlockedEmail({
+    const urls = buildBookReadyEmailUrls(claimedBook);
+    const result = await sendBookReadyEmail({
       to: claimedBook.email!,
       bookUrl: urls.bookUrl,
       pdfUrl: urls.pdfUrl,
       mp3Url: urls.mp3Url,
-      idempotencyKey: `book-unlocked/${claimedBook.id}`,
+      idempotencyKey: `book-ready/${claimedBook.id}`,
     });
 
     if (!result.sent) {
       const errorMessage = result.error || "Unable to send confirmation email.";
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", errorMessage);
+      console.error("[BOOK_READY_EMAIL_FAILED]", errorMessage);
       await markConfirmationEmailFailed(claimedBook.id, errorMessage).catch((error) => {
-        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+        console.error("[BOOK_READY_EMAIL_FAILED]", error);
       });
       return {
         sent: false,
@@ -104,7 +116,7 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
     }
 
     await markConfirmationEmailSent(claimedBook.id).catch((error) => {
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+      console.error("[BOOK_READY_EMAIL_FAILED]", error);
     });
     return {
       sent: true,
@@ -114,7 +126,7 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
       recoveryEmailAvailable: true,
     };
   } catch (error) {
-    console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+    console.error("[BOOK_READY_EMAIL_FAILED]", error);
     return {
       sent: false,
       skipped: false,

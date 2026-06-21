@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
+import { finalizeBookIfReady } from "@/lib/bookCompletion";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 
@@ -28,6 +29,12 @@ export async function GET(request: Request) {
       logPdfReadyCheck(normalized.input, "book-status");
     }
 
+    if (normalized.allIllustrationsReady && isPremium) {
+      void finalizeBookIfReady(token).catch((error) => {
+        console.error("Failed to finalize book from status poll.", error);
+      });
+    }
+
     return NextResponse.json({
       status: storedBook.status,
       accessToken: storedBook.access_token,
@@ -45,6 +52,10 @@ export async function GET(request: Request) {
       missingPages: normalized.missingPages,
       pdfStatus: storedBook.pdf_status || "not_started",
       pdfStoragePath: storedBook.pdf_storage_path,
+      confirmationEmailStatus: storedBook.confirmation_email_status || "not_started",
+      confirmationEmailSentAt: storedBook.confirmation_email_sent_at,
+      confirmationEmailFailed: storedBook.confirmation_email_status === "failed",
+      assetsReadyAt: storedBook.assets_ready_at,
       characterName:
         storedBook.full_book?.characterBible.name || storedBook.free_book?.characterBible.name || null,
       title: storedBook.full_book?.title || storedBook.free_book?.title || null,

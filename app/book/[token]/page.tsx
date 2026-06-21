@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
@@ -10,9 +10,9 @@ import {
   readAmbientMusicMutedPreference,
   writeAmbientMusicMutedPreference,
 } from "@/lib/ambient-music-config";
-import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { fetchBookStatus, verifyPayment } from "@/lib/client/api";
 import { normalizeBook } from "@/lib/normalizeBook";
-import { verifyPayment } from "@/lib/client/api";
 import type { LoreBook } from "@/lib/types";
 
 type BookResponse = {
@@ -30,12 +30,69 @@ type VerifyPaymentResponse = {
   isPremium?: boolean;
   canDownloadPdf?: boolean;
   canDownloadMp3?: boolean;
-  confirmationEmailSent?: boolean;
-  confirmationEmailFailed?: boolean;
-  recoveryEmailAvailable?: boolean;
+  readyIllustrationCount?: number;
+  allIllustrationsReady?: boolean;
   status?: string;
   error?: string;
 };
+
+type BookStatusResponse = {
+  status?: string;
+  isPremium?: boolean;
+  canDownloadPdf?: boolean;
+  canDownloadMp3?: boolean;
+  readyIllustrationCount?: number;
+  allIllustrationsReady?: boolean;
+  confirmationEmailStatus?: string;
+  confirmationEmailSentAt?: string | null;
+  confirmationEmailFailed?: boolean;
+  error?: string;
+};
+
+type UnlockNotice = {
+  title: string;
+  message: string;
+  readyCount?: number;
+  variant: "preparing" | "ready" | "recovery";
+};
+
+const STATUS_POLL_INTERVAL_MS = 4000;
+const PREPARING_STATUSES = new Set(["paid", "preparing_assets", "generating"]);
+
+function buildPreparingNotice(readyCount?: number): UnlockNotice {
+  return {
+    title: "Your legend has been unlocked",
+    message:
+      "The seal has broken. Your complete legend is unlocked. The final illustrations are being summoned, and you will receive an email when your finished book is ready.",
+    readyCount,
+    variant: "preparing",
+  };
+}
+
+function buildReadyNotice(emailSent: boolean): UnlockNotice {
+  if (emailSent) {
+    return {
+      title: "Your complete legend is ready",
+      message:
+        "Your final book is available now. We also sent your recovery link by email.",
+      variant: "ready",
+    };
+  }
+
+  return {
+    title: "Your complete legend is ready",
+    message: "Your final book is available now.",
+    variant: "ready",
+  };
+}
+
+function buildRecoveryNotice(): UnlockNotice {
+  return {
+    title: "Your legend has been unlocked",
+    message: "Keep this page link safe to recover your book.",
+    variant: "recovery",
+  };
+}
 
 export default function BookAccessPage({ params }: { params: Promise<{ token: string }> }) {
   const [token, setToken] = useState<string | null>(null);
@@ -45,11 +102,15 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
   const [canDownloadPdf, setCanDownloadPdf] = useState(false);
   const [canDownloadMp3, setCanDownloadMp3] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [unlockNotice, setUnlockNotice] = useState<UnlockNotice | null>(null);
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
   const [bookIsOpen, setBookIsOpen] = useState(false);
   const [initialPageIndex, setInitialPageIndex] = useState(0);
+  const [shouldPollStatus, setShouldPollStatus] = useState(false);
+
+  const statusPollRef = useRef(0);
+  const pollIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     void params.then((resolved) => setToken(resolved.token));
@@ -90,7 +151,34 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
     setIsPremium(Boolean(data.isPremium));
     setCanDownloadPdf(Boolean(data.canDownloadPdf));
     setCanDownloadMp3(Boolean(data.canDownloadMp3));
+
+    const isPreparing =
+      Boolean(data.isPremium) &&
+      (PREPARING_STATUSES.has(data.status || "") || !data.canDownloadPdf);
+    setShouldPollStatus(isPreparing);
+
     return data;
+  }, []);
+
+  const refreshUnlockNotice = useCallback((bookStatus: BookStatusResponse) => {
+    const readyCount = bookStatus.readyIllustrationCount ?? 0;
+    const emailSent = Boolean(
+      bookStatus.confirmationEmailSentAt || bookStatus.confirmationEmailStatus === "sent",
+    );
+
+    if (bookStatus.allIllustrationsReady || bookStatus.status === "ready") {
+      setUnlockNotice(buildReadyNotice(emailSent));
+      return;
+    }
+
+    if (bookStatus.confirmationEmailFailed) {
+      setUnlockNotice(buildRecoveryNotice());
+      return;
+    }
+
+    if (bookStatus.isPremium) {
+      setUnlockNotice(buildPreparingNotice(readyCount));
+    }
   }, []);
 
   useEffect(() => {
@@ -112,7 +200,11 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
 
       try {
         if (paymentState === "cancelled") {
-          setNotice("Payment cancelled. Your free pages are still available.");
+          setUnlockNotice({
+            title: "Payment cancelled",
+            message: "Your free pages are still available.",
+            variant: "recovery",
+          });
           setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
           window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
         }
@@ -131,12 +223,8 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
           }
 
           if (!cancelled) {
-            const emailNotice = verifyResult.confirmationEmailSent || verifyResult.recoveryEmailAvailable
-              ? "Your legend is unlocked. Your private recovery link was also sent by email."
-              : verifyResult.confirmationEmailFailed
-                ? "Your legend is unlocked. Keep this page link safe to recover your book."
-                : "Your legend is unlocked.";
-            setNotice(emailNotice);
+            setUnlockNotice(buildPreparingNotice(verifyResult.readyIllustrationCount));
+            setShouldPollStatus(true);
             setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
             window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
           }
@@ -163,6 +251,63 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
       cancelled = true;
     };
   }, [loadBook, token]);
+
+  useEffect(() => {
+    if (!token || !shouldPollStatus) {
+      return;
+    }
+
+    statusPollRef.current += 1;
+    const pollId = statusPollRef.current;
+    let cancelled = false;
+
+    async function pollStatus() {
+      try {
+        const { response, data } = await fetchBookStatus(token!);
+        const bookStatus = data as BookStatusResponse;
+
+        if (cancelled || statusPollRef.current !== pollId || !response.ok) {
+          return;
+        }
+
+        setIsPremium(Boolean(bookStatus.isPremium));
+        setCanDownloadPdf(Boolean(bookStatus.canDownloadPdf));
+        setCanDownloadMp3(Boolean(bookStatus.canDownloadMp3));
+        setStatus(bookStatus.status || status);
+        refreshUnlockNotice(bookStatus);
+
+        const shouldContinuePolling =
+          bookStatus.status === "failed"
+            ? false
+            : !bookStatus.allIllustrationsReady &&
+              (PREPARING_STATUSES.has(bookStatus.status || "") || Boolean(bookStatus.isPremium));
+
+        if (!shouldContinuePolling) {
+          setShouldPollStatus(false);
+          if (pollIntervalRef.current !== null) {
+            window.clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        }
+      } catch (pollError) {
+        console.error("[BOOK_STATUS_POLL_ERROR]", pollError);
+      }
+    }
+
+    void pollStatus();
+    pollIntervalRef.current = window.setInterval(() => {
+      void pollStatus();
+    }, STATUS_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      statusPollRef.current += 1;
+      if (pollIntervalRef.current !== null) {
+        window.clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [refreshUnlockNotice, shouldPollStatus, status, token]);
 
   const shouldPlayAmbientMusic = Boolean(book) && bookIsOpen && !ambientMuted;
 
@@ -217,11 +362,17 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
     <>
       <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} normalVolume={0.12} />
       <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
-      {notice ? (
+      {unlockNotice ? (
         <div className="pointer-events-none fixed inset-x-0 top-5 z-[90] flex justify-center px-4">
-          <p className="rounded-full border border-[#d9bd78]/25 bg-[#120d07]/85 px-5 py-2 text-xs uppercase tracking-[0.18em] text-[#e8dcc0] shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
-            {notice}
-          </p>
+          <section className="max-w-2xl rounded-[1.5rem] border border-[#d9bd78]/25 bg-[#120d07]/90 px-5 py-4 text-center shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
+            <h2 className="font-title text-base text-[#f7ebce] sm:text-lg">{unlockNotice.title}</h2>
+            <p className="mt-2 text-xs leading-6 text-[#d9c7a0] sm:text-sm">{unlockNotice.message}</p>
+            {unlockNotice.variant === "preparing" && typeof unlockNotice.readyCount === "number" ? (
+              <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-[#d9bd78]/90">
+                Illustrations ready: {unlockNotice.readyCount}/{FULL_BOOK_PAGE_COUNT}
+              </p>
+            ) : null}
+          </section>
         </div>
       ) : null}
       <ArchiveErrorBoundary

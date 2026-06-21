@@ -117,7 +117,14 @@ export type AudioSettings = {
   voiceEnabled: boolean;
 };
 
-export type BookStatus = "free" | "checkout_started" | "paid" | "generating" | "ready" | "failed";
+export type BookStatus =
+  | "free"
+  | "checkout_started"
+  | "paid"
+  | "preparing_assets"
+  | "generating"
+  | "ready"
+  | "failed";
 
 export type Mp3Status = "not_started" | "generating" | "ready" | "failed";
 
@@ -169,6 +176,7 @@ export type StoredBook = {
   confirmation_email_sent_at: string | null;
   confirmation_email_status: ConfirmationEmailStatus;
   confirmation_email_error: string | null;
+  assets_ready_at: string | null;
   created_at: string;
   updated_at: string;
 };

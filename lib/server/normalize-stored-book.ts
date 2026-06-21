@@ -13,6 +13,7 @@ export function normalizeStoredBookForClient(storedBook: StoredBook) {
     pdf_status: storedBook.pdf_status || "not_started",
     mp3_status: storedBook.mp3_status || "not_started",
     confirmation_email_status: storedBook.confirmation_email_status || "not_started",
+    assets_ready_at: storedBook.assets_ready_at || null,
     images: storedBook.images || {},
     image_status: storedBook.image_status || {},
     audio: storedBook.audio || {},

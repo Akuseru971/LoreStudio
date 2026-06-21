@@ -5,12 +5,11 @@ import { buildPageNarrationText } from "@/lib/bookNarration";
 import {
   getBookByAccessToken,
   markBookFailed,
-  markBookReady,
   mergeBookAssets,
   saveFullBook,
-  updateBookStatus,
   uploadBookPdf,
 } from "@/lib/bookStore";
+import { finalizeBookIfReady } from "@/lib/bookCompletion";
 import { generateNarrationAudio } from "@/lib/elevenlabs";
 import { ensureAllBookImagesReady } from "@/lib/premiumImages";
 import { normalizeStoredBookImages } from "@/lib/book-images";
@@ -58,15 +57,13 @@ export async function fulfillPremiumBook(accessToken: string) {
     throw new Error("Book not found.");
   }
 
-  if (storedBook.status === "ready" || storedBook.status === "generating") {
+  if (storedBook.status === "ready") {
     return storedBook;
   }
 
   if (!storedBook.free_book) {
     throw new Error("Free book data is missing.");
   }
-
-  await updateBookStatus(storedBook.id, "generating");
 
   try {
     const baseBook = await mergeBookAssets(storedBook.free_book, storedBook.images, storedBook.audio);
@@ -83,8 +80,9 @@ export async function fulfillPremiumBook(accessToken: string) {
     });
     await uploadBookPdf(storedBook.id, pdfBuffer);
 
-    const readyBook = await markBookReady(storedBook.id);
-    return readyBook;
+    await finalizeBookIfReady(accessToken);
+    const readyBook = await getBookByAccessToken(accessToken);
+    return readyBook || storedBook;
   } catch (error) {
     await markBookFailed(storedBook.id);
     throw error;

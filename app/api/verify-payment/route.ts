@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
+import { finalizeBookIfReady } from "@/lib/bookCompletion";
 import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
-import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
 
 export const runtime = "nodejs";
@@ -26,30 +27,10 @@ export async function POST(request: Request) {
   try {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
     const book = result.book;
+    const normalized = getNormalizedImagesForStoredBook(book);
+    const isPremium = hasPremiumAccess(book.status);
 
-    let emailResult: Awaited<ReturnType<typeof sendConfirmationEmailIfNeeded>> = {
-      sent: false,
-      skipped: true,
-      failed: false,
-      reason: "unexpected_error",
-      recoveryEmailAvailable: false,
-    };
-
-    try {
-      emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
-    } catch (error) {
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
-      emailResult = {
-        sent: false,
-        skipped: false,
-        failed: true,
-        reason: "unexpected_error",
-        recoveryEmailAvailable: false,
-        error: error instanceof Error ? error.message : "Unable to send confirmation email.",
-      };
-    }
-
-    if (hasPremiumAccess(book.status)) {
+    if (isPremium) {
       triggerPremiumImageGeneration(body.accessToken);
     }
 
@@ -57,14 +38,16 @@ export async function POST(request: Request) {
       verified: result.verified,
       alreadyUnlocked: result.alreadyUnlocked,
       status: book.status,
-      isPremium: hasPremiumAccess(book.status),
-      canDownloadPdf: hasPremiumAccess(book.status),
-      canDownloadMp3: hasPremiumAccess(book.status),
+      isPremium,
+      canDownloadPdf: isPremium && normalized.allIllustrationsReady,
+      canDownloadMp3: isPremium,
       accessToken: book.access_token,
-      confirmationEmailSent: emailResult.sent,
-      confirmationEmailSkipped: emailResult.skipped,
-      confirmationEmailFailed: emailResult.failed,
-      recoveryEmailAvailable: Boolean(emailResult.recoveryEmailAvailable || emailResult.sent),
+      readyIllustrationCount: normalized.readyIllustrationCount,
+      allIllustrationsReady: normalized.allIllustrationsReady,
+      confirmationEmailSent: false,
+      confirmationEmailSkipped: true,
+      confirmationEmailFailed: false,
+      recoveryEmailAvailable: Boolean(book.confirmation_email_sent_at),
     });
   } catch (error) {
     console.error("Payment verification failed.", error);
