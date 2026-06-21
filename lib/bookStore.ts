@@ -695,7 +695,10 @@ export async function ensureBookPdf(bookId: string, book: LoreBook) {
   }
 
   const { generateBookPdf } = await import("@/lib/pdf");
-  const pdfBuffer = await generateBookPdf(book);
+  const pdfBuffer = await generateBookPdf(book, {
+    images: storedBook.images,
+    imageStatus: storedBook.image_status,
+  });
   return uploadBookPdf(bookId, pdfBuffer);
 }
 

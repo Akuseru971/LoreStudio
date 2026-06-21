@@ -72,7 +72,10 @@ export async function fulfillPremiumBook(accessToken: string) {
     await saveFullBook(storedBook.id, audioBook, { audio });
 
     const { book: illustratedBook } = await ensureAllBookImagesReady(accessToken);
-    const pdfBuffer = await generateBookPdf(illustratedBook);
+    const pdfBuffer = await generateBookPdf(illustratedBook, {
+      images: storedBook.images,
+      imageStatus: storedBook.image_status,
+    });
     await uploadBookPdf(storedBook.id, pdfBuffer);
 
     const readyBook = await markBookReady(storedBook.id);

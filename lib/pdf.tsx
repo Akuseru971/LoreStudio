@@ -1,126 +1,184 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
+import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
+import { preparePdfStoryPages, type PdfGenerationContext, type PdfStoryPage } from "@/lib/pdfBookPages";
 import type { LoreBook } from "@/lib/types";
+
+const PAGE_HEIGHT = 842;
+const PAGE_PADDING = 22;
+const FRAME_PADDING = 16;
+const IMAGE_FRAME_HEIGHT = Math.round((PAGE_HEIGHT - PAGE_PADDING * 2 - FRAME_PADDING * 2) * 0.44);
+
+const palette = {
+  parchment: "#f3e7cf",
+  pageSurface: "#faf4e6",
+  frameBorder: "#c4a574",
+  imageWell: "#ebe1ce",
+  imageBorder: "#b89462",
+  chapter: "#7a5c36",
+  title: "#26180c",
+  body: "#352820",
+  footer: "#9a7d58",
+  placeholder: "#b39a72",
+  rule: "#d2bc94",
+};
 
 const styles = StyleSheet.create({
   page: {
-    backgroundColor: "#efe2c8",
-    color: "#2f2419",
-    padding: 42,
+    backgroundColor: palette.parchment,
+    padding: PAGE_PADDING,
     fontFamily: "Times-Roman",
-    fontSize: 11,
-    lineHeight: 1.55,
+    color: palette.body,
   },
-  coverPage: {
-    backgroundColor: "#efe2c8",
-    color: "#2a1a0c",
-    padding: 48,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#8a6231",
-  },
-  coverBorder: {
+  frame: {
+    flex: 1,
     borderWidth: 1,
-    borderColor: "#b89452",
-    padding: 36,
+    borderColor: palette.frameBorder,
+    backgroundColor: palette.pageSurface,
+    padding: FRAME_PADDING,
+    flexDirection: "column",
+  },
+  imageFrame: {
     width: "100%",
-    alignItems: "center",
-  },
-  coverEyebrow: {
-    fontSize: 9,
-    letterSpacing: 3,
-    textTransform: "uppercase",
-    color: "#6b4a24",
-    marginBottom: 18,
-  },
-  coverTitle: {
-    fontSize: 28,
-    textAlign: "center",
-    marginBottom: 10,
-    color: "#24170b",
-  },
-  coverSubtitle: {
-    fontSize: 13,
-    textAlign: "center",
-    color: "#5a4024",
-    marginBottom: 18,
-  },
-  coverMeta: {
-    fontSize: 10,
-    textAlign: "center",
-    color: "#6b4a24",
-    marginTop: 8,
-  },
-  storyPage: {
-    backgroundColor: "#f5ead2",
-    padding: 34,
+    height: IMAGE_FRAME_HEIGHT,
+    backgroundColor: palette.imageWell,
     borderWidth: 1,
-    borderColor: "#c9b48a",
+    borderColor: palette.imageBorder,
+    padding: 10,
+    marginBottom: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
   image: {
     width: "100%",
-    height: 260,
-    objectFit: "cover",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#b89452",
+    height: "100%",
+    objectFit: "contain",
   },
-  chapter: {
+  imagePlaceholder: {
+    width: "100%",
+    height: "100%",
+    borderWidth: 1,
+    borderColor: palette.imageBorder,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  placeholderLabel: {
     fontSize: 8,
     letterSpacing: 2,
     textTransform: "uppercase",
-    color: "#6b4a24",
-    marginBottom: 6,
+    color: palette.placeholder,
+    textAlign: "center",
+  },
+  textBlock: {
+    flexGrow: 1,
+    flexDirection: "column",
+  },
+  chapter: {
+    fontSize: 7.5,
+    letterSpacing: 2.4,
+    textTransform: "uppercase",
+    color: palette.chapter,
+    marginBottom: 4,
   },
   title: {
-    fontSize: 18,
-    marginBottom: 10,
-    color: "#2a1a0c",
+    fontFamily: "Times-Bold",
+    fontSize: 16,
+    lineHeight: 1.2,
+    color: palette.title,
+    marginBottom: 7,
+  },
+  rule: {
+    height: 1,
+    backgroundColor: palette.rule,
+    marginBottom: 8,
+    width: "28%",
   },
   body: {
-    fontSize: 11,
-    lineHeight: 1.65,
-    color: "#2f2419",
-    marginBottom: 12,
+    fontSize: 10.5,
+    lineHeight: 1.58,
+    color: palette.body,
+    textAlign: "justify",
+  },
+  footerRow: {
+    marginTop: 10,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: palette.rule,
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   footer: {
-    marginTop: "auto",
-    fontSize: 8,
-    letterSpacing: 1.5,
+    fontSize: 7,
+    letterSpacing: 1.4,
+    color: palette.footer,
     textTransform: "uppercase",
-    color: "#8a6a42",
-    textAlign: "right",
   },
 });
 
-function BookPdfDocument({ book }: { book: LoreBook }) {
+function StoryPdfPage({ page }: { page: PdfStoryPage }) {
   return (
-    <Document title={book.title} author={book.characterBible.name}>
-      <Page size="A4" style={styles.coverPage}>
-        <View style={styles.coverBorder}>
-          <Text style={styles.coverEyebrow}>Personal chronicle</Text>
-          <Text style={styles.coverTitle}>{book.title}</Text>
-          <Text style={styles.coverSubtitle}>{book.subtitle}</Text>
-          <Text style={styles.coverMeta}>{book.characterBible.name}</Text>
-          <Text style={styles.coverMeta}>{book.characterBible.legendaryTitle}</Text>
-          <Text style={styles.coverMeta}>{book.mainRegion}</Text>
+    <Page size="A4" style={styles.page}>
+      <View style={styles.frame}>
+        <View style={styles.imageFrame}>
+          {page.imageSrc ? (
+            <Image src={page.imageSrc} style={styles.image} />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Text style={styles.placeholderLabel}>Illustration reserved</Text>
+            </View>
+          )}
         </View>
-      </Page>
 
-      {book.pages.map((page) => (
-        <Page key={page.pageNumber} size="A4" style={styles.storyPage} wrap>
-          {page.imageUrl ? <Image src={page.imageUrl} style={styles.image} /> : null}
+        <View style={styles.textBlock}>
           <Text style={styles.chapter}>Chapter {page.pageNumber}</Text>
           <Text style={styles.title}>{page.title}</Text>
+          <View style={styles.rule} />
           <Text style={styles.body}>{page.text}</Text>
+        </View>
+
+        <View style={styles.footerRow}>
           <Text style={styles.footer}>Page {page.pageNumber}</Text>
-        </Page>
+        </View>
+      </View>
+    </Page>
+  );
+}
+
+function BookPdfDocument({
+  storyPages,
+  bookTitle,
+  characterName,
+}: {
+  storyPages: PdfStoryPage[];
+  bookTitle: string;
+  characterName: string;
+}) {
+  return (
+    <Document title={bookTitle} author={characterName}>
+      {storyPages.map((page) => (
+        <StoryPdfPage key={page.pageNumber} page={page} />
       ))}
     </Document>
   );
 }
 
-export async function generateBookPdf(book: LoreBook): Promise<Buffer> {
-  const buffer = await renderToBuffer(<BookPdfDocument book={book} />);
+export async function generateBookPdf(book: LoreBook, context: PdfGenerationContext = {}): Promise<Buffer> {
+  const storyPages = await preparePdfStoryPages(book, context);
+
+  if (storyPages.length !== FULL_BOOK_PAGE_COUNT) {
+    console.warn(
+      `[PDF_GENERATION] Expected ${FULL_BOOK_PAGE_COUNT} story pages, received ${storyPages.length}.`,
+    );
+  }
+
+  const buffer = await renderToBuffer(
+    <BookPdfDocument
+      storyPages={storyPages}
+      bookTitle={book.title}
+      characterName={book.characterBible.name}
+    />,
+  );
+
   return Buffer.from(buffer);
 }
