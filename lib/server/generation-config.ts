@@ -1,12 +1,14 @@
 import "server-only";
 
+const DEFAULT_IMAGE_QUALITY = "medium" as const;
+
 const ALLOWED_IMAGE_QUALITIES = ["medium", "high", "auto"] as const;
 
 export type ImageQuality = (typeof ALLOWED_IMAGE_QUALITIES)[number];
 
 export function normalizeImageQuality(value: string | undefined): ImageQuality {
   if (!value || value === "low") {
-    return "medium";
+    return DEFAULT_IMAGE_QUALITY;
   }
 
   if ((ALLOWED_IMAGE_QUALITIES as readonly string[]).includes(value)) {
