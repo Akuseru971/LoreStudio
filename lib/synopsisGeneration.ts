@@ -1,11 +1,12 @@
 import "server-only";
 
 import { openai } from "@/lib/server/openai";
+import { SYNOPSIS_MODEL } from "@/lib/server/generation-config";
 import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
 import { validateSynopsisPayload } from "@/lib/synopsisValidation";
 
 export function getSynopsisModel() {
-  return process.env.OPENAI_SYNOPSIS_MODEL?.trim() || process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini";
+  return SYNOPSIS_MODEL;
 }
 
 function getResponseText(response: unknown) {
@@ -114,7 +115,6 @@ export async function generateSynopsis(input: BookFormInput, regenerationAttempt
     input: `${user}\n\nReturn only one valid JSON object.`,
     text: {
       format: { type: "json_object" },
-      verbosity: "low",
     },
     max_output_tokens: 700,
   });

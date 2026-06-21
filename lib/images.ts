@@ -1,6 +1,6 @@
 import "server-only";
 
-import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE } from "@/lib/image-config";
+import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE, normalizeImageQuality } from "@/lib/server/generation-config";
 import { buildFinalImagePrompt } from "@/lib/prompts";
 import { openai } from "@/lib/server/openai";
 import type { BookPage, LoreBook } from "@/lib/types";
@@ -38,7 +38,7 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
         model,
         prompt,
         size: size as "1024x1024" | "1024x1536" | "1536x1024",
-        quality: isGptImageModel ? IMAGE_QUALITY : undefined,
+        quality: isGptImageModel ? normalizeImageQuality(IMAGE_QUALITY) : undefined,
         ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
       });
 

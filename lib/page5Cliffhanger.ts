@@ -1,12 +1,13 @@
 import "server-only";
 
 import { openai } from "@/lib/server/openai";
+import { TEXT_MODEL } from "@/lib/server/generation-config";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export const PAGE_5_CLIFFHANGER_ERROR = "Page 5 must end with a cliffhanger.";
 
 function getLoreModel() {
-  return process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini";
+  return TEXT_MODEL;
 }
 
 const IMMERSION_BANNED_PATTERN =

@@ -1,7 +1,3 @@
-export const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-export const IMAGE_QUALITY = "medium" as const;
-export const IMAGE_SIZE = process.env.OPENAI_IMAGE_SIZE || "1024x1536";
-
 /** Pages that receive generated images before payment. */
 export const FREE_IMAGE_PAGE_COUNT = 4;
 

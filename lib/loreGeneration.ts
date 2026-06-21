@@ -2,6 +2,7 @@ import "server-only";
 
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
 import { openai } from "@/lib/server/openai";
+import { TEXT_MODEL } from "@/lib/server/generation-config";
 import {
   attemptPage5CliffhangerRepair,
   isCliffhangerOnlyFailure,
@@ -29,7 +30,7 @@ export function isDevOrPreview() {
 }
 
 export function getLoreModel() {
-  return process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini";
+  return TEXT_MODEL;
 }
 
 function requireOpenAiKey() {
