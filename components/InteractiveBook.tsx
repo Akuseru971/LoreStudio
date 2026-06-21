@@ -9,6 +9,7 @@ import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
 import MagicalBookCover from "@/components/MagicalBookCover";
 import BookPremiumActions from "@/components/BookPremiumActions";
+import NarratorUnlockModal from "@/components/NarratorUnlockModal";
 import ResultActions from "@/components/ResultActions";
 import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
@@ -81,7 +82,6 @@ type InteractiveBookProps = {
 };
 
 const OPENING_DURATION_MS = 2100;
-const NARRATION_START_DELAY_MS = 400;
 const PAGE_FIVE_INDEX = ILLUSTRATED_PAGE_COUNT - 1;
 
 export default function InteractiveBook({
@@ -114,9 +114,15 @@ export default function InteractiveBook({
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [showNarratorModal, setShowNarratorModal] = useState(false);
+  const [narratorTeaserAudioUrl, setNarratorTeaserAudioUrl] = useState<string | null>(null);
+  const [narrationPageIndex, setNarrationPageIndex] = useState<number | null>(null);
+  const [isNarratorPlaying, setIsNarratorPlaying] = useState(false);
+  const [narratorError, setNarratorError] = useState<string | null>(null);
 
   const flipRef = useRef<PageFlipHandle | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
+  const teaserRef = useRef<HTMLAudioElement | null>(null);
   const requestedImagesRef = useRef<Set<number>>(new Set());
   const narrationRunRef = useRef(0);
 
@@ -166,9 +172,19 @@ export default function InteractiveBook({
 
   const fetchAudioForPage = useCallback(
     async (pageNumber: number, text: string) => {
+      if (!isPremium || !accessToken) {
+        return null;
+      }
+
       const cachedAudio = audioCache[pageNumber];
       if (cachedAudio) {
         return cachedAudio;
+      }
+
+      const pageAudioUrl = illustratedPages.find((page) => page.pageNumber === pageNumber)?.audioUrl;
+      if (pageAudioUrl) {
+        setAudioCache((current) => ({ ...current, [pageNumber]: pageAudioUrl }));
+        return pageAudioUrl;
       }
 
       setIsLoadingVoice(true);
@@ -176,7 +192,7 @@ export default function InteractiveBook({
         const response = await fetch("/api/generate-audio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, pageNumber }),
+          body: JSON.stringify({ text, pageNumber, accessToken }),
         });
         const data = (await response.json()) as { audioUrl?: string | null; error?: string };
         const audioUrl = data.audioUrl || null;
@@ -190,7 +206,7 @@ export default function InteractiveBook({
         setIsLoadingVoice(false);
       }
     },
-    [audioCache],
+    [accessToken, audioCache, illustratedPages, isPremium],
   );
 
   const fetchImageForPage = useCallback(
@@ -325,16 +341,26 @@ export default function InteractiveBook({
     };
   }, [accessToken, isPremium, refreshPremiumImages]);
 
+  const stopNarration = useCallback(() => {
+    narrationRunRef.current += 1;
+    voiceRef.current?.pause();
+    teaserRef.current?.pause();
+    setIsNarratorPlaying(false);
+    setNarrationPageIndex(null);
+    dispatchNarrationEnd();
+  }, []);
+
   const tryForwardNavigation = useCallback(
     (targetIndex: number) => {
       if (!isPremium && activePageIndex === PAGE_FIVE_INDEX && targetIndex > PAGE_FIVE_INDEX) {
+        stopNarration();
         setShowUnlockModal(true);
         return false;
       }
 
       return targetIndex <= illustratedPages.length - 1;
     },
-    [activePageIndex, illustratedPages.length, isPremium],
+    [activePageIndex, illustratedPages.length, isPremium, stopNarration],
   );
 
   const goToSpread = useCallback(
@@ -346,23 +372,64 @@ export default function InteractiveBook({
     [illustratedPages.length],
   );
 
-  const stopNarration = useCallback(() => {
-    narrationRunRef.current += 1;
-    voiceRef.current?.pause();
-    dispatchNarrationEnd();
-  }, []);
+  const playNarratorTeaser = useCallback(async () => {
+    stopNarration();
+
+    let audioUrl = narratorTeaserAudioUrl;
+    if (!audioUrl) {
+      try {
+        const response = await fetch("/api/generate-narrator-teaser", { method: "POST" });
+        const data = (await response.json()) as { audioUrl?: string | null };
+        audioUrl = data.audioUrl || null;
+        if (audioUrl) {
+          setNarratorTeaserAudioUrl(audioUrl);
+        }
+      } catch {
+        return;
+      }
+    }
+
+    if (!audioUrl) {
+      return;
+    }
+
+    if (!teaserRef.current) {
+      teaserRef.current = new Audio();
+    }
+
+    const teaser = teaserRef.current;
+    teaser.pause();
+    teaser.src = audioUrl;
+    teaser.volume = 0.82;
+    teaser.onended = () => {
+      dispatchNarrationEnd();
+    };
+    teaser.onerror = () => {
+      dispatchNarrationEnd();
+    };
+
+    try {
+      dispatchNarrationStart();
+      await teaser.play();
+    } catch {
+      dispatchNarrationEnd();
+    }
+  }, [narratorTeaserAudioUrl, stopNarration]);
 
   const startPageNarration = useCallback(
     async (pageIndex: number) => {
       const page = illustratedPages[pageIndex];
-      if (!page || !voiceEnabled) {
+      if (!page || !voiceEnabled || !isPremium) {
         return;
       }
 
       narrationRunRef.current += 1;
       const runId = narrationRunRef.current;
+      teaserRef.current?.pause();
       voiceRef.current?.pause();
       dispatchNarrationEnd();
+      setNarrationPageIndex(pageIndex);
+      setNarratorError(null);
 
       const audioUrl = await fetchAudioForPage(page.pageNumber, buildPageNarrationText(page));
       if (narrationRunRef.current !== runId) {
@@ -370,6 +437,8 @@ export default function InteractiveBook({
       }
 
       if (!audioUrl) {
+        setNarratorError("The narrator could not be summoned. Please try again.");
+        setNarrationPageIndex(null);
         return;
       }
 
@@ -383,25 +452,63 @@ export default function InteractiveBook({
       voice.volume = 0.82;
       voice.onended = () => {
         if (narrationRunRef.current === runId) {
+          setIsNarratorPlaying(false);
+          setNarrationPageIndex(null);
           dispatchNarrationEnd();
         }
       };
       voice.onerror = () => {
         if (narrationRunRef.current === runId) {
+          setIsNarratorPlaying(false);
+          setNarrationPageIndex(null);
           dispatchNarrationEnd();
         }
       };
 
       try {
         dispatchNarrationStart();
+        setIsNarratorPlaying(true);
         await voice.play();
       } catch {
         if (narrationRunRef.current === runId) {
+          setIsNarratorPlaying(false);
+          setNarrationPageIndex(null);
           dispatchNarrationEnd();
         }
       }
     },
-    [fetchAudioForPage, illustratedPages, voiceEnabled],
+    [fetchAudioForPage, illustratedPages, isPremium, voiceEnabled],
+  );
+
+  const handleNarratorClick = useCallback(
+    async (pageIndex: number) => {
+      if (!accessToken) {
+        return;
+      }
+
+      if (!isPremium) {
+        stopNarration();
+        setShowNarratorModal(true);
+        await playNarratorTeaser();
+        return;
+      }
+
+      if (narrationPageIndex === pageIndex && isNarratorPlaying) {
+        stopNarration();
+        return;
+      }
+
+      await startPageNarration(pageIndex);
+    },
+    [
+      accessToken,
+      isNarratorPlaying,
+      isPremium,
+      narrationPageIndex,
+      playNarratorTeaser,
+      startPageNarration,
+      stopNarration,
+    ],
   );
 
   useEffect(() => {
@@ -409,15 +516,8 @@ export default function InteractiveBook({
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      void startPageNarration(activePageIndex);
-    }, NARRATION_START_DELAY_MS);
-
-    return () => {
-      window.clearTimeout(timer);
-      stopNarration();
-    };
-  }, [activePageIndex, isOpen, startPageNarration, stopNarration]);
+    stopNarration();
+  }, [activePageIndex, isOpen, stopNarration]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -518,7 +618,14 @@ export default function InteractiveBook({
   }
 
   function handleClosePaywall() {
+    stopNarration();
     setShowUnlockModal(false);
+  }
+
+  function handleCloseNarratorModal() {
+    teaserRef.current?.pause();
+    dispatchNarrationEnd();
+    setShowNarratorModal(false);
   }
 
   function toggleVoice() {
@@ -610,10 +717,20 @@ export default function InteractiveBook({
                           isActive={index === activePageIndex}
                           isImageLoading={Boolean(loadingImages[page.pageNumber])}
                           imageSealed={!isPremium && isSealedFreeImagePage(page.pageNumber)}
+                          onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
+                          isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
+                          isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
                         />
                       </div>,
                       <div key={`${page.pageNumber}-text`} className="page">
-                        <BookPage page={page} side="text" isActive={index === activePageIndex} />
+                        <BookPage
+                          page={page}
+                          side="text"
+                          isActive={index === activePageIndex}
+                          onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
+                          isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
+                          isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
+                        />
                       </div>,
                     ])}
                   </HTMLFlipBook>
@@ -640,12 +757,16 @@ export default function InteractiveBook({
                       </button>
                     </div>
 
-                    <AudioControls
-                      voiceEnabled={voiceEnabled}
-                      isLoadingVoice={isLoadingVoice}
-                      onToggleVoice={toggleVoice}
-                      onReplayVoice={() => void startPageNarration(activePageIndex)}
-                    />
+                    {isPremium ? (
+                      <AudioControls
+                        voiceEnabled={voiceEnabled}
+                        isLoadingVoice={isLoadingVoice}
+                        onToggleVoice={toggleVoice}
+                        onReplayVoice={() => void startPageNarration(activePageIndex)}
+                      />
+                    ) : null}
+
+                    {narratorError ? <p className="mt-3 text-center text-xs text-red-300">{narratorError}</p> : null}
 
                     {isFinalPage ? <ResultActions onReset={onReset} /> : null}
                   </>
@@ -681,12 +802,19 @@ export default function InteractiveBook({
       </div>
 
       {accessToken && !isPremium ? (
-        <UnlockFullStoryModal
-          book={book}
-          accessToken={accessToken}
-          isOpen={showUnlockModal}
-          onClose={handleClosePaywall}
-        />
+        <>
+          <UnlockFullStoryModal
+            book={book}
+            accessToken={accessToken}
+            isOpen={showUnlockModal}
+            onClose={handleClosePaywall}
+          />
+          <NarratorUnlockModal
+            accessToken={accessToken}
+            isOpen={showNarratorModal}
+            onClose={handleCloseNarratorModal}
+          />
+        </>
       ) : null}
     </main>
   );

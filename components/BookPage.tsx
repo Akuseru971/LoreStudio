@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import NarratorButton from "@/components/NarratorButton";
 import SyncedNarrationText from "@/components/SyncedNarrationText";
 import type { BookPage as BookPageType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,9 @@ type BookPageProps = {
   side?: "image" | "text";
   isImageLoading?: boolean;
   imageSealed?: boolean;
+  onNarratorClick?: () => void;
+  isNarratorLoading?: boolean;
+  isNarratorPlaying?: boolean;
 };
 
 export default function BookPage({
@@ -19,9 +23,21 @@ export default function BookPage({
   side = "text",
   isImageLoading = false,
   imageSealed = false,
+  onNarratorClick,
+  isNarratorLoading = false,
+  isNarratorPlaying = false,
 }: BookPageProps) {
   if (side === "image") {
-    return <ImageLeaf page={page} isImageLoading={isImageLoading} imageSealed={imageSealed} />;
+    return (
+      <ImageLeaf
+        page={page}
+        isImageLoading={isImageLoading}
+        imageSealed={imageSealed}
+        onNarratorClick={onNarratorClick}
+        isNarratorLoading={isNarratorLoading}
+        isNarratorPlaying={isNarratorPlaying}
+      />
+    );
   }
 
   return (
@@ -29,16 +45,25 @@ export default function BookPage({
       <div className="page-spine-crease" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-0 opacity-30 mix-blend-multiply [background:radial-gradient(circle_at_20%_20%,rgba(255,255,255,.45),transparent_10rem),repeating-linear-gradient(90deg,rgba(72,45,19,.06)_0_1px,transparent_1px_5px)]" />
       <div className="relative z-10 flex h-full flex-col">
-        <header className="mb-4 flex items-center justify-between gap-3 border-b border-[#6b4a24]/20 pb-3">
-          <div>
+        <header className="mb-4 flex items-start justify-between gap-3 border-b border-[#6b4a24]/20 pb-3">
+          <div className="min-w-0 flex-1">
             <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
               Chapter {page.pageNumber}
             </p>
             <h2 className="page-elegant-title mt-1.5 text-xl leading-tight text-[#2a1a0c] sm:text-2xl">{page.title}</h2>
           </div>
-          <span className="rounded-full border border-[#6b4a24]/18 bg-[#fff8e8]/40 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-wider text-[#6b4a24]/75">
-            {String(page.pageNumber).padStart(2, "0")}
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            {onNarratorClick ? (
+              <NarratorButton
+                onClick={onNarratorClick}
+                isLoading={isNarratorLoading}
+                isPlaying={isNarratorPlaying}
+              />
+            ) : null}
+            <span className="rounded-full border border-[#6b4a24]/18 bg-[#fff8e8]/40 px-2.5 py-0.5 text-[0.65rem] font-medium tracking-wider text-[#6b4a24]/75">
+              {String(page.pageNumber).padStart(2, "0")}
+            </span>
+          </div>
         </header>
 
         <div className="flex flex-1 items-center">
@@ -66,21 +91,36 @@ function ImageLeaf({
   page,
   isImageLoading,
   imageSealed,
+  onNarratorClick,
+  isNarratorLoading,
+  isNarratorPlaying,
 }: {
   page: BookPageType;
   isImageLoading: boolean;
   imageSealed: boolean;
+  onNarratorClick?: () => void;
+  isNarratorLoading?: boolean;
+  isNarratorPlaying?: boolean;
 }) {
   return (
     <article className="page parchment-surface page-shadow relative flex h-full w-full flex-col overflow-hidden p-4 text-[#20170d] sm:p-5">
       <div className="page-spine-crease" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-0 opacity-28 mix-blend-multiply [background:radial-gradient(circle_at_20%_20%,rgba(255,255,255,.45),transparent_10rem),repeating-linear-gradient(90deg,rgba(72,45,19,.06)_0_1px,transparent_1px_5px)]" />
       <div className="relative z-10 flex h-full flex-col">
-        <header className="mb-3 flex items-center justify-between border-b border-[#6b4a24]/15 pb-2.5">
+        <header className="mb-3 flex items-start justify-between gap-2 border-b border-[#6b4a24]/15 pb-2.5">
           <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">Illustration</p>
-          <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
-            {String(page.pageNumber).padStart(2, "0")} / 8
-          </p>
+          <div className="flex items-center gap-2">
+            {onNarratorClick ? (
+              <NarratorButton
+                onClick={onNarratorClick}
+                isLoading={isNarratorLoading}
+                isPlaying={isNarratorPlaying}
+              />
+            ) : null}
+            <p className="book-meta-label text-[0.58rem] uppercase tracking-[0.26em] text-[#6b4a24]/70">
+              {String(page.pageNumber).padStart(2, "0")} / 8
+            </p>
+          </div>
         </header>
 
         <div className="manuscript-frame relative min-h-0 flex-1">

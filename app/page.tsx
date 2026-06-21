@@ -11,8 +11,6 @@ import MysticalStartTransition from "@/components/MysticalStartTransition";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import RitualVideoPreloader from "@/components/RitualVideoPreloader";
-import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
-import { buildPageNarrationText } from "@/lib/bookNarration";
 import {
   readAmbientMusicMutedPreference,
   writeAmbientMusicMutedPreference,
@@ -47,65 +45,6 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
         : "The archive server failed to answer. Please redeploy or try again.",
     );
   }
-}
-
-async function generateAudioForPage(page: LoreBook["pages"][number]) {
-  const response = await fetch("/api/generate-audio", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: buildPageNarrationText(page), pageNumber: page.pageNumber }),
-  });
-
-  const data = await readJsonResponse<{ audioUrl?: string | null }>(response);
-  return data.audioUrl || null;
-}
-
-async function attachInitialAudio(book: LoreBook) {
-  const pages = book.pages.map((page) => ({ ...page }));
-  const audioPages = pages.slice(0, ILLUSTRATED_PAGE_COUNT);
-  const audioResults = await Promise.allSettled(audioPages.map((page) => generateAudioForPage(page)));
-
-  audioResults.forEach((result, index) => {
-    pages[index] = {
-      ...pages[index],
-      audioUrl: result.status === "fulfilled" ? result.value : null,
-    };
-  });
-
-  return {
-    ...book,
-    pages,
-  };
-}
-
-async function uploadBookAsset(
-  accessToken: string,
-  pageNumber: number,
-  assetType: "image" | "audio",
-  assetRef: string,
-) {
-  const response = await fetch("/api/books/assets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accessToken, pageNumber, assetType, assetRef }),
-  });
-
-  const data = await readJsonResponse<{ ok?: boolean; error?: string }>(response);
-  if (!response.ok || !data.ok) {
-    throw new Error(data.error || "The book assets could not be saved.");
-  }
-}
-
-async function persistInitialAudio(accessToken: string, book: LoreBook) {
-  const uploads: Promise<void>[] = [];
-
-  for (const page of book.pages.slice(0, ILLUSTRATED_PAGE_COUNT)) {
-    if (page.audioUrl) {
-      uploads.push(uploadBookAsset(accessToken, page.pageNumber, "audio", page.audioUrl));
-    }
-  }
-
-  await Promise.all(uploads);
 }
 
 export default function Home() {
@@ -177,19 +116,7 @@ export default function Home() {
 
     console.log("[GENERATION_REQUEST_FINISHED]", Date.now());
 
-    const preparedBook = await attachInitialAudio(data.book);
-
-    if (generationRunRef.current !== runId) {
-      return;
-    }
-
-    await persistInitialAudio(data.accessToken, preparedBook);
-
-    if (generationRunRef.current !== runId) {
-      return;
-    }
-
-    setBook(preparedBook);
+    setBook(data.book);
     setAccessToken(data.accessToken);
     setGenerationStatus("ready");
   }
