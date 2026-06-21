@@ -2,7 +2,7 @@ import { clsx, type ClassValue } from "clsx";
 import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import { polishImmersiveStoryText } from "@/lib/immersive-text";
 import { isGenericPageTitle } from "@/lib/page-titles";
-import { validateApprovedSynopsis } from "@/lib/synopsisGeneration";
+import { validateApprovedSynopsis } from "@/lib/synopsisValidation";
 import type {
   ApprovedSynopsis,
   BookFormInput,

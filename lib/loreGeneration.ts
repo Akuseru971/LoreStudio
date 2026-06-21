@@ -1,5 +1,7 @@
+import "server-only";
+
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
-import { openai } from "@/lib/openai";
+import { openai } from "@/lib/server/openai";
 import {
   attemptPage5CliffhangerRepair,
   isCliffhangerOnlyFailure,

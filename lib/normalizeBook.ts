@@ -1,4 +1,4 @@
-import { validateApprovedSynopsis } from "@/lib/synopsisGeneration";
+import { validateApprovedSynopsis } from "@/lib/synopsisValidation";
 import type { ApprovedSynopsis, BookFormInput, LoreBook, StoredBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 

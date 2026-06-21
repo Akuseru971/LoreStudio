@@ -1,6 +1,8 @@
+import "server-only";
+
 import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE } from "@/lib/image-config";
 import { buildFinalImagePrompt } from "@/lib/prompts";
-import { openai } from "@/lib/openai";
+import { openai } from "@/lib/server/openai";
 import type { BookPage, LoreBook } from "@/lib/types";
 import { dataUrlFromBase64 } from "@/lib/utils";
 

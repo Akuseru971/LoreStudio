@@ -1,4 +1,6 @@
-import { openai } from "@/lib/openai";
+import "server-only";
+
+import { openai } from "@/lib/server/openai";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export const PAGE_5_CLIFFHANGER_ERROR = "Page 5 must end with a cliffhanger.";

@@ -1,6 +1,8 @@
-import { openai } from "@/lib/openai";
+import "server-only";
+
+import { openai } from "@/lib/server/openai";
 import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
-import { sanitizeText } from "@/lib/utils";
+import { validateSynopsisPayload } from "@/lib/synopsisValidation";
 
 export function getSynopsisModel() {
   return process.env.OPENAI_SYNOPSIS_MODEL?.trim() || process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini";
@@ -98,45 +100,6 @@ Return JSON:
   return { system, user };
 }
 
-export function validateSynopsisPayload(payload: unknown): ApprovedSynopsis | null {
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-
-  const source = payload as Partial<ApprovedSynopsis> & {
-    championConnection?: { championName?: unknown; connectionSummary?: unknown };
-  };
-
-  const synopsis = sanitizeText(source.synopsis, 1200);
-  const legendaryTitle = sanitizeText(source.legendaryTitle, 120);
-  const region = sanitizeText(source.region, 80);
-  const specificRole = sanitizeText(source.specificRole, 120);
-  const coreConflict = sanitizeText(source.coreConflict, 240);
-  const championName = sanitizeText(source.championConnection?.championName, 80);
-  const connectionSummary = sanitizeText(source.championConnection?.connectionSummary, 400);
-
-  if (!synopsis || !legendaryTitle || !region || !specificRole || !coreConflict || !championName || !connectionSummary) {
-    return null;
-  }
-
-  const wordCount = synopsis.split(/\s+/).filter(Boolean).length;
-  if (wordCount < 40 || wordCount > 160) {
-    return null;
-  }
-
-  return {
-    synopsis,
-    legendaryTitle,
-    region,
-    specificRole,
-    championConnection: {
-      championName,
-      connectionSummary,
-    },
-    coreConflict,
-  };
-}
-
 export async function generateSynopsis(input: BookFormInput, regenerationAttempt = 0): Promise<ApprovedSynopsis> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("Missing OPENAI_API_KEY");
@@ -175,8 +138,4 @@ export async function generateSynopsis(input: BookFormInput, regenerationAttempt
   }
 
   return synopsis;
-}
-
-export function validateApprovedSynopsis(body: unknown): ApprovedSynopsis | null {
-  return validateSynopsisPayload(body);
 }
