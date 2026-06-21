@@ -2,7 +2,9 @@ import { clsx, type ClassValue } from "clsx";
 import { IMAGE_STYLE_AVOIDANCES, IMAGE_STYLE_LOCK } from "@/lib/prompts";
 import { polishImmersiveStoryText } from "@/lib/immersive-text";
 import { isGenericPageTitle } from "@/lib/page-titles";
+import { validateApprovedSynopsis } from "@/lib/synopsisGeneration";
 import type {
+  ApprovedSynopsis,
   BookFormInput,
   BookPage,
   CharacterBible,
@@ -106,6 +108,41 @@ export function validateBookInput(body: unknown): { input?: BookFormInput; error
       runeterraRegion: runeterraRegion as BookFormInput["runeterraRegion"],
     },
   };
+}
+
+export function validateGenerateBookRequest(body: unknown): {
+  input?: BookFormInput;
+  approvedSynopsis?: ApprovedSynopsis | null;
+  error?: string;
+} {
+  if (!body || typeof body !== "object") {
+    return { error: "Invalid request." };
+  }
+
+  const source = body as {
+    formInput?: unknown;
+    approvedSynopsis?: unknown;
+    name?: unknown;
+    gender?: unknown;
+    characterType?: unknown;
+    runeterraRegion?: unknown;
+  };
+
+  const inputSource = source.formInput ?? source;
+  const { input, error } = validateBookInput(inputSource);
+  if (!input) {
+    return { error };
+  }
+
+  let approvedSynopsis: ApprovedSynopsis | null = null;
+  if (source.approvedSynopsis !== undefined && source.approvedSynopsis !== null) {
+    approvedSynopsis = validateApprovedSynopsis(source.approvedSynopsis);
+    if (!approvedSynopsis) {
+      return { error: "Invalid approved synopsis." };
+    }
+  }
+
+  return { input, approvedSynopsis };
 }
 
 type LegacyLoreBook = Partial<LoreBook> & {

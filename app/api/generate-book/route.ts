@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createFreeBook, mergeBookAssets } from "@/lib/bookStore";
 import { generateFreeBookImages } from "@/lib/freeImages";
 import { generateLoreBook, isDevOrPreview } from "@/lib/loreGeneration";
-import { validateBookInput } from "@/lib/utils";
+import { validateGenerateBookRequest } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -30,16 +30,16 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { input, error } = validateBookInput(body);
+    const { input, approvedSynopsis, error } = validateGenerateBookRequest(body);
     if (!input) {
       return NextResponse.json({ error: error || "Invalid input." }, { status: 400 });
     }
 
     console.log("[LORE_GENERATION_START]", Date.now());
-    const loreResult = await generateLoreBook(input);
+    const loreResult = await generateLoreBook(input, approvedSynopsis);
     console.log("[LORE_GENERATION_DONE]", Date.now());
 
-    const storedBook = await createFreeBook(input, loreResult.book);
+    const storedBook = await createFreeBook(input, loreResult.book, approvedSynopsis ?? null);
     const accessToken = storedBook.access_token;
 
     console.log("[FREE_IMAGES_START]", Date.now());

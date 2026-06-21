@@ -11,6 +11,7 @@ import {
 } from "@/lib/book-images";
 import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
 import type {
+  ApprovedSynopsis,
   BookFormInput,
   BookPage,
   BookPageImage,
@@ -66,6 +67,7 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     email: row.email ? String(row.email) : null,
     status: row.status as BookStatus,
     form_input: row.form_input as BookFormInput,
+    approved_synopsis: (row.approved_synopsis as ApprovedSynopsis | null) ?? null,
     free_book: (row.free_book as LoreBook | null) ?? null,
     full_book: (row.full_book as LoreBook | null) ?? null,
     free_pages: (row.free_pages as BookPage[] | null) ?? null,
@@ -114,7 +116,11 @@ function buildAssetMaps(book: LoreBook) {
   return { images, audio };
 }
 
-export async function createFreeBook(formInput: BookFormInput, book: LoreBook) {
+export async function createFreeBook(
+  formInput: BookFormInput,
+  book: LoreBook,
+  approvedSynopsis: ApprovedSynopsis | null = null,
+) {
   const supabase = requireSupabase();
   const accessToken = generateAccessToken();
   const leanBook = stripBookAssets(book);
@@ -126,6 +132,7 @@ export async function createFreeBook(formInput: BookFormInput, book: LoreBook) {
       access_token: accessToken,
       status: "free",
       form_input: formInput,
+      approved_synopsis: approvedSynopsis,
       free_book: leanBook,
       free_pages: freePages,
       premium_pages: premiumPages,

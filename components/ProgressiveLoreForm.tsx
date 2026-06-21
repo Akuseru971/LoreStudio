@@ -446,7 +446,7 @@ export default function ProgressiveLoreForm({ onSubmit, disabled = false }: Prog
                   transition={{ duration: 0.45, ease: "easeOut" }}
                   className="gold-button mt-2 w-full rounded-2xl px-6 py-4 text-sm font-bold uppercase tracking-[0.24em] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Generate my legend
+                  Preview my legend
                 </motion.button>
               ) : null}
             </AnimatePresence>

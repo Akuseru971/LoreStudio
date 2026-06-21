@@ -1,4 +1,4 @@
-import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
+import type { BookFormInput, BookPage, ApprovedSynopsis, LoreBook } from "@/lib/types";
 import { PAGE_TITLE_PROMPT_RULES, PAGE_TITLE_SELF_CHECK } from "@/lib/page-titles";
 import {
   ANTI_REPETITION_VALIDATION,
@@ -14,7 +14,106 @@ export const IMAGE_STYLE_LOCK =
 export const IMAGE_STYLE_AVOIDANCES =
   "Avoid cheap AI fantasy look, blurry faces, generic armor, overused black-purple glowing villain style, flat backgrounds, repetitive portraits, plastic-looking characters, oversaturated neon colors, vague magical fog, random symbols without context, disconnected fantasy poster poses, glowing relics, sealed doors, mysterious maps, and hooded figures in mist.";
 
-export function buildLorePrompt(input: BookFormInput) {
+export function buildLorePrompt(input: BookFormInput, approvedSynopsis?: ApprovedSynopsis | null) {
+  if (approvedSynopsis) {
+    const system = `You are a narrative designer writing original Runeterra-style champion biographies.
+Your task is to expand an approved synopsis into a fresh, emotionally coherent 8-page biography.
+You must preserve the approved premise exactly.
+You output strict valid JSON only.`;
+
+    const user = `Create an 8-page illustrated biography for an original character in Runeterra.
+
+User input:
+Name: ${input.name}
+Gender: ${input.gender}
+Character type: ${input.characterType}
+Region preference: ${input.runeterraRegion}
+
+Approved synopsis:
+${JSON.stringify(approvedSynopsis, null, 2)}
+
+The final book must follow this approved synopsis.
+Do not change the protagonist's role, region, champion connection, or central conflict.
+Expand it into a coherent 8-page biography.
+Use "${approvedSynopsis.legendaryTitle}" as the subtitle / legendary epithet.
+Use region "${approvedSynopsis.region}".
+Build the protagonist around this specific role: ${approvedSynopsis.specificRole}.
+The emotional engine of the story must come from this core conflict: ${approvedSynopsis.coreConflict}.
+The page 5 champion connection must feature ${approvedSynopsis.championConnection.championName}.
+Page 5 connection summary to honor: ${approvedSynopsis.championConnection.connectionSummary}.
+Pages 6–8 must continue the consequence of the synopsis conflict.
+
+Page 5 rule:
+Page 5 must reveal the champion connection and end with a direct cliffhanger.
+The final sentence of page 5 must create unresolved danger, discovery, arrival, message, betrayal, transformation, or threat.
+
+Style:
+- serious, elegant, immersive, easy to follow
+- inspired by official League champion biographies
+- concrete and specific
+- no meta language
+- no page references inside text
+- no generic chapter titles
+
+Length:
+- exactly 8 pages
+- 55 to 95 words per page
+
+${PAGE_TITLE_PROMPT_RULES}
+
+${IMAGE_PROMPT_RULES}
+- Every imagePrompt must include: ${IMAGE_STYLE_LOCK}
+- ${IMAGE_STYLE_AVOIDANCES}
+
+${ANTI_REPETITION_VALIDATION}
+
+${PAGE_TITLE_SELF_CHECK}
+
+Return strict JSON matching this schema:
+{
+  "title": "character name",
+  "subtitle": "legendary epithet",
+  "region": "selected or chosen region",
+  "genre": "in-world biography",
+  "storyEngine": {
+    "archetype": "string",
+    "centralIrony": "string",
+    "publicReputation": "string",
+    "privateTruth": "string",
+    "socialPressure": "string",
+    "irreversibleEvent": "string",
+    "championConnectionType": "string",
+    "finalContradiction": "string"
+  },
+  "championConnection": {
+    "championName": "string",
+    "connectionType": "string",
+    "connectionSummary": "string",
+    "whyItMatters": "string",
+    "canonSafetyNote": "string"
+  },
+  "visualBible": {
+    "appearance": "string",
+    "clothing": "string",
+    "regionAtmosphere": "string",
+    "colorPalette": "string",
+    "recurringVisualMotif": "string"
+  },
+  "pages": [
+    {
+      "pageNumber": 1,
+      "title": "specific biography title",
+      "text": "55-95 words",
+      "imagePrompt": "specific scene prompt"
+    }
+  ]
+}
+
+Return strict JSON only.`;
+
+    return { system, user };
+  }
+
   const suggestedArchetype = pickStoryArchetype(
     `${input.name}:${input.gender}:${input.characterType}:${input.runeterraRegion}:${Date.now()}`,
   );

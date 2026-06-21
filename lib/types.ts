@@ -19,6 +19,18 @@ export type BookFormInput = {
     | "The Void";
 };
 
+export type ApprovedSynopsis = {
+  synopsis: string;
+  legendaryTitle: string;
+  region: string;
+  specificRole: string;
+  championConnection: {
+    championName: string;
+    connectionSummary: string;
+  };
+  coreConflict: string;
+};
+
 export type VisualDirection = {
   sceneType: string;
   cameraShot: string;
@@ -135,6 +147,7 @@ export type StoredBook = {
   email: string | null;
   status: BookStatus;
   form_input: BookFormInput;
+  approved_synopsis: ApprovedSynopsis | null;
   free_book: LoreBook | null;
   full_book: LoreBook | null;
   free_pages: BookPage[] | null;

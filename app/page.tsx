@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
@@ -11,6 +11,7 @@ import MysticalStartTransition from "@/components/MysticalStartTransition";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import RitualVideoPreloader from "@/components/RitualVideoPreloader";
+import SynopsisPreview from "@/components/SynopsisPreview";
 import {
   readAmbientMusicMutedPreference,
   writeAmbientMusicMutedPreference,
@@ -20,18 +21,21 @@ import {
   isRitualLaunchVideoConfigured,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
-import type { BookFormInput, LoreBook } from "@/lib/types";
+import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
 type AppStep =
   | "intro"
   | "startTransition"
   | "form"
+  | "synopsis"
   | "ritualVideo"
   | "creationRitual"
   | "book"
   | "error";
 
 type GenerationStatus = "idle" | "generating" | "ready" | "failed";
+
+const MAX_SYNOPSIS_REGENERATIONS = 3;
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const rawText = await response.text();
@@ -52,6 +56,11 @@ export default function Home() {
   const [generationStatus, setGenerationStatus] = useState<GenerationStatus>("idle");
   const [book, setBook] = useState<LoreBook | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [formInput, setFormInput] = useState<BookFormInput | null>(null);
+  const [approvedSynopsis, setApprovedSynopsis] = useState<ApprovedSynopsis | null>(null);
+  const [synopsisLoading, setSynopsisLoading] = useState(false);
+  const [synopsisError, setSynopsisError] = useState<string | null>(null);
+  const [synopsisRegenerationCount, setSynopsisRegenerationCount] = useState(0);
   const [generationError, setGenerationError] = useState("The archives refused to open. Try again.");
   const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
   const [videoFinished, setVideoFinished] = useState(false);
@@ -59,10 +68,12 @@ export default function Home() {
 
   const generationRunRef = useRef(0);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
+  const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
-  const shouldPlayAmbientMusic = (step === "form" || (step === "book" && bookIsOpen)) && !ambientMuted;
-  const ambientMusicVolume = step === "form" ? 0.14 : 0.12;
+  const shouldPlayAmbientMusic =
+    (step === "form" || step === "synopsis" || (step === "book" && bookIsOpen)) && !ambientMuted;
+  const ambientMusicVolume = step === "form" || step === "synopsis" ? 0.14 : 0.12;
   const isGenerating = generationStatus === "generating";
 
   useEffect(() => {
@@ -89,13 +100,58 @@ export default function Home() {
     }
   }, [generationStatus, step, videoFinished]);
 
-  async function runGeneration(input: BookFormInput, runId: number) {
+  const fetchSynopsis = useCallback(async (input: BookFormInput, regenerationAttempt = 0) => {
+    synopsisRequestRef.current += 1;
+    const requestId = synopsisRequestRef.current;
+
+    setSynopsisLoading(true);
+    setSynopsisError(null);
+
+    try {
+      const response = await fetch("/api/generate-synopsis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...input,
+          regenerationAttempt,
+        }),
+      });
+
+      const data = await readJsonResponse<ApprovedSynopsis & { error?: string }>(response);
+
+      if (synopsisRequestRef.current !== requestId) {
+        return;
+      }
+
+      if (!response.ok || !data.synopsis) {
+        throw new Error(data.error || "The first omen could not be opened. Try again.");
+      }
+
+      setApprovedSynopsis(data);
+    } catch (error) {
+      if (synopsisRequestRef.current !== requestId) {
+        return;
+      }
+
+      setSynopsisError(error instanceof Error ? error.message : "The first omen could not be opened. Try again.");
+      setApprovedSynopsis(null);
+    } finally {
+      if (synopsisRequestRef.current === requestId) {
+        setSynopsisLoading(false);
+      }
+    }
+  }, []);
+
+  async function runGeneration(input: BookFormInput, synopsis: ApprovedSynopsis | null, runId: number) {
     console.log("[GENERATION_REQUEST_STARTED]", Date.now());
 
     const response = await fetch("/api/generate-book", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        formInput: input,
+        approvedSynopsis: synopsis,
+      }),
     });
 
     const data = await readJsonResponse<{
@@ -121,12 +177,25 @@ export default function Home() {
     setGenerationStatus("ready");
   }
 
-  function handleSubmit(input: BookFormInput) {
-    if (generationStatus === "generating") {
+  function handleFormSubmit(input: BookFormInput) {
+    if (synopsisLoading || isGenerating) {
       return;
     }
 
-    console.log("[GENERATE_CLICK]", Date.now());
+    setFormInput(input);
+    setApprovedSynopsis(null);
+    setSynopsisRegenerationCount(0);
+    setSynopsisError(null);
+    setStep("synopsis");
+    void fetchSynopsis(input, 0);
+  }
+
+  function handleCreateLegend() {
+    if (!formInput || !approvedSynopsis || generationStatus === "generating") {
+      return;
+    }
+
+    console.log("[CREATE_LEGEND_CLICK]", Date.now());
 
     generationRunRef.current += 1;
     const runId = generationRunRef.current;
@@ -138,7 +207,7 @@ export default function Home() {
     setVideoFinished(false);
     setBookIsOpen(false);
 
-    const generationPromise = runGeneration(input, runId).catch((error) => {
+    const generationPromise = runGeneration(formInput, approvedSynopsis, runId).catch((error) => {
       if (generationRunRef.current !== runId) {
         return;
       }
@@ -158,6 +227,23 @@ export default function Home() {
 
     setVideoFinished(true);
     setStep("creationRitual");
+  }
+
+  function handleTryAnotherDirection() {
+    if (!formInput || synopsisRegenerationCount >= MAX_SYNOPSIS_REGENERATIONS || synopsisLoading) {
+      return;
+    }
+
+    const nextAttempt = synopsisRegenerationCount + 1;
+    setSynopsisRegenerationCount(nextAttempt);
+    void fetchSynopsis(formInput, nextAttempt);
+  }
+
+  function handleEditAnswers() {
+    setApprovedSynopsis(null);
+    setSynopsisError(null);
+    setSynopsisRegenerationCount(0);
+    setStep("form");
   }
 
   function handleVideoEnded() {
@@ -196,8 +282,13 @@ export default function Home() {
 
   function reset() {
     generationRunRef.current += 1;
+    synopsisRequestRef.current += 1;
     setBook(null);
     setAccessToken(null);
+    setFormInput(null);
+    setApprovedSynopsis(null);
+    setSynopsisError(null);
+    setSynopsisRegenerationCount(0);
     setGenerationStatus("idle");
     setGenerationError("The archives refused to open. Try again.");
     setVideoFinished(false);
@@ -226,7 +317,28 @@ export default function Home() {
         {step === "form" ? (
           <motion.div key="form" exit={{ opacity: 0, filter: "blur(12px)" }} transition={{ duration: 0.35 }}>
             <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
-            <ProgressiveLoreForm onSubmit={handleSubmit} disabled={isGenerating} />
+            <ProgressiveLoreForm onSubmit={handleFormSubmit} disabled={synopsisLoading || isGenerating} />
+          </motion.div>
+        ) : null}
+
+        {step === "synopsis" ? (
+          <motion.div key="synopsis" exit={{ opacity: 0, filter: "blur(12px)" }} transition={{ duration: 0.35 }}>
+            <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
+            <SynopsisPreview
+              synopsis={approvedSynopsis}
+              isLoading={synopsisLoading}
+              error={synopsisError}
+              regenerationLimitReached={synopsisRegenerationCount >= MAX_SYNOPSIS_REGENERATIONS}
+              onCreateLegend={handleCreateLegend}
+              onTryAnotherDirection={handleTryAnotherDirection}
+              onEditAnswers={handleEditAnswers}
+              onRetry={() => {
+                if (formInput) {
+                  void fetchSynopsis(formInput, synopsisRegenerationCount);
+                }
+              }}
+              isCreating={isGenerating}
+            />
           </motion.div>
         ) : null}
 

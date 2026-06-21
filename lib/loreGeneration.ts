@@ -7,7 +7,7 @@ import {
 } from "@/lib/page5Cliffhanger";
 import { buildLorePrompt } from "@/lib/prompts";
 import { validateGeneratedStory } from "@/lib/story-engine";
-import type { BookFormInput, LoreBook } from "@/lib/types";
+import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
 const IMMERSION_BANNED_PATTERN =
@@ -212,8 +212,8 @@ async function parseLoreBook(rawText: string, input: BookFormInput) {
   return finalizeLoreBook(parsed, input);
 }
 
-async function requestRawLoreText(input: BookFormInput) {
-  const { system, user } = buildLorePrompt(input);
+async function requestRawLoreText(input: BookFormInput, approvedSynopsis?: ApprovedSynopsis | null) {
+  const { system, user } = buildLorePrompt(input, approvedSynopsis);
   const model = getLoreModel();
 
   const response = await openai.responses.create({
@@ -258,15 +258,22 @@ async function repairLoreJson(invalidOutput: string, input: BookFormInput) {
   return rawText;
 }
 
-export async function generateLoreBook(input: BookFormInput): Promise<GenerateLoreResult> {
+export async function generateLoreBook(
+  input: BookFormInput,
+  approvedSynopsis?: ApprovedSynopsis | null,
+): Promise<GenerateLoreResult> {
   requireOpenAiKey();
   console.log("[LORE_MODEL]", getLoreModel());
+
+  if (!approvedSynopsis) {
+    console.warn("[SYNOPSIS_MISSING] Full generation started without approved synopsis");
+  }
 
   let lastError: unknown;
   let lastRawText = "";
 
   try {
-    lastRawText = await requestRawLoreText(input);
+    lastRawText = await requestRawLoreText(input, approvedSynopsis);
     return { book: await parseLoreBook(lastRawText, input), fallback: false };
   } catch (error) {
     lastError = error;
