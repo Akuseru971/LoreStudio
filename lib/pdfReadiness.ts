@@ -33,10 +33,11 @@ export function resolvePdfAvailability({
 }: {
   isPremium: boolean;
   images: Record<string, PageImageState>;
-  pdfStatus?: PdfStatus;
+  pdfStatus?: PdfStatus | null;
   isDownloadingPdf?: boolean;
 }): PdfAvailability {
   const imageInput: BookImagesInput = { images };
+  const normalizedPdfStatus = pdfStatus || "not_started";
 
   if (!isPremium) {
     return "locked_unpaid";
@@ -50,11 +51,11 @@ export function resolvePdfAvailability({
     return "waiting_for_illustrations";
   }
 
-  if (isDownloadingPdf || pdfStatus === "generating") {
+  if (isDownloadingPdf || normalizedPdfStatus === "generating") {
     return "generating_pdf";
   }
 
-  if (pdfStatus === "failed") {
+  if (normalizedPdfStatus === "failed") {
     return "failed";
   }
 
@@ -98,5 +99,5 @@ export function getPdfStatusMessage(availability: PdfAvailability) {
 }
 
 export function isPdfDownloadReady(availability: PdfAvailability) {
-  return availability === "ready";
+  return availability === "ready" || availability === "failed";
 }

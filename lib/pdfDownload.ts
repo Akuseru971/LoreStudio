@@ -4,6 +4,7 @@ import {
   ensureBookPdf,
   getBookByAccessToken,
   markPdfFailed,
+  markPdfWaitingForImages,
   mergeBookAssets,
 } from "@/lib/bookStore";
 import {
@@ -44,7 +45,10 @@ async function runPdfGeneration(accessToken: string, bookId: string) {
     const mergedBook = await buildMergedBook(accessToken);
     await ensureBookPdf(bookId, mergedBook);
   } catch (error) {
-    await markPdfFailed(bookId);
+    const message = error instanceof Error ? error.message : "PDF generation failed.";
+    await markPdfFailed(bookId, message).catch((markError) => {
+      console.error("[PDF_GENERATION_ERROR]", markError);
+    });
     throw error;
   }
 }
@@ -96,6 +100,10 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
   }
 
   if (!areAllIllustrationsReady(normalized.input)) {
+    void markPdfWaitingForImages(storedBook.id).catch((error) => {
+      console.warn("[PDF_STATUS_UPDATE_FAILED]", error);
+    });
+
     return {
       status: "not_ready",
       reason: "illustrations_pending",

@@ -8,6 +8,30 @@ import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
 
+function normalizePdfStatus(value: unknown, pdfStoragePath: unknown): PdfStatus {
+  if (pdfStoragePath) {
+    return "ready";
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value as PdfStatus;
+  }
+
+  return "not_started";
+}
+
+function normalizeMp3Status(value: unknown, mp3StoragePath: unknown): Mp3Status {
+  if (mp3StoragePath) {
+    return "ready";
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value as Mp3Status;
+  }
+
+  return "not_started";
+}
+
 function requireSupabase() {
   const client = getSupabaseServerClient();
   if (!client) {
@@ -32,11 +56,13 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     audio: (row.audio as Record<string, string>) ?? {},
     pdf_url: row.pdf_url ? String(row.pdf_url) : null,
     pdf_storage_path: row.pdf_storage_path ? String(row.pdf_storage_path) : null,
-    pdf_status: (row.pdf_status as PdfStatus | null) ?? (row.pdf_storage_path ? "ready" : "not_started"),
+    pdf_status: normalizePdfStatus(row.pdf_status, row.pdf_storage_path),
     pdf_generated_at: row.pdf_generated_at ? String(row.pdf_generated_at) : null,
+    pdf_error: row.pdf_error ? String(row.pdf_error) : null,
     mp3_storage_path: row.mp3_storage_path ? String(row.mp3_storage_path) : null,
     mp3_generated_at: row.mp3_generated_at ? String(row.mp3_generated_at) : null,
-    mp3_status: (row.mp3_status as Mp3Status | null) ?? "not_started",
+    mp3_status: normalizeMp3Status(row.mp3_status, row.mp3_storage_path),
+    mp3_error: row.mp3_error ? String(row.mp3_error) : null,
     stripe_session_id: row.stripe_session_id ? String(row.stripe_session_id) : null,
     stripe_payment_intent_id: row.stripe_payment_intent_id ? String(row.stripe_payment_intent_id) : null,
     confirmation_email_sent_at: row.confirmation_email_sent_at ? String(row.confirmation_email_sent_at) : null,
@@ -272,6 +298,7 @@ export async function savePdfPath(bookId: string, pdfStoragePath: string) {
       pdf_storage_path: pdfStoragePath,
       pdf_status: "ready",
       pdf_generated_at: new Date().toISOString(),
+      pdf_error: null,
     })
     .eq("id", bookId)
     .select("*")
@@ -558,6 +585,7 @@ export async function markMp3Ready(bookId: string, mp3StoragePath: string) {
       mp3_status: "ready",
       mp3_storage_path: mp3StoragePath,
       mp3_generated_at: new Date().toISOString(),
+      mp3_error: null,
     })
     .eq("id", bookId)
     .select("*")
@@ -570,11 +598,14 @@ export async function markMp3Ready(bookId: string, mp3StoragePath: string) {
   return mapRow(data);
 }
 
-export async function markMp3Failed(bookId: string) {
+export async function markMp3Failed(bookId: string, errorMessage?: string) {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
-    .update({ mp3_status: "failed" })
+    .update({
+      mp3_status: "failed",
+      mp3_error: errorMessage ? errorMessage.slice(0, 500) : null,
+    })
     .eq("id", bookId)
     .select("*")
     .single();
@@ -634,11 +665,14 @@ export async function claimPdfGeneration(bookId: string) {
   return data ? mapRow(data) : null;
 }
 
-export async function markPdfFailed(bookId: string) {
+export async function markPdfFailed(bookId: string, errorMessage?: string) {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
-    .update({ pdf_status: "failed" })
+    .update({
+      pdf_status: "failed",
+      pdf_error: errorMessage ? errorMessage.slice(0, 500) : null,
+    })
     .eq("id", bookId)
     .select("*")
     .single();

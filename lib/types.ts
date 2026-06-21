@@ -137,9 +137,11 @@ export type StoredBook = {
   pdf_storage_path: string | null;
   pdf_status: PdfStatus;
   pdf_generated_at: string | null;
+  pdf_error: string | null;
   mp3_storage_path: string | null;
   mp3_generated_at: string | null;
   mp3_status: Mp3Status;
+  mp3_error: string | null;
   stripe_session_id: string | null;
   stripe_payment_intent_id: string | null;
   confirmation_email_sent_at: string | null;

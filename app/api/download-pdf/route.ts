@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolvePdfDownload } from "@/lib/pdfDownload";
+import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -18,12 +19,14 @@ export async function GET(request: Request) {
     return NextResponse.json(result, { status: httpStatus });
   } catch (error) {
     console.error("[PDF_DOWNLOAD_ROUTE_ERROR]", error);
+    const message = getSafeApiErrorMessage(error, "PDF could not be generated.");
     return NextResponse.json(
       {
         status: "failed",
-        message: "PDF could not be generated.",
+        message,
+        reason: isSupabaseSchemaError(error) ? "schema_out_of_date" : undefined,
       },
-      { status: 500 },
+      { status: isSupabaseSchemaError(error) ? 503 : 500 },
     );
   }
 }

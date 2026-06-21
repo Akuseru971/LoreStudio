@@ -60,7 +60,8 @@ export async function generateFullBookMp3(bookId: string, book: LoreBook, audioM
     await markMp3Ready(bookId, storagePath);
     return storagePath;
   } catch (error) {
-    await markMp3Failed(bookId);
+    const message = error instanceof Error ? error.message : "MP3 generation failed.";
+    await markMp3Failed(bookId, message);
     throw error;
   }
 }
@@ -75,12 +76,12 @@ export async function ensureFullBookMp3(accessToken: string) {
     throw new Error("Premium access is required.");
   }
 
-  if (storedBook.mp3_status === "generating") {
-    throw new Error("Narration is still being prepared.");
+  if (storedBook.mp3_storage_path) {
+    return storedBook.mp3_storage_path;
   }
 
-  if (storedBook.mp3_status === "ready" && storedBook.mp3_storage_path) {
-    return storedBook.mp3_storage_path;
+  if (storedBook.mp3_status === "generating") {
+    throw new Error("Narration is still being prepared.");
   }
 
   const sourceBook = storedBook.full_book || storedBook.free_book;

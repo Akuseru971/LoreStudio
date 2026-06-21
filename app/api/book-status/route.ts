@@ -3,6 +3,7 @@ import { getBookByAccessToken } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 
 export const runtime = "nodejs";
 
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
       allIllustrationsReady: normalized.allIllustrationsReady,
       hasFailedIllustrations: normalized.hasFailedIllustrations,
       hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
-      pdfStatus: storedBook.pdf_status,
+      pdfStatus: storedBook.pdf_status || "not_started",
       pdfStoragePath: storedBook.pdf_storage_path,
       characterName:
         storedBook.full_book?.characterBible.name || storedBook.free_book?.characterBible.name || null,
@@ -49,7 +50,13 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Failed to load book status.", error);
-    const message = error instanceof Error ? error.message : "Unable to load book status.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = getSafeApiErrorMessage(error, "Unable to load book status.");
+    return NextResponse.json(
+      {
+        error: message,
+        reason: isSupabaseSchemaError(error) ? "schema_out_of_date" : undefined,
+      },
+      { status: isSupabaseSchemaError(error) ? 503 : 500 },
+    );
   }
 }
