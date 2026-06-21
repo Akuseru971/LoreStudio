@@ -21,7 +21,8 @@ import {
   PREMIUM_IMAGE_PAGE_NUMBERS,
 } from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
-import { getDirectImageUrl, logBookImageRender } from "@/lib/book-images";
+import { getDirectImageUrl, logBookImageRender } from "@/lib/book-image-utils";
+import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio, generatePremiumImages } from "@/lib/client/api";
 import { normalizeBook } from "@/lib/normalizeBook";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -201,13 +202,8 @@ export default function InteractiveBook({
 
       setIsLoadingVoice(true);
       try {
-        const response = await fetch("/api/generate-audio", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, pageNumber, accessToken }),
-        });
-        const data = (await response.json()) as { audioUrl?: string | null; error?: string };
-        const audioUrl = data.audioUrl || null;
+        const { data } = await generatePageAudio({ text, pageNumber, accessToken: accessToken as string });
+        const audioUrl = (data as { audioUrl?: string | null }).audioUrl || null;
         if (audioUrl) {
           setAudioCache((current) => ({ ...current, [pageNumber]: audioUrl }));
         }
@@ -245,14 +241,10 @@ export default function InteractiveBook({
       setLoadingImages((current) => ({ ...current, [pageNumber]: true }));
 
       try {
-        const response = await fetch("/api/generate-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ book: safeBook, pageNumber }),
-        });
-        const data = (await response.json()) as { imageUrl?: string | null };
-        if (data.imageUrl) {
-          setImageCache((current) => ({ ...current, [pageNumber]: data.imageUrl as string }));
+        const { data } = await generateImage({ book: safeBook, pageNumber });
+        const imageUrl = (data as { imageUrl?: string | null }).imageUrl || null;
+        if (imageUrl) {
+          setImageCache((current) => ({ ...current, [pageNumber]: imageUrl }));
         } else {
           console.warn(`[IMAGE] Missing illustration for page ${pageNumber}.`);
         }
@@ -271,25 +263,25 @@ export default function InteractiveBook({
       return true;
     }
 
-    const response = await fetch("/api/book?token=" + encodeURIComponent(accessToken));
-    const data = (await response.json()) as {
+    const { response, data } = await fetchBook(accessToken);
+    const bookData = data as {
       book?: LoreBook | null;
       images?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
       imageStatus?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
       allIllustrationsReady?: boolean;
     };
 
-    if (!response.ok || !data.book) {
+    if (!response.ok || !bookData.book) {
       return false;
     }
 
-    const normalizedBook = normalizeBook(data.book);
+    const normalizedBook = normalizeBook(bookData.book);
     if (!normalizedBook) {
       return false;
     }
 
     const bookPages = Array.isArray(normalizedBook.pages) ? normalizedBook.pages : [];
-    const imageMap = data.images || data.imageStatus || {};
+    const imageMap = bookData.images || bookData.imageStatus || {};
     const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT;
     const nextCache: Record<number, string> = {};
 
@@ -320,7 +312,7 @@ export default function InteractiveBook({
 
     setLoadingImages((current) => ({ ...current, ...nextLoading }));
 
-    return Boolean(data.allIllustrationsReady);
+    return Boolean(bookData.allIllustrationsReady);
   }, [accessToken, isPremium]);
 
   const refreshPremiumImages = refreshBookImages;
@@ -344,13 +336,10 @@ export default function InteractiveBook({
     }
 
     let cancelled = false;
+    const currentAccessToken = accessToken;
 
     async function runPremiumImages() {
-      await fetch("/api/generate-premium-images", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken }),
-      });
+      await generatePremiumImages(currentAccessToken);
 
       while (!cancelled) {
         const allReady = await refreshPremiumImages();
@@ -406,9 +395,9 @@ export default function InteractiveBook({
     let audioUrl = narratorTeaserAudioUrl;
     if (!audioUrl) {
       try {
-        const response = await fetch("/api/generate-narrator-teaser", { method: "POST" });
-        const data = (await response.json()) as { audioUrl?: string | null };
-        audioUrl = data.audioUrl || null;
+        const { data } = await generateNarratorTeaser();
+        const teaserData = data as { audioUrl?: string | null };
+        audioUrl = teaserData.audioUrl || null;
         if (audioUrl) {
           setNarratorTeaserAudioUrl(audioUrl);
         }

@@ -12,6 +12,7 @@ import {
 } from "@/lib/ambient-music-config";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { normalizeBook } from "@/lib/normalizeBook";
+import { verifyPayment } from "@/lib/client/api";
 import type { LoreBook } from "@/lib/types";
 
 type BookResponse = {
@@ -118,24 +119,21 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
 
         if (paymentState === "success" && sessionId) {
           setIsVerifyingPayment(true);
-          const verifyResponse = await fetch("/api/verify-payment", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              accessToken: currentToken,
-              sessionId,
-            }),
+          const { response: verifyResponse, data: verifyData } = await verifyPayment({
+            accessToken: currentToken,
+            sessionId,
           });
-          const verifyData = (await verifyResponse.json()) as VerifyPaymentResponse;
 
-          if (!verifyResponse.ok || !verifyData.verified) {
-            throw new Error(verifyData.error || "Payment could not be verified.");
+          const verifyResult = verifyData as VerifyPaymentResponse;
+
+          if (!verifyResponse.ok || !verifyResult.verified) {
+            throw new Error(verifyResult.error || "Payment could not be verified.");
           }
 
           if (!cancelled) {
-            const emailNotice = verifyData.confirmationEmailSent || verifyData.recoveryEmailAvailable
+            const emailNotice = verifyResult.confirmationEmailSent || verifyResult.recoveryEmailAvailable
               ? "Your legend is unlocked. Your private recovery link was also sent by email."
-              : verifyData.confirmationEmailFailed
+              : verifyResult.confirmationEmailFailed
                 ? "Your legend is unlocked. Keep this page link safe to recover your book."
                 : "Your legend is unlocked.";
             setNotice(emailNotice);

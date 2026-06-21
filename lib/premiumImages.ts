@@ -1,3 +1,5 @@
+import "server-only";
+
 import { PREMIUM_IMAGE_PAGE_NUMBERS } from "@/lib/image-config";
 import {
   claimPageImageGeneration,

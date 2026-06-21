@@ -4,7 +4,7 @@ import {
   getReadyIllustrationCount,
   hasFailedIllustrations,
   type BookImagesInput,
-} from "@/lib/book-images";
+} from "@/lib/book-image-utils";
 
 export type PdfAvailability =
   | "locked_unpaid"
@@ -19,7 +19,7 @@ export {
   getReadyIllustrationCount,
   hasFailedIllustrations,
   hasGeneratingIllustrations,
-} from "@/lib/book-images";
+} from "@/lib/book-image-utils";
 
 export function countReadyIllustrations(images: Record<string, PageImageState>) {
   return getReadyIllustrationCount({ images });

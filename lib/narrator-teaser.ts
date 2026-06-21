@@ -1,3 +1,5 @@
+import "server-only";
+
 import { generateNarrationAudio } from "@/lib/elevenlabs";
 
 export const NARRATOR_TEASER_TEXT = "Did you summon me, invocator?";

@@ -1,4 +1,7 @@
+import "server-only";
+
 import { BOOK_ASSETS_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
+import { isStorageAssetPath as isBookStorageAssetPath } from "@/lib/book-image-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type BookAssetType = "image" | "audio";
@@ -49,7 +52,7 @@ export function isInlineAssetReference(value: string) {
 }
 
 export function isStorageAssetPath(value: string) {
-  return value.startsWith("books/");
+  return isBookStorageAssetPath(value);
 }
 
 export function parseDataUrl(dataUrl: string) {

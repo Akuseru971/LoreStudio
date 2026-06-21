@@ -5,10 +5,30 @@
 import "server-only";
 import OpenAI from "openai";
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error("Missing OPENAI_API_KEY");
+let openaiClient: OpenAI | null = null;
+
+function requireOpenAiApiKey() {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Missing OPENAI_API_KEY");
+  }
+  return apiKey;
 }
 
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+export function getOpenAIClient() {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: requireOpenAiApiKey(),
+    });
+  }
+
+  return openaiClient;
+}
+
+export const openai = new Proxy({} as OpenAI, {
+  get(_target, property, receiver) {
+    const client = getOpenAIClient();
+    const value = Reflect.get(client, property, receiver);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
 });

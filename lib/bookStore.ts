@@ -1,3 +1,5 @@
+import "server-only";
+
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
 import { createSignedAssetUrl, persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";

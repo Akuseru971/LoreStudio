@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { getImageForPage, isIllustrationReady, logPdfReadyCheck } from "@/lib/book-images";
+import {
+  downloadMp3,
+  downloadPdf,
+  fetchBookStatus,
+  generatePremiumImages,
+  retryMissingImages,
+} from "@/lib/client/api";
+import { getImageForPage, isIllustrationReady, logPdfReadyCheck } from "@/lib/book-image-utils";
 import {
   getPdfButtonLabel,
   getPdfStatusMessage,
@@ -69,20 +76,20 @@ export default function BookPremiumActions({
   const pdfStatusMessage = getPdfStatusMessage(pdfAvailability);
 
   const refreshBookStatus = useCallback(async () => {
-    const response = await fetch(`/api/book-status?token=${encodeURIComponent(accessToken)}`);
-    const data = (await response.json()) as BookStatusResponse;
+    const { response, data } = await fetchBookStatus(accessToken);
+    const bookStatus = data as BookStatusResponse;
 
     if (!response.ok) {
-      throw new Error(data.error || "Unable to load book status.");
+      throw new Error(bookStatus.error || "Unable to load book status.");
     }
 
-    const normalizedImages = data.images || data.imageStatus || {};
-    const readyCount = data.readyIllustrationCount ?? data.illustrationsReadyCount ?? 0;
+    const normalizedImages = bookStatus.images || bookStatus.imageStatus || {};
+    const readyCount = bookStatus.readyIllustrationCount ?? bookStatus.illustrationsReadyCount ?? 0;
 
-    setIsPremium(Boolean(data.isPremium));
+    setIsPremium(Boolean(bookStatus.isPremium));
     setImageStatus(normalizedImages);
     setIllustrationsReadyCount(readyCount);
-    setPdfStatus(data.pdfStatus || "not_started");
+    setPdfStatus(bookStatus.pdfStatus || "not_started");
 
     console.log("[PDF_READY_CHECK] images:", normalizedImages);
     for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
@@ -101,7 +108,7 @@ export default function BookPremiumActions({
 
     logPdfReadyCheck({ images: normalizedImages }, "client");
 
-    return { ...data, images: normalizedImages, readyIllustrationCount: readyCount };
+    return { ...bookStatus, images: normalizedImages, readyIllustrationCount: readyCount };
   }, [accessToken]);
 
   const ensurePremiumImagesStarted = useCallback(async () => {
@@ -111,11 +118,7 @@ export default function BookPremiumActions({
 
     premiumGenerationStartedRef.current = true;
 
-    await fetch("/api/generate-premium-images", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessToken }),
-    });
+    await generatePremiumImages(accessToken);
   }, [accessToken]);
 
   useEffect(() => {
@@ -166,11 +169,7 @@ export default function BookPremiumActions({
     setPdfError(null);
 
     try {
-      await fetch("/api/retry-missing-images", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken }),
-      });
+      await retryMissingImages(accessToken);
       await refreshBookStatus();
     } catch {
       setPdfError("Unable to retry illustration generation.");
@@ -188,25 +187,25 @@ export default function BookPremiumActions({
     setPdfError(null);
 
     try {
-      const response = await fetch(`/api/download-pdf?token=${encodeURIComponent(accessToken)}`);
-      const data = (await response.json()) as PdfDownloadResponse;
+      const { response, data } = await downloadPdf(accessToken);
+      const pdfData = data as PdfDownloadResponse;
 
-      if (data.status === "ready" && data.downloadUrl) {
-        window.open(data.downloadUrl, "_blank", "noopener,noreferrer");
+      if (pdfData.status === "ready" && pdfData.downloadUrl) {
+        window.open(pdfData.downloadUrl, "_blank", "noopener,noreferrer");
         return;
       }
 
-      if (data.status === "not_ready") {
+      if (pdfData.status === "not_ready") {
         await refreshBookStatus();
         return;
       }
 
-      if (data.status === "generating_pdf") {
+      if (pdfData.status === "generating_pdf") {
         setPdfStatus("generating");
         return;
       }
 
-      setPdfError(data.message || "PDF could not be generated.");
+      setPdfError(pdfData.message || "PDF could not be generated.");
     } catch {
       setPdfError("PDF could not be generated.");
     } finally {
@@ -219,14 +218,14 @@ export default function BookPremiumActions({
     setMp3Error(null);
 
     try {
-      const response = await fetch(`/api/download-mp3?token=${encodeURIComponent(accessToken)}`);
-      const data = (await response.json()) as { url?: string; error?: string };
+      const { response, data } = await downloadMp3(accessToken);
+      const mp3Data = data as { url?: string; error?: string };
 
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || "The narration could not be prepared. Please try again.");
+      if (!response.ok || !mp3Data.url) {
+        throw new Error(mp3Data.error || "The narration could not be prepared. Please try again.");
       }
 
-      window.open(data.url, "_blank", "noopener,noreferrer");
+      window.open(mp3Data.url, "_blank", "noopener,noreferrer");
     } catch (downloadError) {
       setMp3Error(
         downloadError instanceof Error

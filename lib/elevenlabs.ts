@@ -1,3 +1,5 @@
+import "server-only";
+
 import { dataUrlFromBase64, sanitizeText } from "@/lib/utils";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_v3";

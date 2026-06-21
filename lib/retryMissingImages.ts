@@ -1,3 +1,5 @@
+import "server-only";
+
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import { getBookByAccessToken } from "@/lib/bookStore";

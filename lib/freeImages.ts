@@ -1,3 +1,5 @@
+import "server-only";
+
 import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import {
   claimPageImageGeneration,

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import type { ImagePageStatus, PageImageState, StoredBook } from "@/lib/types";
 import { getImageForPage, getImageUrl, isIllustrationReady, normalizeBookImages } from "@/lib/book-images";

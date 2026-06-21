@@ -1,3 +1,5 @@
+import "server-only";
+
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { buildPageNarrationText } from "@/lib/bookNarration";
 import {
