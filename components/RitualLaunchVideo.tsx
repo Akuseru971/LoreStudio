@@ -109,10 +109,7 @@ export default function RitualLaunchVideo({
   const [duration, setDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [showPlayPrompt, setShowPlayPrompt] = useState(false);
-  const [showTapForSound, setShowTapForSound] = useState(false);
   const [showSlowMessage, setShowSlowMessage] = useState(false);
-  const [showContinue, setShowContinue] = useState(false);
 
   const useNativeControls = isMobile && useNativeControlsOnMobile;
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -127,7 +124,6 @@ export default function RitualLaunchVideo({
   }, []);
 
   const handleSkip = useCallback(() => finish(onSkip), [finish, onSkip]);
-  const handleContinue = useCallback(() => finish(onEnded), [finish, onEnded]);
 
   const revealControls = useCallback(
     (autoHide = true) => {
@@ -135,17 +131,17 @@ export default function RitualLaunchVideo({
       if (hideControlsTimerRef.current) {
         window.clearTimeout(hideControlsTimerRef.current);
       }
-      if (autoHide && isPlaying && !showPlayPrompt && !showTapForSound) {
+      if (autoHide && isPlaying) {
         hideControlsTimerRef.current = window.setTimeout(() => {
           setControlsVisible(false);
         }, CONTROLS_HIDE_MS);
       }
     },
-    [isPlaying, showPlayPrompt, showTapForSound],
+    [isPlaying],
   );
 
   const attemptPlay = useCallback(async () => {
-    if (finishedRef.current || showContinue || !playerRef.current) {
+    if (finishedRef.current || !playerRef.current) {
       return;
     }
 
@@ -154,80 +150,28 @@ export default function RitualLaunchVideo({
 
     const withSound = await playerRef.current.play(true);
     if (withSound) {
+      console.log("[RITUAL_VIDEO_STARTED]", Date.now());
       setIsMuted(false);
       setHasStarted(true);
       setIsPlaying(true);
       setIsBuffering(false);
-      setShowPlayPrompt(false);
-      setShowTapForSound(false);
       return;
     }
 
     const video = playerRef.current.getVideoElement();
     if (video && !video.paused) {
+      console.log("[RITUAL_VIDEO_STARTED]", Date.now());
       setIsMuted(true);
       setHasStarted(true);
       setIsPlaying(true);
       setIsBuffering(false);
-      setShowTapForSound(true);
-      setShowPlayPrompt(false);
       return;
     }
 
     const mutedPlay = await playerRef.current.play(false);
     if (mutedPlay) {
+      console.log("[RITUAL_VIDEO_STARTED]", Date.now());
       setIsMuted(true);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
-      setShowTapForSound(true);
-      setShowPlayPrompt(false);
-      return;
-    }
-
-    setShowPlayPrompt(true);
-    setShowTapForSound(false);
-  }, [showContinue]);
-
-  const handlePlayIntro = useCallback(async () => {
-    if (!playerRef.current) {
-      return;
-    }
-
-    setShowPlayPrompt(false);
-    setShowTapForSound(false);
-    setVolume(DEFAULT_VOLUME);
-    playerRef.current.setVolume(DEFAULT_VOLUME);
-
-    const ok = await playerRef.current.unmuteWithVolume(DEFAULT_VOLUME);
-    if (ok) {
-      setIsMuted(false);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
-      return;
-    }
-
-    const mutedOk = await playerRef.current.play(false);
-    if (mutedOk) {
-      setIsMuted(true);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setShowTapForSound(true);
-    }
-  }, []);
-
-  const handleTapForSound = useCallback(async () => {
-    if (!playerRef.current) {
-      return;
-    }
-
-    setVolume(DEFAULT_VOLUME);
-    playerRef.current.setVolume(DEFAULT_VOLUME);
-    const ok = await playerRef.current.unmuteWithVolume(DEFAULT_VOLUME);
-    if (ok) {
-      setIsMuted(false);
-      setShowTapForSound(false);
       setHasStarted(true);
       setIsPlaying(true);
       setIsBuffering(false);
@@ -395,11 +339,9 @@ export default function RitualLaunchVideo({
               setIsPlaying(true);
               setIsBuffering(false);
               setShowSlowMessage(false);
-              setShowPlayPrompt(false);
               const video = playerRef.current?.getVideoElement();
               if (video?.muted) {
                 setIsMuted(true);
-                setShowTapForSound(true);
               }
             }}
             onPause={() => setIsPlaying(false)}
@@ -420,7 +362,7 @@ export default function RitualLaunchVideo({
             }}
           />
 
-          {isBuffering && !hasError && !showContinue ? (
+          {isBuffering && !hasError ? (
             <div className="ritual-launch-video-loader" aria-live="polite">
               <span className="ritual-launch-video-spinner" />
               <p className="ritual-launch-video-buffer-text">Loading the archive…</p>
@@ -439,40 +381,11 @@ export default function RitualLaunchVideo({
             </p>
           ) : null}
 
-          {showPlayPrompt && !showContinue && !hasError ? (
-            <div className="ritual-launch-video-prompt-wrap">
-              <button
-                type="button"
-                onClick={() => void handlePlayIntro()}
-                className="gold-button ritual-launch-video-prompt"
-              >
-                Play intro
-              </button>
-            </div>
-          ) : null}
-
-          {showTapForSound && isMuted && !showPlayPrompt && !showContinue && !hasError ? (
-            <div className="ritual-launch-video-sound-wrap">
-              <button type="button" onClick={() => void handleTapForSound()} className="ritual-launch-video-sound">
-                Tap for sound
-              </button>
-              <p className="ritual-launch-video-sound-sub">Your legend has a voice.</p>
-            </div>
-          ) : null}
-
-          {showContinue ? (
-            <div className="ritual-launch-video-continue-wrap">
-              <button type="button" onClick={handleContinue} className="gold-button ritual-launch-video-continue">
-                Continue
-              </button>
-            </div>
-          ) : null}
-
           <button type="button" onClick={handleSkip} className="ritual-launch-video-skip-top">
             Skip intro
           </button>
 
-          {!useNativeControls && !showContinue ? (
+          {!useNativeControls ? (
             <div
               className={cn("ritual-launch-video-controls", controlsVisible && "is-visible")}
               onClick={(event) => event.stopPropagation()}

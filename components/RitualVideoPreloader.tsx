@@ -12,6 +12,8 @@ export default function RitualVideoPreloader() {
       return;
     }
 
+    console.log("[VIDEO_PRELOAD_STARTED]", Date.now());
+
     const existing = document.querySelector<HTMLLinkElement>(`link[data-ritual-video-preload="${src}"]`);
     if (!existing) {
       const link = document.createElement("link");

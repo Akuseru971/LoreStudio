@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import MagicalBackground from "@/components/MagicalBackground";
+import { getChampionImage } from "@/lib/runeterra-form-lore";
 import type { ApprovedSynopsis } from "@/lib/types";
 
 type SynopsisPreviewProps = {
@@ -16,6 +18,44 @@ type SynopsisPreviewProps = {
   isCreating?: boolean;
 };
 
+function ChampionPortrait({
+  championName,
+  imageUrl,
+}: {
+  championName: string;
+  imageUrl: string | null;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const showImage = Boolean(imageUrl) && !imageFailed;
+
+  return (
+    <div className="mx-auto w-full max-w-[9.5rem] shrink-0 md:mx-0">
+      <div className="relative overflow-hidden rounded-2xl border border-[#c9a858]/25 bg-[#07101c]/50 shadow-[0_0_28px_rgba(201,168,88,0.12)]">
+        <div className="relative aspect-[4/5] w-full">
+          {showImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl as string}
+              alt={championName}
+              className="h-full w-full object-cover object-top"
+              onError={() => setImageFailed(true)}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_20%,rgba(201,168,88,.16),transparent_12rem),linear-gradient(160deg,#120d07,#09111e)] px-3 text-center">
+              <p className="font-title text-[0.62rem] uppercase tracking-[0.24em] text-[#c9a858]/75">{championName}</p>
+            </div>
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#020617]/80 via-transparent to-transparent" />
+        </div>
+      </div>
+      <p className="mt-2 text-center text-[0.62rem] uppercase tracking-[0.2em] text-[#9baabd] md:text-left">
+        Connected champion
+      </p>
+      <p className="mt-1 text-center text-sm font-medium text-[#e8dcc0] md:text-left">{championName}</p>
+    </div>
+  );
+}
+
 export default function SynopsisPreview({
   synopsis,
   isLoading,
@@ -27,6 +67,9 @@ export default function SynopsisPreview({
   onRetry,
   isCreating = false,
 }: SynopsisPreviewProps) {
+  const championName = synopsis?.championConnection?.championName || "A regional champion";
+  const championImage = useMemo(() => getChampionImage(synopsis?.championConnection?.championName), [synopsis]);
+
   return (
     <main className="archive-shell relative min-h-screen overflow-y-auto px-5 py-10 md:px-8">
       <MagicalBackground intensity="form" />
@@ -71,27 +114,33 @@ export default function SynopsisPreview({
                   {synopsis.legendaryTitle}
                 </h2>
 
-                <dl className="mt-6 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Region</dt>
-                    <dd className="mt-1 text-sm text-[#e8dcc0]">{synopsis.region}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Role</dt>
-                    <dd className="mt-1 text-sm text-[#e8dcc0]">{synopsis.specificRole}</dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Connected champion</dt>
-                    <dd className="mt-1 text-sm text-[#e8dcc0]">
-                      {synopsis.championConnection?.championName || "A regional champion"}
-                      {synopsis.championConnection?.connectionSummary
-                        ? ` — ${synopsis.championConnection.connectionSummary}`
-                        : null}
-                    </dd>
-                  </div>
-                </dl>
+                <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-start">
+                  <ChampionPortrait championName={championName} imageUrl={championImage} />
 
-                <p className="mt-6 text-sm leading-7 text-[#c9d3df]">{synopsis.synopsis}</p>
+                  <div className="min-w-0 flex-1">
+                    <dl className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Region</dt>
+                        <dd className="mt-1 text-sm text-[#e8dcc0]">{synopsis.region}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Role</dt>
+                        <dd className="mt-1 text-sm text-[#e8dcc0]">{synopsis.specificRole}</dd>
+                      </div>
+                    </dl>
+
+                    {synopsis.championConnection?.connectionSummary ? (
+                      <div className="mt-5">
+                        <p className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Champion connection</p>
+                        <p className="mt-2 text-sm leading-7 text-[#c9d3df]">
+                          {synopsis.championConnection.connectionSummary}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <p className="mt-5 text-sm leading-7 text-[#c9d3df]">{synopsis.synopsis}</p>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-6 flex flex-col gap-3">

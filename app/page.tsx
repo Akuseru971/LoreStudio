@@ -5,10 +5,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
 import ArchiveErrorBoundary from "@/components/ArchiveErrorBoundary";
-import IntroGate from "@/components/IntroGate";
+import IntroCarousel from "@/components/IntroCarousel";
 import InteractiveBook from "@/components/InteractiveBook";
 import LoadingRitual from "@/components/LoadingRitual";
-import MysticalStartTransition from "@/components/MysticalStartTransition";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
 import RitualVideoPreloader from "@/components/RitualVideoPreloader";
@@ -26,8 +25,7 @@ import { normalizeBook } from "@/lib/normalizeBook";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
 type AppStep =
-  | "intro"
-  | "startTransition"
+  | "carousel"
   | "form"
   | "synopsis"
   | "ritualVideo"
@@ -54,7 +52,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
 }
 
 export default function Home() {
-  const [step, setStep] = useState<AppStep>("intro");
+  const [step, setStep] = useState<AppStep>("carousel");
   const [generationStatus, setGenerationStatus] = useState<GenerationStatus>("idle");
   const [book, setBook] = useState<LoreBook | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -70,6 +68,7 @@ export default function Home() {
 
   const generationRunRef = useRef(0);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
+  const createLegendLockRef = useRef(false);
   const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
@@ -198,10 +197,12 @@ export default function Home() {
   }
 
   function handleCreateLegend() {
-    if (!formInput || !approvedSynopsis || generationStatus === "generating") {
+    if (!formInput || !approvedSynopsis || generationStatus === "generating" || createLegendLockRef.current) {
       return;
     }
 
+    createLegendLockRef.current = true;
+    console.log("[SYNOPSIS_APPROVED]", Date.now());
     console.log("[CREATE_LEGEND_CLICK]", Date.now());
 
     generationRunRef.current += 1;
@@ -222,6 +223,8 @@ export default function Home() {
       console.error("[GENERATION_REQUEST_FAILED]", error);
       setGenerationError(error instanceof Error ? error.message : "The archives refused to open. Try again.");
       setGenerationStatus("failed");
+    }).finally(() => {
+      createLegendLockRef.current = false;
     });
 
     generationPromiseRef.current = generationPromise;
@@ -290,6 +293,7 @@ export default function Home() {
   function reset() {
     generationRunRef.current += 1;
     synopsisRequestRef.current += 1;
+    createLegendLockRef.current = false;
     setBook(null);
     setAccessToken(null);
     setFormInput(null);
@@ -306,18 +310,12 @@ export default function Home() {
   return (
     <>
       <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} normalVolume={ambientMusicVolume} />
-      {step === "form" ? <RitualVideoPreloader /> : null}
+      {step === "form" || step === "synopsis" ? <RitualVideoPreloader /> : null}
 
       <AnimatePresence>
-        {step === "intro" ? (
-          <motion.div key="intro" exit={{ opacity: 0, filter: "blur(18px)" }} transition={{ duration: 0.7 }}>
-            <IntroGate onStart={() => setStep("startTransition")} />
-          </motion.div>
-        ) : null}
-
-        {step === "startTransition" ? (
-          <motion.div key="startTransition" exit={{ opacity: 0, filter: "blur(12px)" }} transition={{ duration: 0.45 }}>
-            <MysticalStartTransition onComplete={() => setStep("form")} />
+        {step === "carousel" ? (
+          <motion.div key="carousel" exit={{ opacity: 0, filter: "blur(12px)" }} transition={{ duration: 0.45 }}>
+            <IntroCarousel onBegin={() => setStep("form")} />
           </motion.div>
         ) : null}
 

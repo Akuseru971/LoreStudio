@@ -1,5 +1,6 @@
 import "server-only";
 
+import { NO_DASH_WRITING_RULE } from "@/lib/clean-generated-text";
 import { openai } from "@/lib/server/openai";
 import { SYNOPSIS_MODEL } from "@/lib/server/generation-config";
 import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
@@ -49,6 +50,7 @@ export function buildSynopsisPrompt(input: BookFormInput, regenerationAttempt = 
 You create short story synopses for original characters.
 Your synopsis must be clear, cinematic, grounded in a region, and easy to understand.
 You avoid vague prophecy, random symbolism, and disconnected fantasy clichés.
+${NO_DASH_WRITING_RULE}
 Return strict valid JSON only.`;
 
   const variationNote =
@@ -77,6 +79,7 @@ The synopsis must:
 - make the user want to generate the full book
 - feel like the back-cover pitch of a fantasy lore book
 - avoid page numbers, payment language, technical terms, and generic chosen-one phrasing
+- ${NO_DASH_WRITING_RULE.replace(/\n/g, "\n- ")}
 
 Champion connection rules:
 - choose one champion fitting the region

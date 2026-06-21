@@ -1,4 +1,5 @@
 import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
+import { cleanGeneratedText } from "@/lib/clean-generated-text";
 import { sanitizeText } from "@/lib/sanitize-text";
 
 export function validateSynopsisPayload(payload: unknown): ApprovedSynopsis | null {
@@ -10,13 +11,13 @@ export function validateSynopsisPayload(payload: unknown): ApprovedSynopsis | nu
     championConnection?: { championName?: unknown; connectionSummary?: unknown };
   };
 
-  const synopsis = sanitizeText(source.synopsis, 1200);
-  const legendaryTitle = sanitizeText(source.legendaryTitle, 120);
+  const synopsis = cleanGeneratedText(sanitizeText(source.synopsis, 1200));
+  const legendaryTitle = cleanGeneratedText(sanitizeText(source.legendaryTitle, 120));
   const region = sanitizeText(source.region, 80);
-  const specificRole = sanitizeText(source.specificRole, 120);
-  const coreConflict = sanitizeText(source.coreConflict, 240);
+  const specificRole = cleanGeneratedText(sanitizeText(source.specificRole, 120));
+  const coreConflict = cleanGeneratedText(sanitizeText(source.coreConflict, 240));
   const championName = sanitizeText(source.championConnection?.championName, 80);
-  const connectionSummary = sanitizeText(source.championConnection?.connectionSummary, 400);
+  const connectionSummary = cleanGeneratedText(sanitizeText(source.championConnection?.connectionSummary, 400));
 
   if (!synopsis || !legendaryTitle || !region || !specificRole || !coreConflict || !championName || !connectionSummary) {
     return null;
