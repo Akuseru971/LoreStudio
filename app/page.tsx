@@ -23,6 +23,7 @@ import {
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
 import { normalizeBook } from "@/lib/normalizeBook";
+import { useIsMobile } from "@/lib/useIsMobile";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
 type AppStep =
@@ -71,7 +72,8 @@ export default function Home() {
   const generationRunRef = useRef(0);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
   const synopsisRequestRef = useRef(0);
-  const introVideoSrc = getRitualLaunchVideoSrc();
+  const isMobileViewport = useIsMobile();
+  const introVideoSrc = getRitualLaunchVideoSrc(isMobileViewport);
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
   const shouldPlayAmbientMusic =
     (step === "form" || step === "synopsis" || (step === "book" && bookIsOpen)) && !ambientMuted;
@@ -157,18 +159,31 @@ export default function Home() {
     });
 
     const data = await readJsonResponse<{
-      book?: LoreBook;
+      success?: boolean;
       accessToken?: string;
+      bookId?: string;
+      status?: string;
+      readyImagesCount?: number;
       error?: string;
       debug?: { name?: string };
     }>(response);
 
-    if (!response.ok || !data.book || !data.accessToken) {
+    if (!response.ok || !data.accessToken) {
       const detail = data.error || data.debug?.name;
       throw new Error(detail || "The archives refused to open. Try again.");
     }
 
-    const normalizedBook = normalizeBook(data.book);
+    const bookResponse = await fetch(`/api/book?token=${encodeURIComponent(data.accessToken)}`);
+    const bookData = await readJsonResponse<{
+      book?: LoreBook | null;
+      error?: string;
+    }>(bookResponse);
+
+    if (!bookResponse.ok || !bookData.book) {
+      throw new Error(bookData.error || "The generated book could not be loaded.");
+    }
+
+    const normalizedBook = normalizeBook(bookData.book);
     if (!normalizedBook) {
       throw new Error("The generated book could not be prepared for reading.");
     }
