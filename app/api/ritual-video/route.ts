@@ -1,76 +1,81 @@
 import { NextResponse } from "next/server";
+import {
+  isClientConnectionClosedError,
+  logClientConnectionClosed,
+  clientConnectionClosedResponse,
+  logRouteError,
+  logRouteStart,
+  logRouteSuccess,
+} from "@/lib/api-route-utils";
+import { getRitualLaunchVideoUrl } from "@/lib/video-config";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function getConfiguredVideoUrl() {
   return (
+    getRitualLaunchVideoUrl(false) ||
+    getRitualLaunchVideoUrl(true) ||
     process.env.RITUAL_LAUNCH_VIDEO_URL?.trim() ||
     process.env.NEXT_PUBLIC_RITUAL_LAUNCH_VIDEO?.trim() ||
     ""
   );
 }
 
-async function fetchUpstreamVideo(request: Request) {
-  const videoUrl = getConfiguredVideoUrl();
-  if (!videoUrl) {
-    return null;
+/**
+ * Legacy endpoint — returns a direct CDN URL instead of proxying video bytes.
+ * The browser should load video from storage/CDN directly.
+ */
+export async function GET(request: Request) {
+  const routeName = "/api/ritual-video";
+  logRouteStart(routeName, request);
+
+  if (request.signal.aborted) {
+    logClientConnectionClosed(routeName);
+    return clientConnectionClosedResponse();
   }
 
-  const range = request.headers.get("range");
-  const upstream = await fetch(videoUrl, {
-    headers: range ? { Range: range } : undefined,
-  });
-
-  return { upstream, videoUrl };
-}
-
-export async function GET(request: Request) {
   try {
-    const result = await fetchUpstreamVideo(request);
-    if (!result) {
+    const videoUrl = getConfiguredVideoUrl();
+    if (!videoUrl) {
       return NextResponse.json({ error: "Video not configured." }, { status: 404 });
     }
 
-    const { upstream } = result;
-    if (!upstream.ok || !upstream.body) {
-      return NextResponse.json({ error: "Video unavailable." }, { status: upstream.status || 502 });
+    logRouteSuccess(routeName);
+    return NextResponse.json(
+      { url: videoUrl },
+      {
+        headers: {
+          "Cache-Control": "private, max-age=300",
+        },
+      },
+    );
+  } catch (error) {
+    if (isClientConnectionClosedError(error)) {
+      logClientConnectionClosed(routeName);
+      return clientConnectionClosedResponse();
     }
 
-    const headers = new Headers();
-    headers.set("Content-Type", upstream.headers.get("content-type") || "video/mp4");
-    headers.set("Cache-Control", "private, max-age=300");
-    headers.set("Accept-Ranges", upstream.headers.get("accept-ranges") || "bytes");
-
-    const contentLength = upstream.headers.get("content-length");
-    const contentRange = upstream.headers.get("content-range");
-    if (contentLength) headers.set("Content-Length", contentLength);
-    if (contentRange) headers.set("Content-Range", contentRange);
-
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers,
-    });
-  } catch (error) {
-    console.error("Ritual video proxy failed.", error);
+    logRouteError(routeName, error);
     return NextResponse.json({ error: "Video fetch failed." }, { status: 502 });
   }
 }
 
-export async function HEAD() {
-  try {
-    const videoUrl = getConfiguredVideoUrl();
-    if (!videoUrl) {
-      return new Response(null, { status: 404 });
-    }
+export async function HEAD(request: Request) {
+  const routeName = "/api/ritual-video";
+  logRouteStart(routeName, request);
 
-    const upstream = await fetch(videoUrl, { method: "HEAD" });
-    return new Response(null, {
-      status: upstream.ok ? 200 : upstream.status,
-      headers: {
-        "Content-Type": upstream.headers.get("content-type") || "video/mp4",
-      },
-    });
-  } catch {
-    return new Response(null, { status: 502 });
+  const videoUrl = getConfiguredVideoUrl();
+  if (!videoUrl) {
+    return new Response(null, { status: 404 });
   }
+
+  logRouteSuccess(routeName);
+  return new Response(null, {
+    status: 200,
+    headers: {
+      "X-Ritual-Video-Url": videoUrl,
+      "Cache-Control": "private, max-age=300",
+    },
+  });
 }
