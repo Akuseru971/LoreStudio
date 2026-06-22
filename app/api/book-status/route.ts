@@ -3,11 +3,30 @@ import { getBookByAccessToken } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import {
+  isClientConnectionClosedError,
+  isRequestAborted,
+  logClientConnectionClosed,
+  clientConnectionClosedResponse,
+  logRouteStart,
+  logRouteSuccess,
+  respondToRouteError,
+} from "@/lib/api-route-utils";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const ROUTE_NAME = "/api/book-status";
 
 export async function GET(request: Request) {
+  logRouteStart(ROUTE_NAME, request);
+
+  if (isRequestAborted(request)) {
+    logClientConnectionClosed(ROUTE_NAME);
+    return clientConnectionClosedResponse();
+  }
+
   const { searchParams } = new URL(request.url);
   const token = searchParams.get("token");
 
@@ -27,6 +46,8 @@ export async function GET(request: Request) {
     if (!normalized.allIllustrationsReady) {
       logPdfReadyCheck(normalized.input, "book-status");
     }
+
+    logRouteSuccess(ROUTE_NAME);
 
     return NextResponse.json({
       status: storedBook.status,
@@ -50,7 +71,16 @@ export async function GET(request: Request) {
       title: storedBook.full_book?.title || storedBook.free_book?.title || null,
     });
   } catch (error) {
-    console.error("Failed to load book status.", error);
+    if (isClientConnectionClosedError(error)) {
+      logClientConnectionClosed(ROUTE_NAME);
+      return clientConnectionClosedResponse();
+    }
+
+    const response = respondToRouteError(ROUTE_NAME, error, "Unable to load book status.");
+    if (response) {
+      return response;
+    }
+
     const message = getSafeApiErrorMessage(error, "Unable to load book status.");
     return NextResponse.json(
       {

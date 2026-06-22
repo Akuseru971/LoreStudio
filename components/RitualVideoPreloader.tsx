@@ -2,10 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { getRitualLaunchVideoSrc, isRitualLaunchVideoConfigured } from "@/lib/video-config";
+import { useIsMobile } from "@/lib/useIsMobile";
 
 export default function RitualVideoPreloader() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const src = getRitualLaunchVideoSrc();
+  const isMobile = useIsMobile();
+  const src = getRitualLaunchVideoSrc(isMobile);
 
   useEffect(() => {
     if (!src || !isRitualLaunchVideoConfigured()) {
