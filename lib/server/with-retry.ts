@@ -27,6 +27,10 @@ export function isRetryableImageError(error: unknown) {
     return true;
   }
 
+  if (code === "unknown_parameter") {
+    return false;
+  }
+
   if (code === "UND_ERR_SOCKET" || code === "ECONNRESET" || code === "ETIMEDOUT") {
     return true;
   }
@@ -45,6 +49,7 @@ export function isRetryableImageError(error: unknown) {
     message.includes("missing openai_api_key") ||
     message.includes("invalid prompt") ||
     message.includes("unsupported") ||
+    message.includes("unknown parameter") ||
     message.includes("bad request")
   ) {
     return false;

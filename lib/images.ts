@@ -12,6 +12,10 @@ type GenerateImageOptions = {
   maxAttempts?: number;
 };
 
+function supportsBase64ResponseFormat(model: string) {
+  return !model.startsWith("gpt-image");
+}
+
 export async function generateBookPageImage(book: LoreBook, page: BookPage, options: GenerateImageOptions = {}) {
   const pageNumber = page.pageNumber;
   console.log("[IMAGE_STEP_START]", { pageNumber, type: "book_page_image" });
@@ -39,8 +43,15 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
     try {
       const isGptImageModel = model.startsWith("gpt-image");
       const quality = isGptImageModel ? normalizeImageQuality(IMAGE_QUALITY) : undefined;
+      const useBase64 = supportsBase64ResponseFormat(model);
 
-      console.log("[OPENAI_IMAGE_REQUEST_START]", { pageNumber, model, quality, size });
+      console.log("[OPENAI_IMAGE_REQUEST_START]", {
+        pageNumber,
+        model,
+        quality,
+        size,
+        responseFormat: useBase64 ? "b64_json" : "url",
+      });
 
       const response = await withRetry(
         () =>
@@ -49,7 +60,7 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
             prompt,
             size: size as "1024x1024" | "1024x1536" | "1536x1024",
             quality,
-            response_format: "b64_json",
+            ...(useBase64 ? { response_format: "b64_json" as const } : {}),
           }),
         { pageNumber, step: "openai_generate", model, size },
       );
@@ -68,36 +79,6 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
       }
     } catch (error) {
       logImageGenerationStepError(pageNumber, "openai_generate", error);
-
-      if (model.startsWith("gpt-image") || isResponseFormatFallbackNeeded(error)) {
-        try {
-          const fallbackQuality = model.startsWith("gpt-image") ? normalizeImageQuality(IMAGE_QUALITY) : undefined;
-          console.log("[OPENAI_IMAGE_REQUEST_START]", { pageNumber, model, quality: fallbackQuality, size, mode: "url_fallback" });
-          const fallbackResponse = await withRetry(
-            () =>
-              openai.images.generate({
-                model,
-                prompt,
-                size: size as "1024x1024" | "1024x1536" | "1536x1024",
-                quality: fallbackQuality,
-              }),
-            { pageNumber, step: "openai_generate_url_fallback", model, size },
-          );
-
-          const fallbackImage = fallbackResponse.data?.[0];
-          if (fallbackImage?.b64_json) {
-            console.log("[OPENAI_IMAGE_URL_RECEIVED]", { pageNumber, hasUrl: false, hasBase64: true });
-            return dataUrlFromBase64(fallbackImage.b64_json, "image/png");
-          }
-
-          if (fallbackImage?.url) {
-            console.log("[OPENAI_IMAGE_URL_RECEIVED]", { pageNumber, hasUrl: true, hasBase64: false });
-            return fallbackImage.url;
-          }
-        } catch (fallbackError) {
-          logImageGenerationStepError(pageNumber, "openai_generate_url_fallback", fallbackError);
-        }
-      }
     }
   }
 
@@ -106,11 +87,6 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
   }
 
   return undefined;
-}
-
-function isResponseFormatFallbackNeeded(error: unknown) {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return message.includes("response_format") || message.includes("unsupported") || message.includes("unknown parameter");
 }
 
 export function buildFallbackIllustration(book: LoreBook, page: BookPage) {
