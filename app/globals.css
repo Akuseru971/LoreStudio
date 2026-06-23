@@ -724,6 +724,117 @@ button {
   border-radius: 4px 14px 14px 4px;
 }
 
+@media (max-width: 768px) {
+  .mobile-book-shell {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+  }
+
+  .mobile-book-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: auto;
+    padding-bottom: calc(108px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-chapter-card {
+    width: 100%;
+    padding: 12px;
+    border-radius: 28px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+    border: 1px solid rgba(218, 185, 112, 0.14);
+  }
+
+  .mobile-chapter-image-frame {
+    width: 100%;
+    height: clamp(300px, 46vh, 430px);
+    border-radius: 20px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    background: rgba(10, 12, 18, 0.75);
+  }
+
+  .mobile-chapter-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+
+  .mobile-chapter-image-placeholder {
+    display: flex;
+    height: 100%;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+    background:
+      radial-gradient(circle at 50% 18%, rgba(217, 189, 120, 0.16), transparent 12rem),
+      linear-gradient(160deg, #120d07, #09111e 48%, #03050a);
+  }
+
+  .mobile-chapter-text-card {
+    padding: 14px 16px 22px;
+    border-radius: 18px;
+    background: rgba(8, 10, 16, 0.78);
+    border: 1px solid rgba(218, 185, 112, 0.18);
+    backdrop-filter: blur(10px);
+  }
+
+  .mobile-chapter-meta {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.72;
+    margin-bottom: 6px;
+    color: #9baabd;
+  }
+
+  .mobile-chapter-title {
+    font-size: clamp(21px, 6vw, 28px);
+    line-height: 1.08;
+    margin: 0 0 10px;
+    color: #f7ebce;
+  }
+
+  .mobile-chapter-body {
+    font-size: 15.5px;
+    line-height: 1.55;
+    margin: 0;
+    color: #c9d3df;
+  }
+
+  .mobile-book-scroll-footer {
+    margin-top: 1rem;
+    padding-inline: 0.25rem;
+  }
+
+  .mobile-book-scroll-footer .mx-auto.mt-6 {
+    margin-top: 0;
+  }
+
+  .chapter-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    min-height: 64px;
+    max-height: 76px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(8, 18, 37, 0.92);
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    backdrop-filter: blur(10px);
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
 .ritual-particle {
   position: absolute;
   width: 3px;

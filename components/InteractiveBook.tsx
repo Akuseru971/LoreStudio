@@ -8,6 +8,7 @@ import AudioControls from "@/components/AudioControls";
 import BookAtmosphere from "@/components/BookAtmosphere";
 import BookPage from "@/components/BookPage";
 import MagicalBookCover from "@/components/MagicalBookCover";
+import MobileBookReader from "@/components/MobileBookReader";
 import BookPremiumActions from "@/components/BookPremiumActions";
 import NarratorUnlockModal from "@/components/NarratorUnlockModal";
 import ResultActions from "@/components/ResultActions";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
 import { getDirectImageUrl, logBookImageRender } from "@/lib/book-image-utils";
+import { useIsMobile } from "@/lib/useIsMobile";
 import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio, generatePremiumImages } from "@/lib/client/api";
 import { normalizeBook } from "@/lib/normalizeBook";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
@@ -129,6 +131,7 @@ export default function InteractiveBook({
   const [isNarratorPlaying, setIsNarratorPlaying] = useState(false);
   const [narratorError, setNarratorError] = useState<string | null>(null);
 
+  const isMobile = useIsMobile();
   const flipRef = useRef<PageFlipHandle | null>(null);
   const voiceRef = useRef<HTMLAudioElement | null>(null);
   const teaserRef = useRef<HTMLAudioElement | null>(null);
@@ -170,6 +173,11 @@ export default function InteractiveBook({
   const characterName = safeBook.characterBible?.name || safeBook.title || "Your legend";
   const showCover = bookState !== "open";
   const showOpenBook = bookState === "opening" || bookState === "open";
+
+  const imageSealedForPage = useCallback(
+    (pageNumber: number) => !isPremium && isSealedFreeImagePage(pageNumber),
+    [isPremium],
+  );
 
   useEffect(() => {
     onReadingStateChange?.(bookState === "open");
@@ -591,12 +599,13 @@ export default function InteractiveBook({
     setShowUnlockModal(false);
     setBookState("opening");
     setActivePageIndex(initialPageIndex);
+    const openingDelay = isMobile ? 900 : OPENING_DURATION_MS;
     window.setTimeout(() => {
       setBookState("open");
-      if (initialPageIndex > 0) {
+      if (!isMobile && initialPageIndex > 0) {
         flipRef.current?.pageFlip()?.flip(initialPageIndex * 2, "top");
       }
-    }, OPENING_DURATION_MS);
+    }, openingDelay);
   }
 
   function handleFlip(event: { data?: number }) {
@@ -616,6 +625,12 @@ export default function InteractiveBook({
     if (!canGoPrevious) {
       return;
     }
+
+    if (isMobile) {
+      setActivePageIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
+
     const previousSpread = Math.max(activePageIndex - 1, 0);
     flipRef.current?.pageFlip()?.flip(previousSpread * 2, "top");
   }
@@ -627,6 +642,11 @@ export default function InteractiveBook({
 
     const nextIndex = activePageIndex + 1;
     if (!tryForwardNavigation(nextIndex)) {
+      return;
+    }
+
+    if (isMobile) {
+      setActivePageIndex(nextIndex);
       return;
     }
 
@@ -677,9 +697,19 @@ export default function InteractiveBook({
   }
 
   return (
-    <main className="archive-shell relative min-h-screen px-4 py-8 sm:px-6 lg:px-8">
-      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col items-center justify-center">
-        <div className="book-scene relative w-full">
+    <main
+      className={cn(
+        "archive-shell relative px-4 py-8 sm:px-6 lg:px-8",
+        isMobile && isOpen ? "h-dvh overflow-hidden py-4" : "min-h-screen",
+      )}
+    >
+      <div
+        className={cn(
+          "relative z-10 mx-auto flex max-w-7xl flex-col items-center",
+          isMobile && isOpen ? "h-full min-h-0 justify-start" : "min-h-[calc(100vh-4rem)] justify-center",
+        )}
+      >
+        <div className={cn("book-scene relative w-full", isMobile && isOpen && "flex min-h-0 flex-1 flex-col")}>
           {showOpenBook && bookState === "open" ? (
             <div className="pointer-events-none absolute inset-0 z-0 flex justify-center">
               <div className="relative h-full w-full max-w-4xl">
@@ -699,28 +729,67 @@ export default function InteractiveBook({
                     : { opacity: 1, y: 0, scale: 1 }
                 }
                 exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: bookState === "opening" ? 1.6 : 0.85, ease: "easeOut" }}
+                transition={{ duration: isMobile ? 0.45 : bookState === "opening" ? 1.6 : 0.85, ease: "easeOut" }}
                 className={cn(
                   "w-full",
+                  isMobile && isOpen && "flex min-h-0 flex-1 flex-col",
                   bookState === "opening" ? "pointer-events-none absolute inset-x-0 top-0" : "relative",
                 )}
                 aria-hidden={bookState === "opening"}
               >
-                <div className="mb-5 flex flex-wrap items-start justify-between gap-4 text-center sm:text-left">
-                  <div className="mx-auto sm:mx-0">
-                    <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
-                      Chapter {activePage.pageNumber}
-                    </p>
-                    <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{activePage.title}</h1>
-                    <p className="mt-2 text-sm text-[#a89068]/70">{characterName}</p>
+                {!(isMobile && isOpen) ? (
+                  <div className="mb-5 flex flex-wrap items-start justify-between gap-4 text-center sm:text-left">
+                    <div className="mx-auto sm:mx-0">
+                      <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
+                        Chapter {activePage.pageNumber}
+                      </p>
+                      <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{activePage.title}</h1>
+                      <p className="mt-2 text-sm text-[#a89068]/70">{characterName}</p>
+                    </div>
+                    {isPremium && accessToken ? (
+                      <BookPremiumActions accessToken={accessToken} className="mx-auto sm:mx-0" />
+                    ) : null}
                   </div>
-                  {isPremium && accessToken ? (
-                    <BookPremiumActions accessToken={accessToken} className="mx-auto sm:mx-0" />
-                  ) : null}
-                </div>
+                ) : isPremium && accessToken ? (
+                  <div className="mb-2 flex shrink-0 justify-end">
+                    <BookPremiumActions accessToken={accessToken} />
+                  </div>
+                ) : null}
 
-                <div className="mx-auto flex w-full max-w-6xl justify-center overflow-visible">
-                  <HTMLFlipBook
+                <div className={cn("mx-auto flex w-full justify-center overflow-visible", isMobile && "min-h-0 flex-1")}>
+                  {isMobile ? (
+                    <MobileBookReader
+                      pages={illustratedPages}
+                      activePageIndex={activePageIndex}
+                      loadingImages={loadingImages}
+                      imageSealedForPage={imageSealedForPage}
+                      onNarratorClick={accessToken ? (pageIndex) => void handleNarratorClick(pageIndex) : undefined}
+                      isNarratorLoading={isLoadingVoice}
+                      isNarratorPlaying={isNarratorPlaying}
+                      narrationPageIndex={narrationPageIndex}
+                      onPrevious={flipPrevious}
+                      onNext={flipNext}
+                      canGoPrevious={canGoPrevious}
+                      canGoNext={canGoNext}
+                      scrollFooter={
+                        <>
+                          {isPremium ? (
+                            <AudioControls
+                              voiceEnabled={voiceEnabled}
+                              isLoadingVoice={isLoadingVoice}
+                              onToggleVoice={toggleVoice}
+                              onReplayVoice={() => void startPageNarration(activePageIndex)}
+                            />
+                          ) : null}
+                          {narratorError ? (
+                            <p className="mt-3 text-center text-xs text-red-300">{narratorError}</p>
+                          ) : null}
+                          {isFinalPage ? <ResultActions onReset={onReset} /> : null}
+                        </>
+                      }
+                    />
+                  ) : (
+                    <HTMLFlipBook
                     ref={flipRef}
                     className="pageflip-root"
                     style={{}}
@@ -754,8 +823,8 @@ export default function InteractiveBook({
                           side="image"
                           isActive={index === activePageIndex}
                           isImageLoading={Boolean(loadingImages[page.pageNumber])}
-                          imageSealed={!isPremium && isSealedFreeImagePage(page.pageNumber)}
-                          onNarratorClick={accessToken ? () => void handleNarratorClick(index) : undefined}
+                          imageSealed={imageSealedForPage(page.pageNumber)}
+                          onNarratorClick={undefined}
                           isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
                           isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
                         />
@@ -772,9 +841,10 @@ export default function InteractiveBook({
                       </div>,
                     ])}
                   </HTMLFlipBook>
+                  )}
                 </div>
 
-                {isOpen ? (
+                {isOpen && !isMobile ? (
                   <>
                     <div className="mx-auto mt-5 flex max-w-3xl items-center justify-center gap-3">
                       <button
