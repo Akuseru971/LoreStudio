@@ -27,6 +27,7 @@ import type {
 } from "@/lib/types";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { resolveApprovedSynopsis } from "@/lib/synopsisValidation";
+import { isSupabaseSchemaError } from "@/lib/supabaseErrors";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
@@ -61,6 +62,38 @@ function requireSupabase() {
     throw new Error("Supabase is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
   return client;
+}
+
+function isMissingConfirmationEmailErrorColumn(error: unknown) {
+  if (!isSupabaseSchemaError(error)) {
+    return false;
+  }
+
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return message.includes("confirmation_email_error");
+}
+
+async function updateConfirmationEmailBook(bookId: string, payload: Record<string, unknown>) {
+  const supabase = requireSupabase();
+
+  const attemptUpdate = async (updatePayload: Record<string, unknown>) =>
+    supabase.from(BOOKS_TABLE).update(updatePayload).eq("id", bookId).select("*").single();
+
+  let { data, error } = await attemptUpdate(payload);
+
+  if (error && isMissingConfirmationEmailErrorColumn(error) && "confirmation_email_error" in payload) {
+    const { confirmation_email_error: _removed, ...fallbackPayload } = payload;
+    console.warn(
+      "[BOOK_STORE] confirmation_email_error column missing; retrying confirmation email update without error text.",
+    );
+    ({ data, error } = await attemptUpdate(fallbackPayload));
+  }
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to update confirmation email state.");
+  }
+
+  return mapRow(data);
 }
 
 function mapRow(row: Record<string, unknown>): StoredBook {
@@ -589,42 +622,18 @@ export async function claimConfirmationEmailSend(bookId: string) {
 }
 
 export async function markConfirmationEmailSent(bookId: string) {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .update({
-      confirmation_email_status: "sent",
-      confirmation_email_sent_at: new Date().toISOString(),
-      confirmation_email_error: null,
-    })
-    .eq("id", bookId)
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message || "Unable to mark confirmation email as sent.");
-  }
-
-  return mapRow(data);
+  return updateConfirmationEmailBook(bookId, {
+    confirmation_email_status: "sent",
+    confirmation_email_sent_at: new Date().toISOString(),
+    confirmation_email_error: null,
+  });
 }
 
 export async function markConfirmationEmailFailed(bookId: string, errorMessage?: string) {
-  const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .update({
-      confirmation_email_status: "failed",
-      confirmation_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
-    })
-    .eq("id", bookId)
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message || "Unable to mark confirmation email as failed.");
-  }
-
-  return mapRow(data);
+  return updateConfirmationEmailBook(bookId, {
+    confirmation_email_status: "failed",
+    confirmation_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
+  });
 }
 
 export async function markConfirmationEmailSkipped(bookId: string) {
