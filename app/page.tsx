@@ -7,7 +7,7 @@ import AmbientMusicToggle from "@/components/AmbientMusicToggle";
 import ArchiveErrorBoundary from "@/components/ArchiveErrorBoundary";
 import IntroGate from "@/components/IntroGate";
 import InteractiveBook from "@/components/InteractiveBook";
-import LoadingRitual from "@/components/LoadingRitual";
+import SynopsisLoadingScreen from "@/components/SynopsisLoadingScreen";
 import MysticalStartTransition from "@/components/MysticalStartTransition";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
@@ -368,7 +368,7 @@ export default function Home() {
 
         {step === "creationRitual" ? (
           <motion.div key="creationRitual" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
-            <LoadingRitual />
+            <SynopsisLoadingScreen synopsis={approvedSynopsis} formInput={formInput} />
           </motion.div>
         ) : null}
 

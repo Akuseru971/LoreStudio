@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import MagicalBackground from "@/components/MagicalBackground";
+import { getChampionImage } from "@/lib/runeterra-form-lore";
 import type { ApprovedSynopsis } from "@/lib/types";
 
 type SynopsisPreviewProps = {
@@ -16,6 +18,61 @@ type SynopsisPreviewProps = {
   isCreating?: boolean;
 };
 
+function ConnectedChampionCard({
+  championName,
+  connectionSummary,
+}: {
+  championName: string;
+  connectionSummary?: string;
+}) {
+  const championImage = getChampionImage(championName);
+  const [imageFailed, setImageFailed] = useState(false);
+  const showPlaceholder = !championImage || imageFailed;
+
+  useEffect(() => {
+    console.log("[PREVIEW_CONNECTED_CHAMPION]", {
+      championName,
+      championImage,
+      hasImage: Boolean(championImage),
+    });
+
+    if (championName && !championImage) {
+      console.warn("[CONNECTED_CHAMPION_IMAGE_MISSING]", championName);
+    }
+  }, [championImage, championName]);
+
+  return (
+    <div className="connected-champion-card mt-6 rounded-2xl border border-[#d9bd78]/20 bg-[#120d07]/55 p-3 sm:p-4">
+      <div className="relative h-[60px] w-[60px] shrink-0 overflow-hidden rounded-xl border border-[#c9a858]/25 shadow-[0_0_20px_rgba(201,168,88,0.12)] sm:h-[76px] sm:w-[76px]">
+        {showPlaceholder ? (
+          <div className="flex h-full w-full items-center justify-center bg-[#1a140d] text-lg text-[#d9bd78]/70">
+            ⚔
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={championImage}
+            alt=""
+            className="connected-champion-image h-full w-full"
+            onError={() => {
+              console.warn("[CONNECTED_CHAMPION_IMAGE_MISSING]", championName);
+              setImageFailed(true);
+            }}
+          />
+        )}
+      </div>
+
+      <div className="connected-champion-content">
+        <span className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Connected champion</span>
+        <strong className="mt-1 block text-sm font-semibold text-[#f7ebce]">{championName}</strong>
+        {connectionSummary ? (
+          <p className="mt-1 text-xs leading-5 text-[#c9d3df] sm:text-sm sm:leading-6">{connectionSummary}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function SynopsisPreview({
   synopsis,
   isLoading,
@@ -27,6 +84,9 @@ export default function SynopsisPreview({
   onRetry,
   isCreating = false,
 }: SynopsisPreviewProps) {
+  const championName = synopsis?.championConnection?.championName?.trim();
+  const connectionSummary = synopsis?.championConnection?.connectionSummary?.trim();
+
   return (
     <main className="archive-shell relative min-h-screen overflow-y-auto px-5 py-10 md:px-8">
       <MagicalBackground intensity="form" />
@@ -80,18 +140,13 @@ export default function SynopsisPreview({
                     <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Role</dt>
                     <dd className="mt-1 text-sm text-[#e8dcc0]">{synopsis.specificRole}</dd>
                   </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-[0.62rem] uppercase tracking-[0.24em] text-[#9baabd]">Connected champion</dt>
-                    <dd className="mt-1 text-sm text-[#e8dcc0]">
-                      {synopsis.championConnection?.championName || "A regional champion"}
-                      {synopsis.championConnection?.connectionSummary
-                        ? ` — ${synopsis.championConnection.connectionSummary}`
-                        : null}
-                    </dd>
-                  </div>
                 </dl>
 
                 <p className="mt-6 text-sm leading-7 text-[#c9d3df]">{synopsis.synopsis}</p>
+
+                {championName ? (
+                  <ConnectedChampionCard championName={championName} connectionSummary={connectionSummary} />
+                ) : null}
               </div>
 
               <div className="mt-6 flex flex-col gap-3">
