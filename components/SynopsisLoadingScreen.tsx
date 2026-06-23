@@ -47,7 +47,7 @@ export default function SynopsisLoadingScreen({ synopsis, formInput }: SynopsisL
 
         <div className="synopsis-scroll-container mx-auto w-full max-w-[680px]">
           <div className="synopsis-scroll-text" style={scrollStyle}>
-            <p className="synopsis-loading-body text-[#c9d3df]">{synopsisText}</p>
+            <p className="synopsis-loading-body font-cover-title">{synopsisText}</p>
           </div>
         </div>
 
