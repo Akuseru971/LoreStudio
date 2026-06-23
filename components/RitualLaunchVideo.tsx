@@ -1,21 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import RitualVideoPlayer, { type RitualVideoPlayerHandle } from "@/components/RitualVideoPlayer";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { attachRitualVideoLogging, logRitualVideoState } from "@/lib/ritual-video-events";
 import { isDirectRitualVideoUrl } from "@/lib/video-config";
 import { cn } from "@/lib/utils";
 
 export type RitualLaunchVideoProps = {
   src: string;
   poster?: string;
+  mode: "preload" | "playback";
   onEnded: () => void;
   onSkip: () => void;
-  useNativeControlsOnMobile?: boolean;
 };
 
 const SLOW_LOAD_MS = 5000;
+const CANPLAY_TIMEOUT_MS = 8000;
+const PLAYBACK_FALLBACK_MS = 5000;
 const CONTROLS_HIDE_MS = 2500;
-const DEFAULT_VOLUME = 0.9;
+const DEFAULT_VOLUME = 0.7;
+const UNMUTE_DELAY_MS = 300;
+
+const HIDDEN_VIDEO_STYLE: CSSProperties = {
+  position: "fixed",
+  width: "1px",
+  height: "1px",
+  opacity: 0,
+  pointerEvents: "none",
+  left: "-10px",
+  top: "-10px",
+};
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) {
@@ -24,6 +37,17 @@ function formatTime(seconds: number) {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function useDebugVideoEnabled() {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setEnabled(process.env.NODE_ENV === "development" || params.get("debugVideo") === "1");
+  }, []);
+
+  return enabled;
 }
 
 function PlayIcon() {
@@ -89,58 +113,48 @@ function FullscreenIcon({ active }: { active: boolean }) {
 export default function RitualLaunchVideo({
   src,
   poster,
+  mode,
   onEnded,
   onSkip,
-  useNativeControlsOnMobile = false,
 }: RitualLaunchVideoProps) {
+  const ritualVideoUrl = useMemo(() => (isDirectRitualVideoUrl(src) ? src : null), [src]);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const playerRef = useRef<RitualVideoPlayerHandle | null>(null);
   const finishedRef = useRef(false);
-  const playAttemptedRef = useRef(false);
+  const playbackStartedRef = useRef(false);
+  const metadataLoadedRef = useRef(false);
+  const canPlayRef = useRef(false);
   const hideControlsTimerRef = useRef<number | undefined>(undefined);
+  const debugEnabled = useDebugVideoEnabled();
 
-  const [isMobile, setIsMobile] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(mode === "playback");
   const [hasStarted, setHasStarted] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [showPlayPrompt, setShowPlayPrompt] = useState(false);
   const [showTapForSound, setShowTapForSound] = useState(false);
   const [showSlowMessage, setShowSlowMessage] = useState(false);
-  const [showContinue, setShowContinue] = useState(false);
+  const [showPosterFallback, setShowPosterFallback] = useState(false);
+  const [debugTick, setDebugTick] = useState(0);
 
-  const useNativeControls = isMobile && useNativeControlsOnMobile;
+  const isPlayback = mode === "playback";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const safeSrc = isDirectRitualVideoUrl(src) ? src : null;
-
-  useEffect(() => {
-    if (!safeSrc) {
-      console.error("[INVALID_RITUAL_VIDEO_SOURCE]", src);
-      setHasError(true);
-      setIsBuffering(false);
-      return;
-    }
-
-    console.log("[RITUAL_VIDEO_URL]", safeSrc);
-  }, [safeSrc, src]);
 
   const finish = useCallback((handler: () => void) => {
     if (finishedRef.current) {
       return;
     }
     finishedRef.current = true;
-    playerRef.current?.pause();
+    videoRef.current?.pause();
     handler();
   }, []);
 
   const handleSkip = useCallback(() => finish(onSkip), [finish, onSkip]);
-  const handleContinue = useCallback(() => finish(onEnded), [finish, onEnded]);
 
   const revealControls = useCallback(
     (autoHide = true) => {
@@ -148,203 +162,191 @@ export default function RitualLaunchVideo({
       if (hideControlsTimerRef.current) {
         window.clearTimeout(hideControlsTimerRef.current);
       }
-      if (autoHide && isPlaying && !showPlayPrompt && !showTapForSound) {
+      if (autoHide && isPlaying && !showTapForSound) {
         hideControlsTimerRef.current = window.setTimeout(() => {
           setControlsVisible(false);
         }, CONTROLS_HIDE_MS);
       }
     },
-    [isPlaying, showPlayPrompt, showTapForSound],
+    [isPlaying, showTapForSound],
   );
 
-  const attemptPlay = useCallback(async () => {
-    if (finishedRef.current || showContinue || !playerRef.current) {
+  const startRitualVideo = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || finishedRef.current || !ritualVideoUrl) {
+      console.warn("[RITUAL_VIDEO_NO_REF]");
       return;
     }
 
-    console.log("[RITUAL_VIDEO_PLAY_ATTEMPT]");
-
-    playerRef.current.setVolume(DEFAULT_VOLUME);
-    setVolume(DEFAULT_VOLUME);
-
-    const withSound = await playerRef.current.play(true);
-    if (withSound) {
-      console.log("[RITUAL_VIDEO_PLAYING]");
-      setIsMuted(false);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
-      setShowPlayPrompt(false);
-      setShowTapForSound(false);
-      return;
-    }
-
-    console.warn("[RITUAL_VIDEO_SOUND_BLOCKED_OR_FAILED]");
-
-    const video = playerRef.current.getVideoElement();
-    if (video && !video.paused) {
-      setIsMuted(true);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
-      setShowTapForSound(true);
-      setShowPlayPrompt(false);
-      return;
-    }
-
-    const mutedPlay = await playerRef.current.play(false);
-    if (mutedPlay) {
-      console.log("[RITUAL_VIDEO_PLAYING_MUTED]");
-      setIsMuted(true);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
-      setShowTapForSound(true);
-      setShowPlayPrompt(false);
-      return;
-    }
-
-    console.warn("[RITUAL_VIDEO_PLAY_FAILED]");
-    setShowPlayPrompt(true);
-    setShowTapForSound(false);
-  }, [showContinue]);
-
-  const handlePlayIntro = useCallback(async () => {
-    if (!playerRef.current) {
-      return;
-    }
-
-    setShowPlayPrompt(false);
-    setShowTapForSound(false);
-    setVolume(DEFAULT_VOLUME);
-    playerRef.current.setVolume(DEFAULT_VOLUME);
-
-    const ok = await playerRef.current.unmuteWithVolume(DEFAULT_VOLUME);
-    if (ok) {
-      setIsMuted(false);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
-      return;
-    }
-
-    const mutedOk = await playerRef.current.play(false);
-    if (mutedOk) {
-      setIsMuted(true);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setShowTapForSound(true);
-    }
-  }, []);
-
-  const handleTapForSound = useCallback(async () => {
-    if (!playerRef.current) {
-      return;
-    }
-
-    setVolume(DEFAULT_VOLUME);
-    playerRef.current.setVolume(DEFAULT_VOLUME);
-    const ok = await playerRef.current.unmuteWithVolume(DEFAULT_VOLUME);
-    if (ok) {
-      setIsMuted(false);
-      setShowTapForSound(false);
-      setHasStarted(true);
-      setIsPlaying(true);
-      setIsBuffering(false);
-    }
-  }, []);
-
-  const handleTogglePlay = useCallback(async () => {
-    revealControls(false);
-    await playerRef.current?.togglePlay();
-  }, [revealControls]);
-
-  const handleToggleMute = useCallback(() => {
-    revealControls(false);
-    playerRef.current?.toggleMute();
-  }, [revealControls]);
-
-  const handleVolumeChange = useCallback(
-    (value: number) => {
-      setVolume(value);
-      playerRef.current?.setVolume(value);
-      if (value > 0 && isMuted) {
-        setIsMuted(false);
-        const video = playerRef.current?.getVideoElement();
-        if (video) {
-          video.muted = false;
-        }
-      }
-    },
-    [isMuted],
-  );
-
-  const handleSeek = useCallback(
-    (value: number) => {
-      playerRef.current?.seek(value);
-      setCurrentTime(value);
-      revealControls(false);
-    },
-    [revealControls],
-  );
-
-  const toggleFullscreen = useCallback(async () => {
-    const frame = frameRef.current;
-    const video = playerRef.current?.getVideoElement();
+    logRitualVideoState(video, "[RITUAL_VIDEO_PLAY_ATTEMPT]");
 
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        return;
-      }
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.volume = DEFAULT_VOLUME;
 
-      if (frame?.requestFullscreen) {
-        await frame.requestFullscreen();
-        return;
-      }
+      await video.play();
 
-      const webkitVideo = video as HTMLVideoElement & { webkitEnterFullscreen?: () => void };
-      if (webkitVideo?.webkitEnterFullscreen) {
-        webkitVideo.webkitEnterFullscreen();
-      }
-    } catch {
-      // Fullscreen may be blocked; keep inline playback.
+      logRitualVideoState(video, "[RITUAL_VIDEO_PLAYING_MUTED]");
+
+      setHasStarted(true);
+      setIsPlaying(true);
+      setIsBuffering(false);
+      setIsMuted(true);
+      setShowPosterFallback(false);
+      setShowSlowMessage(false);
+
+      window.setTimeout(() => {
+        try {
+          if (!videoRef.current || videoRef.current.paused) {
+            return;
+          }
+          videoRef.current.muted = false;
+          videoRef.current.volume = DEFAULT_VOLUME;
+          setIsMuted(false);
+          setShowTapForSound(false);
+          console.log("[RITUAL_VIDEO_UNMUTED]");
+        } catch (error) {
+          console.warn("[RITUAL_VIDEO_UNMUTE_FAILED]", error);
+          setShowTapForSound(true);
+        }
+      }, UNMUTE_DELAY_MS);
+    } catch (error) {
+      console.error("[RITUAL_VIDEO_PLAY_FAILED]", error);
+      setHasError(true);
+      setShowPosterFallback(true);
+      setIsBuffering(false);
     }
-  }, []);
+  }, [ritualVideoUrl]);
 
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 768px)");
-    const update = () => setIsMobile(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (playAttemptedRef.current) {
+  const handleTapForSound = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) {
       return;
     }
-    playAttemptedRef.current = true;
-    void attemptPlay();
-  }, [attemptPlay]);
+
+    try {
+      video.muted = false;
+      video.volume = DEFAULT_VOLUME;
+      await video.play();
+      setIsMuted(false);
+      setShowTapForSound(false);
+      console.log("[RITUAL_VIDEO_UNMUTED]");
+    } catch (error) {
+      console.warn("[RITUAL_VIDEO_UNMUTE_FAILED]", error);
+    }
+  }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (!hasStarted && !hasError) {
+    if (!ritualVideoUrl) {
+      console.error("[INVALID_RITUAL_VIDEO_SOURCE]", src);
+      setHasError(true);
+      setShowPosterFallback(true);
+    }
+  }, [ritualVideoUrl, src]);
+
+  useEffect(() => {
+    if (!ritualVideoUrl) {
+      return;
+    }
+
+    console.log("[RITUAL_VIDEO_PRELOAD_RENDERED]");
+
+    const existing = document.querySelector<HTMLLinkElement>(`link[data-ritual-video-preload="${ritualVideoUrl}"]`);
+    if (!existing) {
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "video";
+      link.href = ritualVideoUrl;
+      link.type = "video/mp4";
+      link.setAttribute("data-ritual-video-preload", ritualVideoUrl);
+      document.head.appendChild(link);
+    }
+  }, [ritualVideoUrl]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !ritualVideoUrl) {
+      return;
+    }
+
+    if (!video.src && !video.currentSrc) {
+      video.src = ritualVideoUrl;
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+      video.load();
+    }
+
+    const prefix = isPlayback ? "RITUAL_VIDEO" : "RITUAL_PRELOAD";
+    return attachRitualVideoLogging(video, prefix);
+  }, [isPlayback, ritualVideoUrl]);
+
+  useEffect(() => {
+    if (!isPlayback || playbackStartedRef.current || !ritualVideoUrl) {
+      return;
+    }
+
+    playbackStartedRef.current = true;
+    requestAnimationFrame(() => {
+      void startRitualVideo();
+    });
+  }, [isPlayback, ritualVideoUrl, startRitualVideo]);
+
+  useEffect(() => {
+    if (!ritualVideoUrl) {
+      return;
+    }
+
+    const metadataTimer = window.setTimeout(() => {
+      if (!metadataLoadedRef.current && !hasError) {
+        console.warn("[RITUAL_VIDEO_FILE_MAY_BE_INVALID_OR_NOT_STREAMABLE]");
         setShowSlowMessage(true);
+        if (isPlayback) {
+          setShowPosterFallback(true);
+        }
       }
     }, SLOW_LOAD_MS);
 
-    return () => window.clearTimeout(timer);
-  }, [hasError, hasStarted]);
+    const canPlayTimer = window.setTimeout(() => {
+      if (!canPlayRef.current && !hasError) {
+        console.warn("[RITUAL_VIDEO_FILE_MAY_BE_INVALID_OR_NOT_STREAMABLE]");
+        if (isPlayback) {
+          setShowPosterFallback(true);
+        }
+      }
+    }, CANPLAY_TIMEOUT_MS);
+
+    return () => {
+      window.clearTimeout(metadataTimer);
+      window.clearTimeout(canPlayTimer);
+    };
+  }, [hasError, isPlayback, ritualVideoUrl]);
 
   useEffect(() => {
-    if (!hasError) {
+    if (!isPlayback || hasStarted || hasError) {
       return;
     }
-    const timer = window.setTimeout(() => handleSkip(), 2200);
+
+    const timer = window.setTimeout(() => {
+      if (!hasStarted && !hasError) {
+        setShowPosterFallback(true);
+        setShowSlowMessage(true);
+      }
+    }, PLAYBACK_FALLBACK_MS);
+
     return () => window.clearTimeout(timer);
-  }, [handleSkip, hasError]);
+  }, [hasError, hasStarted, isPlayback]);
+
+  useEffect(() => {
+    if (!hasError || !isPlayback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => handleSkip(), 3200);
+    return () => window.clearTimeout(timer);
+  }, [handleSkip, hasError, isPlayback]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -357,20 +359,78 @@ export default function RitualLaunchVideo({
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (hideControlsTimerRef.current) {
-        window.clearTimeout(hideControlsTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isPlaying) {
-      revealControls();
-    } else {
-      setControlsVisible(true);
+    if (!debugEnabled) {
+      return;
     }
-  }, [isPlaying, revealControls]);
+
+    const interval = window.setInterval(() => setDebugTick((value) => value + 1), 1000);
+    return () => window.clearInterval(interval);
+  }, [debugEnabled]);
+
+  if (!ritualVideoUrl) {
+    return null;
+  }
+
+  const videoElement = (
+    <video
+      ref={videoRef}
+      className={isPlayback ? "ritual-launch-video" : undefined}
+      src={ritualVideoUrl}
+      poster={poster}
+      playsInline
+      preload="auto"
+      muted={isMuted}
+      disablePictureInPicture
+      disableRemotePlayback
+      style={isPlayback ? undefined : HIDDEN_VIDEO_STYLE}
+      onLoadedMetadata={(event) => {
+        metadataLoadedRef.current = true;
+        const video = event.currentTarget;
+        if (Number.isFinite(video.duration)) {
+          setDuration(video.duration);
+        }
+      }}
+      onLoadedData={() => {
+        if (isPlayback) {
+          setShowSlowMessage(false);
+        }
+      }}
+      onCanPlay={() => {
+        canPlayRef.current = true;
+        setIsBuffering(false);
+      }}
+      onCanPlayThrough={() => setIsBuffering(false)}
+      onWaiting={() => setIsBuffering(true)}
+      onStalled={() => setIsBuffering(true)}
+      onSuspend={() => setIsBuffering(false)}
+      onPlay={() => setIsPlaying(true)}
+      onPlaying={() => {
+        setHasStarted(true);
+        setIsPlaying(true);
+        setIsBuffering(false);
+        setShowPosterFallback(false);
+        setShowSlowMessage(false);
+      }}
+      onPause={() => setIsPlaying(false)}
+      onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+      onEnded={() => {
+        setIsPlaying(false);
+        finish(onEnded);
+      }}
+      onError={() => {
+        setHasError(true);
+        setIsBuffering(false);
+        setIsPlaying(false);
+        setShowPosterFallback(true);
+      }}
+    />
+  );
+
+  if (!isPlayback) {
+    return videoElement;
+  }
+
+  const debugVideo = videoRef.current;
 
   return (
     <div
@@ -392,7 +452,7 @@ export default function RitualLaunchVideo({
         >
           <div className="ritual-launch-video-vignette" aria-hidden="true" />
 
-          {!hasStarted ? (
+          {showPosterFallback || !hasStarted ? (
             <div className="ritual-launch-video-poster">
               {poster ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -401,48 +461,9 @@ export default function RitualLaunchVideo({
             </div>
           ) : null}
 
-          <RitualVideoPlayer
-            ref={playerRef}
-            src={safeSrc || ""}
-            poster={poster}
-            muted={isMuted}
-            volume={volume}
-            nativeControls={useNativeControls}
-            className="ritual-launch-video"
-            onBufferingChange={setIsBuffering}
-            onPlaying={() => {
-              setHasStarted(true);
-              setIsPlaying(true);
-              setIsBuffering(false);
-              setShowSlowMessage(false);
-              setShowPlayPrompt(false);
-              const video = playerRef.current?.getVideoElement();
-              if (video?.muted) {
-                setIsMuted(true);
-                setShowTapForSound(true);
-              }
-            }}
-            onPause={() => setIsPlaying(false)}
-            onTimeUpdate={setCurrentTime}
-            onDurationChange={setDuration}
-            onVolumeChange={setVolume}
-            onMutedChange={setIsMuted}
-            onEnded={() => {
-              setIsPlaying(false);
-              setIsBuffering(false);
-              setControlsVisible(true);
-              finish(onEnded);
-            }}
-            onError={() => {
-              setHasError(true);
-              setIsBuffering(false);
-              setIsPlaying(false);
-            }}
-            onStalled={() => setIsBuffering(true)}
-            onLoadedData={() => setShowSlowMessage(false)}
-          />
+          {videoElement}
 
-          {isBuffering && !hasError && !showContinue ? (
+          {isBuffering && !hasError ? (
             <div className="ritual-launch-video-loader" aria-live="polite">
               <span className="ritual-launch-video-spinner" />
               <p className="ritual-launch-video-buffer-text">Loading the archive…</p>
@@ -455,25 +476,13 @@ export default function RitualLaunchVideo({
             </p>
           ) : null}
 
-          {showSlowMessage && !hasStarted && !hasError ? (
+          {showSlowMessage && !hasError ? (
             <p className="ritual-launch-video-slow-message font-cover-title">
               The archive is taking longer than expected…
             </p>
           ) : null}
 
-          {showPlayPrompt && !showContinue && !hasError ? (
-            <div className="ritual-launch-video-prompt-wrap">
-              <button
-                type="button"
-                onClick={() => void handlePlayIntro()}
-                className="gold-button ritual-launch-video-prompt"
-              >
-                Play intro
-              </button>
-            </div>
-          ) : null}
-
-          {showTapForSound && isMuted && !showPlayPrompt && !showContinue && !hasError ? (
+          {showTapForSound && isMuted && !hasError ? (
             <div className="ritual-launch-video-sound-wrap">
               <button type="button" onClick={() => void handleTapForSound()} className="ritual-launch-video-sound">
                 Tap for sound
@@ -482,82 +491,141 @@ export default function RitualLaunchVideo({
             </div>
           ) : null}
 
-          {showContinue ? (
-            <div className="ritual-launch-video-continue-wrap">
-              <button type="button" onClick={handleContinue} className="gold-button ritual-launch-video-continue">
-                Continue
-              </button>
-            </div>
-          ) : null}
-
           <button type="button" onClick={handleSkip} className="ritual-launch-video-skip-top">
             Skip intro
           </button>
 
-          {!useNativeControls && !showContinue ? (
-            <div
-              className={cn("ritual-launch-video-controls", controlsVisible && "is-visible")}
-              onClick={(event) => event.stopPropagation()}
-              onMouseMove={(event) => event.stopPropagation()}
+          <div
+            className={cn("ritual-launch-video-controls", controlsVisible && "is-visible")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="ritual-player-btn"
+              onClick={() => {
+                const video = videoRef.current;
+                if (!video) return;
+                if (video.paused) {
+                  void video.play();
+                } else {
+                  video.pause();
+                }
+              }}
+              aria-label={isPlaying ? "Pause" : "Play"}
             >
-              <button
-                type="button"
-                className="ritual-player-btn"
-                onClick={() => void handleTogglePlay()}
-                aria-label={isPlaying ? "Pause" : "Play"}
-              >
-                {isPlaying ? <PauseIcon /> : <PlayIcon />}
-              </button>
+              {isPlaying ? <PauseIcon /> : <PlayIcon />}
+            </button>
 
-              <span className="ritual-player-time">{formatTime(currentTime)}</span>
+            <span className="ritual-player-time">{formatTime(currentTime)}</span>
 
-              <input
-                type="range"
-                min={0}
-                max={duration || 0}
-                step={0.1}
-                value={currentTime}
-                onChange={(event) => handleSeek(Number(event.target.value))}
-                className="ritual-player-progress"
-                aria-label="Video progress"
-                style={{ "--progress": `${progress}%` } as CSSProperties}
-              />
+            <input
+              type="range"
+              min={0}
+              max={duration || 0}
+              step={0.1}
+              value={currentTime}
+              onChange={(event) => {
+                const video = videoRef.current;
+                if (!video) return;
+                video.currentTime = Number(event.target.value);
+                setCurrentTime(video.currentTime);
+              }}
+              className="ritual-player-progress"
+              aria-label="Video progress"
+              style={{ "--progress": `${progress}%` } as CSSProperties}
+            />
 
-              <span className="ritual-player-time">{formatTime(duration)}</span>
+            <span className="ritual-player-time">{formatTime(duration)}</span>
 
-              <button
-                type="button"
-                className="ritual-player-btn"
-                onClick={handleToggleMute}
-                aria-label={isMuted ? "Unmute" : "Mute"}
-              >
-                <VolumeIcon muted={isMuted} />
-              </button>
+            <button
+              type="button"
+              className="ritual-player-btn"
+              onClick={() => {
+                const video = videoRef.current;
+                if (!video) return;
+                video.muted = !video.muted;
+                setIsMuted(video.muted);
+              }}
+              aria-label={isMuted ? "Unmute" : "Mute"}
+            >
+              <VolumeIcon muted={isMuted} />
+            </button>
 
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={isMuted ? 0 : volume}
-                onChange={(event) => handleVolumeChange(Number(event.target.value))}
-                className="ritual-player-volume"
-                aria-label="Volume"
-                style={{ "--progress": `${(isMuted ? 0 : volume) * 100}%` } as CSSProperties}
-              />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={isMuted ? 0 : volume}
+              onChange={(event) => {
+                const video = videoRef.current;
+                if (!video) return;
+                const nextVolume = Number(event.target.value);
+                video.volume = nextVolume;
+                video.muted = nextVolume === 0;
+                setVolume(nextVolume);
+                setIsMuted(video.muted);
+              }}
+              className="ritual-player-volume"
+              aria-label="Volume"
+              style={{ "--progress": `${(isMuted ? 0 : volume) * 100}%` } as CSSProperties}
+            />
 
-              <button
-                type="button"
-                className="ritual-player-btn"
-                onClick={() => void toggleFullscreen()}
-                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              >
-                <FullscreenIcon active={isFullscreen} />
-              </button>
-            </div>
-          ) : null}
+            <button
+              type="button"
+              className="ritual-player-btn"
+              onClick={() => {
+                const frame = frameRef.current;
+                if (!frame) return;
+                if (document.fullscreenElement) {
+                  void document.exitFullscreen();
+                } else {
+                  void frame.requestFullscreen();
+                }
+              }}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              <FullscreenIcon active={isFullscreen} />
+            </button>
+          </div>
         </div>
       </div>
+
+      {debugEnabled ? (
+        <div className="fixed bottom-4 left-4 z-[200] max-w-sm rounded-xl border border-white/20 bg-black/85 p-3 text-left text-[11px] text-[#e8dcc0]">
+          <p className="font-semibold uppercase tracking-[0.14em] text-[#d9bd78]">Ritual video debug</p>
+          <p className="mt-2 break-all">src: {debugVideo?.currentSrc || debugVideo?.src || ritualVideoUrl}</p>
+          <p>readyState: {debugVideo?.readyState ?? "-"}</p>
+          <p>networkState: {debugVideo?.networkState ?? "-"}</p>
+          <p>paused: {String(debugVideo?.paused ?? true)}</p>
+          <p>currentTime: {debugVideo?.currentTime ?? 0}</p>
+          <p>duration: {debugVideo?.duration ?? 0}</p>
+          <p>muted: {String(debugVideo?.muted ?? true)}</p>
+          <p>error: {debugVideo?.error?.code ?? "none"}</p>
+          <p className="text-[#9baabd]">tick: {debugTick}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded border border-white/20 px-2 py-1"
+              onClick={() => videoRef.current?.load()}
+            >
+              Load
+            </button>
+            <button
+              type="button"
+              className="rounded border border-white/20 px-2 py-1"
+              onClick={() => {
+                const video = videoRef.current;
+                if (!video) return;
+                video.muted = true;
+                void video.play();
+              }}
+            >
+              Play muted
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
