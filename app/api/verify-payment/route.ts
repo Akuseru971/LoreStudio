@@ -2,8 +2,20 @@ import { NextResponse } from "next/server";
 import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
 import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
+import {
+  isClientConnectionClosedError,
+  isRequestAborted,
+  logClientConnectionClosed,
+  clientConnectionClosedResponse,
+  logRouteStart,
+  logRouteSuccess,
+  respondToRouteError,
+} from "@/lib/api-route-utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const ROUTE_NAME = "/api/verify-payment";
 
 type VerifyPaymentBody = {
   accessToken?: string;
@@ -11,6 +23,13 @@ type VerifyPaymentBody = {
 };
 
 export async function POST(request: Request) {
+  logRouteStart(ROUTE_NAME, request);
+
+  if (isRequestAborted(request)) {
+    logClientConnectionClosed(ROUTE_NAME);
+    return clientConnectionClosedResponse();
+  }
+
   let body: VerifyPaymentBody = {};
 
   try {
@@ -38,7 +57,9 @@ export async function POST(request: Request) {
     try {
       emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
     } catch (error) {
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+      if (!isClientConnectionClosedError(error)) {
+        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+      }
       emailResult = {
         sent: false,
         skipped: false,
@@ -52,6 +73,8 @@ export async function POST(request: Request) {
     if (hasPremiumAccess(book.status)) {
       triggerPremiumImageGeneration(body.accessToken);
     }
+
+    logRouteSuccess(ROUTE_NAME);
 
     return NextResponse.json({
       verified: result.verified,
@@ -67,7 +90,16 @@ export async function POST(request: Request) {
       recoveryEmailAvailable: Boolean(emailResult.recoveryEmailAvailable || emailResult.sent),
     });
   } catch (error) {
-    console.error("Payment verification failed.", error);
+    if (isClientConnectionClosedError(error)) {
+      logClientConnectionClosed(ROUTE_NAME);
+      return clientConnectionClosedResponse();
+    }
+
+    const response = respondToRouteError(ROUTE_NAME, error, "Unable to verify payment.");
+    if (response) {
+      return response;
+    }
+
     const message = error instanceof Error ? error.message : "Unable to verify payment.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

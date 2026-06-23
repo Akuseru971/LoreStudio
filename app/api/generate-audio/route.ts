@@ -1,12 +1,33 @@
 import { NextResponse } from "next/server";
-import { getBookByAccessToken } from "@/lib/bookStore";
-import { generateNarrationAudio } from "@/lib/elevenlabs";
+import { createSignedAssetUrl } from "@/lib/bookAssets";
+import { getBookByAccessToken, saveBookAsset } from "@/lib/bookStore";
+import { generateNarrationAudioBuffer } from "@/lib/elevenlabs";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
-import { sanitizeText } from "@/lib/utils";
+import {
+  isClientConnectionClosedError,
+  isRequestAborted,
+  logClientConnectionClosed,
+  clientConnectionClosedResponse,
+  logRouteStart,
+  logRouteSuccess,
+  respondToRouteError,
+} from "@/lib/api-route-utils";
+import { dataUrlFromBase64, sanitizeText } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const ROUTE_NAME = "/api/generate-audio";
 
 export async function POST(request: Request) {
+  logRouteStart(ROUTE_NAME, request);
+
+  if (isRequestAborted(request)) {
+    logClientConnectionClosed(ROUTE_NAME);
+    return clientConnectionClosedResponse();
+  }
+
   try {
     const body = (await request.json()) as {
       text?: unknown;
@@ -36,10 +57,36 @@ export async function POST(request: Request) {
       );
     }
 
-    const audioUrl = await generateNarrationAudio(text, { pageNumber });
+    const existingStoragePath = storedBook.audio[String(pageNumber)];
+    if (existingStoragePath) {
+      const audioUrl = await createSignedAssetUrl(existingStoragePath, 3600);
+      logRouteSuccess(ROUTE_NAME);
+      return NextResponse.json({ audioUrl });
+    }
+
+    const audioBuffer = await generateNarrationAudioBuffer(text, { pageNumber });
+    if (!audioBuffer) {
+      return NextResponse.json({ audioUrl: null, error: "Unable to generate narration." }, { status: 500 });
+    }
+
+    const dataUrl = dataUrlFromBase64(audioBuffer.toString("base64"), "audio/mpeg");
+    const updatedBook = await saveBookAsset(accessToken, pageNumber, "audio", dataUrl);
+    const storagePath = updatedBook.audio[String(pageNumber)];
+    const audioUrl = storagePath ? await createSignedAssetUrl(storagePath, 3600) : null;
+
+    logRouteSuccess(ROUTE_NAME);
     return NextResponse.json({ audioUrl });
   } catch (error) {
-    console.warn("Narration route failed.", error);
+    if (isClientConnectionClosedError(error)) {
+      logClientConnectionClosed(ROUTE_NAME);
+      return clientConnectionClosedResponse();
+    }
+
+    const response = respondToRouteError(ROUTE_NAME, error, "Unable to generate narration.");
+    if (response) {
+      return response;
+    }
+
     const message = error instanceof Error ? error.message : "Unable to generate narration.";
     const status = message.includes("Missing ELEVENLABS") ? 503 : 500;
     return NextResponse.json({ audioUrl: null, error: message }, { status });
