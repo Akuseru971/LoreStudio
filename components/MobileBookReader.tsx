@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import NarratorButton from "@/components/NarratorButton";
+import LockedPagePaywallCta from "@/components/LockedPagePaywallCta";
 import { resetMobileBookScroll, scheduleMobileBookScrollReset } from "@/lib/mobile-book-scroll";
 import type { BookPage as BookPageType } from "@/lib/types";
 
@@ -10,6 +11,7 @@ type MobileBookReaderProps = {
   activePageIndex: number;
   loadingImages: Record<number, boolean>;
   imageSealedForPage: (pageNumber: number) => boolean;
+  onUnlockClick?: () => void;
   onNarratorClick?: (pageIndex: number) => void;
   isNarratorLoading?: boolean;
   isNarratorPlaying?: boolean;
@@ -28,6 +30,7 @@ export default function MobileBookReader({
   activePageIndex,
   loadingImages,
   imageSealedForPage,
+  onUnlockClick,
   onNarratorClick,
   isNarratorLoading = false,
   isNarratorPlaying = false,
@@ -136,6 +139,7 @@ export default function MobileBookReader({
                 </p>
               </div>
             )}
+            {imageSealed && onUnlockClick ? <LockedPagePaywallCta onUnlock={onUnlockClick} /> : null}
           </div>
 
           <div className="mobile-chapter-text-card">
