@@ -279,13 +279,17 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
           onMutedChange?.(video.muted);
         }}
         onCanPlayThrough={() => setBuffering(false)}
-        onCanPlay={() => setBuffering(false)}
+        onCanPlay={() => {
+          console.log("[RITUAL_VIDEO_CAN_PLAY]");
+          setBuffering(false);
+        }}
         onWaiting={() => setBuffering(true)}
         onStalled={() => {
           setBuffering(true);
           onStalled?.();
         }}
         onLoadedData={() => {
+          console.log("[RITUAL_VIDEO_LOADED_DATA]");
           onLoadedData?.();
         }}
         onPlaying={() => {
@@ -297,7 +301,8 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
           setBuffering(false);
           onEnded?.();
         }}
-        onError={() => {
+        onError={(event) => {
+          console.log("[RITUAL_VIDEO_ERROR]", event);
           setBuffering(false);
           onError?.();
         }}

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRitualLaunchVideoUrl } from "@/lib/video-config";
+import { getRitualVideoUrl } from "@/lib/video-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,12 +9,10 @@ export const dynamic = "force-dynamic";
  * Returns the direct CDN URL as JSON only.
  */
 export async function GET() {
-  const videoUrl = getRitualLaunchVideoUrl(false) || getRitualLaunchVideoUrl(true);
-
   return NextResponse.json(
     {
       error: "Video must be loaded directly from CDN",
-      videoUrl: videoUrl || null,
+      videoUrl: getRitualVideoUrl(),
     },
     {
       status: 410,

@@ -121,10 +121,13 @@ export default function RitualLaunchVideo({
 
   useEffect(() => {
     if (!safeSrc) {
-      console.error("[RITUAL_VIDEO_INVALID_SOURCE]", src);
+      console.error("[INVALID_RITUAL_VIDEO_SOURCE]", src);
       setHasError(true);
       setIsBuffering(false);
+      return;
     }
+
+    console.log("[RITUAL_VIDEO_URL]", safeSrc);
   }, [safeSrc, src]);
 
   const finish = useCallback((handler: () => void) => {
@@ -159,11 +162,14 @@ export default function RitualLaunchVideo({
       return;
     }
 
+    console.log("[RITUAL_VIDEO_PLAY_ATTEMPT]");
+
     playerRef.current.setVolume(DEFAULT_VOLUME);
     setVolume(DEFAULT_VOLUME);
 
     const withSound = await playerRef.current.play(true);
     if (withSound) {
+      console.log("[RITUAL_VIDEO_PLAYING]");
       setIsMuted(false);
       setHasStarted(true);
       setIsPlaying(true);
@@ -172,6 +178,8 @@ export default function RitualLaunchVideo({
       setShowTapForSound(false);
       return;
     }
+
+    console.warn("[RITUAL_VIDEO_SOUND_BLOCKED_OR_FAILED]");
 
     const video = playerRef.current.getVideoElement();
     if (video && !video.paused) {
@@ -186,6 +194,7 @@ export default function RitualLaunchVideo({
 
     const mutedPlay = await playerRef.current.play(false);
     if (mutedPlay) {
+      console.log("[RITUAL_VIDEO_PLAYING_MUTED]");
       setIsMuted(true);
       setHasStarted(true);
       setIsPlaying(true);
@@ -195,6 +204,7 @@ export default function RitualLaunchVideo({
       return;
     }
 
+    console.warn("[RITUAL_VIDEO_PLAY_FAILED]");
     setShowPlayPrompt(true);
     setShowTapForSound(false);
   }, [showContinue]);

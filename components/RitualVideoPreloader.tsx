@@ -1,22 +1,19 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useIsMobile } from "@/lib/useIsMobile";
-import {
-  getRitualLaunchVideoSrc,
-  isDirectRitualVideoUrl,
-  isRitualLaunchVideoConfigured,
-} from "@/lib/video-config";
+import { getRitualVideoUrl } from "@/lib/video-config";
 
 export default function RitualVideoPreloader() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const isMobile = useIsMobile();
-  const src = getRitualLaunchVideoSrc(isMobile);
+  const src = getRitualVideoUrl();
 
   useEffect(() => {
-    if (!src || !isRitualLaunchVideoConfigured() || !isDirectRitualVideoUrl(src)) {
+    if (!src || src.startsWith("/api/")) {
       return;
     }
+
+    console.log("[RITUAL_VIDEO_URL]", src);
+    console.log("[RITUAL_VIDEO_PRELOAD_RENDERED]");
 
     const existing = document.querySelector<HTMLLinkElement>(`link[data-ritual-video-preload="${src}"]`);
     if (!existing) {
@@ -39,19 +36,26 @@ export default function RitualVideoPreloader() {
     };
   }, [src]);
 
-  if (!src || !isRitualLaunchVideoConfigured() || !isDirectRitualVideoUrl(src)) {
+  if (!src || src.startsWith("/api/")) {
     return null;
   }
 
   return (
     <video
       ref={videoRef}
-      className="ritual-video-preloader"
+      src={src}
       preload="auto"
       muted
       playsInline
       aria-hidden="true"
       tabIndex={-1}
+      style={{
+        position: "absolute",
+        width: 1,
+        height: 1,
+        opacity: 0,
+        pointerEvents: "none",
+      }}
     />
   );
 }
