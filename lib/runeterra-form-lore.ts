@@ -272,6 +272,56 @@ export const CHARACTER_TYPE_LORE: Record<(typeof characterTypes)[number], Charac
   },
 };
 
+const CHAMPION_IMAGE_OVERRIDES: Record<string, string> = {
+  aurelionsol: "AurelionSol",
+  belveth: "Belveth",
+  chogath: "Chogath",
+  drmundo: "DrMundo",
+  jarvaniv: "JarvanIV",
+  kaisa: "Kaisa",
+  khazix: "Khazix",
+  ksante: "KSante",
+  leesin: "LeeSin",
+  masteryi: "MasterYi",
+  missfortune: "MissFortune",
+  nunu: "Nunu",
+  nunuwillump: "Nunu",
+  reksai: "RekSai",
+  tahmkench: "TahmKench",
+  twistedfate: "TwistedFate",
+  velkoz: "Velkoz",
+  xinzhao: "XinZhao",
+};
+
+function normalizeChampionLookupKey(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[''.]/g, "")
+    .replace(/&/g, "")
+    .replace(/[^a-zA-Z]/g, "")
+    .toLowerCase();
+}
+
+function toDdragonChampionId(name: string) {
+  const normalized = normalizeChampionLookupKey(name);
+  if (CHAMPION_IMAGE_OVERRIDES[normalized]) {
+    return CHAMPION_IMAGE_OVERRIDES[normalized];
+  }
+
+  const compact = name.replace(/[^a-zA-Z]/g, "");
+  return compact || null;
+}
+
+export function getChampionImage(championName: string): string | null {
+  const championId = toDdragonChampionId(championName);
+  if (!championId) {
+    return null;
+  }
+
+  return `${CHAMPION_IMAGE_BASE}/${championId}.png`;
+}
+
 export function getRegionLore(region: string): RegionLoreEntry | null {
   if (!region) {
     return null;
