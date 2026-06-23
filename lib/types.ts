@@ -131,6 +131,7 @@ export type BookPageImage = {
   url?: string | null;
   storagePath?: string | null;
   generatedAt?: string | null;
+  error?: string | null;
 };
 
 export type PageImageState = {
