@@ -171,6 +171,13 @@ button {
   transform: translateX(120%);
 }
 
+.connected-champion-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ── Book atmosphere (smoke behind closed tome) ── */
 
 .book-atmosphere {

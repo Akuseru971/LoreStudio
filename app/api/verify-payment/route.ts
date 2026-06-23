@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
-import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
-import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
+import { hasPremiumAccess, triggerGenerateNextPremiumImage, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 15;
+
+const ROUTE_NAME = "/api/verify-payment";
 
 type VerifyPaymentBody = {
   accessToken?: string;
@@ -27,30 +29,8 @@ export async function POST(request: Request) {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
     const book = result.book;
 
-    let emailResult: Awaited<ReturnType<typeof sendConfirmationEmailIfNeeded>> = {
-      sent: false,
-      skipped: true,
-      failed: false,
-      reason: "unexpected_error",
-      recoveryEmailAvailable: false,
-    };
-
-    try {
-      emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
-    } catch (error) {
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
-      emailResult = {
-        sent: false,
-        skipped: false,
-        failed: true,
-        reason: "unexpected_error",
-        recoveryEmailAvailable: false,
-        error: error instanceof Error ? error.message : "Unable to send confirmation email.",
-      };
-    }
-
     if (hasPremiumAccess(book.status)) {
-      triggerPremiumImageGeneration(body.accessToken);
+      void triggerGenerateNextPremiumImage(body.accessToken);
     }
 
     return NextResponse.json({
@@ -58,16 +38,17 @@ export async function POST(request: Request) {
       alreadyUnlocked: result.alreadyUnlocked,
       status: book.status,
       isPremium: hasPremiumAccess(book.status),
-      canDownloadPdf: hasPremiumAccess(book.status),
+      canDownloadPdf: false,
       canDownloadMp3: hasPremiumAccess(book.status),
       accessToken: book.access_token,
-      confirmationEmailSent: emailResult.sent,
-      confirmationEmailSkipped: emailResult.skipped,
-      confirmationEmailFailed: emailResult.failed,
-      recoveryEmailAvailable: Boolean(emailResult.recoveryEmailAvailable || emailResult.sent),
+      confirmationEmailSent: false,
+      confirmationEmailSkipped: true,
+      confirmationEmailFailed: false,
+      recoveryEmailAvailable: false,
+      preparingAssets: book.status === "preparing_assets" || book.status === "paid",
     });
   } catch (error) {
-    console.error("Payment verification failed.", error);
+    console.error(`${ROUTE_NAME} failed.`, error);
     const message = error instanceof Error ? error.message : "Unable to verify payment.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

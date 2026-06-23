@@ -117,7 +117,14 @@ export type AudioSettings = {
   voiceEnabled: boolean;
 };
 
-export type BookStatus = "free" | "checkout_started" | "paid" | "generating" | "ready" | "failed";
+export type BookStatus =
+  | "free"
+  | "checkout_started"
+  | "paid"
+  | "preparing_assets"
+  | "generating"
+  | "ready"
+  | "failed";
 
 export type Mp3Status = "not_started" | "generating" | "ready" | "failed";
 

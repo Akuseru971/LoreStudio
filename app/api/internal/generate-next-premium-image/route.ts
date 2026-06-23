@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
+import { isValidInternalFulfillmentRequest } from "@/lib/internal-auth";
 import { generateNextPremiumImage } from "@/lib/premiumImages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type GeneratePremiumImagesBody = {
+type GenerateBody = {
   accessToken?: string;
 };
 
-/** Legacy route — generates at most one premium image per request. */
 export async function POST(request: Request) {
-  let body: GeneratePremiumImagesBody = {};
+  if (!isValidInternalFulfillmentRequest(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: GenerateBody = {};
 
   try {
-    body = (await request.json()) as GeneratePremiumImagesBody;
+    body = (await request.json()) as GenerateBody;
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
@@ -25,17 +29,10 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateNextPremiumImage(body.accessToken);
-    return NextResponse.json({
-      success: true,
-      allReady: result.done,
-      done: result.done,
-      pageNumber: result.pageNumber,
-      readyImagesCount: result.readyImagesCount,
-      missingPremiumPages: result.missingPremiumPages,
-    });
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    console.error("Premium image generation failed.", error);
-    const message = error instanceof Error ? error.message : "Unable to generate premium images.";
+    console.error("[GENERATE_NEXT_PREMIUM_IMAGE_FAILED]", error);
+    const message = error instanceof Error ? error.message : "Unable to generate premium image.";
     const status = message.includes("Premium access") ? 403 : 500;
     return NextResponse.json({ error: message }, { status });
   }

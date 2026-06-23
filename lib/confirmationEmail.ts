@@ -5,6 +5,7 @@ import {
   markConfirmationEmailSent,
   markConfirmationEmailSkipped,
 } from "@/lib/bookStore";
+import { isBookFullyReady } from "@/lib/book-readiness";
 import { buildBookUnlockedEmailUrls, sendBookUnlockedEmail } from "@/lib/email";
 
 function safeErrorMessage(error: unknown) {
@@ -26,6 +27,7 @@ export type ConfirmationEmailResult = {
     | "missing_email"
     | "already_claimed"
     | "book_not_found"
+    | "book_not_ready"
     | "unexpected_error";
   recoveryEmailAvailable: boolean;
   error?: string;
@@ -51,6 +53,16 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
         failed: false,
         reason: "already_sent",
         recoveryEmailAvailable: true,
+      };
+    }
+
+    if (!isBookFullyReady(storedBook)) {
+      return {
+        sent: false,
+        skipped: true,
+        failed: false,
+        reason: "book_not_ready",
+        recoveryEmailAvailable: false,
       };
     }
 

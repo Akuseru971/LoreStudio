@@ -5,16 +5,17 @@ import {
   updateBookStatus,
 } from "@/lib/bookStore";
 import { getStripeClient } from "@/lib/stripe";
+import { getAppUrl } from "@/lib/internal-auth";
 import type { BookStatus, StoredBook } from "@/lib/types";
 
-const PREMIUM_STATUSES: BookStatus[] = ["paid", "generating", "ready"];
+const PREMIUM_STATUSES: BookStatus[] = ["paid", "preparing_assets", "generating", "ready"];
 
 export function hasPremiumAccess(status: BookStatus) {
   return PREMIUM_STATUSES.includes(status);
 }
 
-function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+function getAppUrlForFulfillment() {
+  return getAppUrl();
 }
 
 export async function triggerFulfillment(accessToken: string) {
@@ -26,7 +27,7 @@ export async function triggerFulfillment(accessToken: string) {
     return;
   }
 
-  await fetch(`${getAppUrl()}/api/internal/fulfill-book`, {
+  await fetch(`${getAppUrlForFulfillment()}/api/internal/fulfill-book`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -35,6 +36,24 @@ export async function triggerFulfillment(accessToken: string) {
     body: JSON.stringify({ accessToken }),
   }).catch((error) => {
     console.error("Failed to trigger fulfillment job.", error);
+  });
+}
+
+export async function triggerGenerateNextPremiumImage(accessToken: string) {
+  const secret = process.env.INTERNAL_FULFILLMENT_SECRET?.trim();
+  if (!secret) {
+    return;
+  }
+
+  await fetch(`${getAppUrlForFulfillment()}/api/internal/generate-next-premium-image`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-fulfillment-secret": secret,
+    },
+    body: JSON.stringify({ accessToken }),
+  }).catch((error) => {
+    console.error("Failed to trigger next premium image generation.", error);
   });
 }
 
@@ -93,8 +112,9 @@ export async function verifyStripeCheckoutSession(
     typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || null,
     email || null,
   );
-  await updateBookStatus(storedBook.id, "paid");
+  await updateBookStatus(storedBook.id, "preparing_assets");
   void triggerFulfillment(accessToken);
+  void triggerGenerateNextPremiumImage(accessToken);
 
   const updatedBook = await getBookByAccessToken(accessToken);
   if (!updatedBook) {

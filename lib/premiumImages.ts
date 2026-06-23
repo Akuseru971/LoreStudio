@@ -1,6 +1,8 @@
 import "server-only";
 
 import { PREMIUM_IMAGE_PAGE_NUMBERS } from "@/lib/image-config";
+import { checkBookReadyAndFinalize } from "@/lib/bookCompletion";
+import { getBookReadinessSummary } from "@/lib/book-readiness";
 import {
   claimPageImageGeneration,
   getBookByAccessToken,
@@ -78,6 +80,167 @@ async function generateSinglePremiumImage(accessToken: string, pageNumber: numbe
     await markPageImageFailed(claimedBook.id, pageNumber);
     throw error;
   }
+}
+
+export function findNextMissingPremiumPage(storedBook: NonNullable<Awaited<ReturnType<typeof getBookByAccessToken>>>) {
+  for (const pageNumber of PREMIUM_IMAGE_PAGE_NUMBERS) {
+    const image = getImageForPage(
+      {
+        images: storedBook.images,
+        imageStatus: storedBook.image_status,
+        pages: (storedBook.full_book || storedBook.free_book)?.pages,
+      },
+      pageNumber,
+    );
+
+    if (isIllustrationReady(image)) {
+      continue;
+    }
+
+    const status = resolvePageImageStatus(storedBook, pageNumber);
+    if (status === "generating") {
+      return { pageNumber, status: "generating" as const };
+    }
+
+    if (status === "failed" || status === "not_started") {
+      return { pageNumber, status };
+    }
+  }
+
+  return null;
+}
+
+export type GenerateNextPremiumImageResult = {
+  done: boolean;
+  pageNumber: number | null;
+  pageStatus: string | null;
+  readyImagesCount: number;
+  totalImages: number;
+  missingPremiumPages: number[];
+  failedPages: number[];
+  bookStatus: string;
+  isReady: boolean;
+  generated: boolean;
+};
+
+export async function generateNextPremiumImage(accessToken: string): Promise<GenerateNextPremiumImageResult> {
+  console.log("[GENERATE_NEXT_PREMIUM_IMAGE_START]", accessToken);
+
+  const storedBook = await getBookByAccessToken(accessToken);
+  if (!storedBook) {
+    throw new Error("Book not found.");
+  }
+
+  if (!hasPremiumAccess(storedBook.status)) {
+    throw new Error("Premium access is required.");
+  }
+
+  const summary = getBookReadinessSummary(storedBook);
+  const nextPage = findNextMissingPremiumPage(storedBook);
+
+  if (!nextPage) {
+    const readyResult = await checkBookReadyAndFinalize(accessToken);
+    console.log("[GENERATE_NEXT_PREMIUM_IMAGE_DONE]", { accessToken, done: true });
+
+    return {
+      done: true,
+      pageNumber: null,
+      pageStatus: null,
+      readyImagesCount: readyResult.readyImagesCount,
+      totalImages: readyResult.totalImages,
+      missingPremiumPages: [],
+      failedPages: summary.failedPages,
+      bookStatus: readyResult.status,
+      isReady: readyResult.isReady,
+      generated: false,
+    };
+  }
+
+  if (nextPage.status === "generating") {
+    console.log("[GENERATE_NEXT_PREMIUM_IMAGE_PAGE_SELECTED]", {
+      accessToken,
+      pageNumber: nextPage.pageNumber,
+      skipped: "already_generating",
+    });
+
+    return {
+      done: false,
+      pageNumber: nextPage.pageNumber,
+      pageStatus: "generating",
+      readyImagesCount: summary.readyImagesCount,
+      totalImages: summary.totalImages,
+      missingPremiumPages: summary.missingPremiumPages,
+      failedPages: summary.failedPages,
+      bookStatus: storedBook.status,
+      isReady: false,
+      generated: false,
+    };
+  }
+
+  console.log("[GENERATE_NEXT_PREMIUM_IMAGE_PAGE_SELECTED]", {
+    accessToken,
+    pageNumber: nextPage.pageNumber,
+    status: nextPage.status,
+  });
+
+  try {
+    await generateSinglePremiumImage(accessToken, nextPage.pageNumber);
+  } catch (error) {
+    console.error("[GENERATE_NEXT_PREMIUM_IMAGE_FAILED]", {
+      accessToken,
+      pageNumber: nextPage.pageNumber,
+      error,
+    });
+  }
+
+  const latestBook = await getBookByAccessToken(accessToken);
+  if (!latestBook) {
+    throw new Error("Book not found after image generation.");
+  }
+
+  const latestSummary = getBookReadinessSummary(latestBook);
+  const stillMissing = findNextMissingPremiumPage(latestBook);
+
+  if (!stillMissing) {
+    const readyResult = await checkBookReadyAndFinalize(accessToken);
+    console.log("[GENERATE_NEXT_PREMIUM_IMAGE_DONE]", {
+      accessToken,
+      pageNumber: nextPage.pageNumber,
+      done: true,
+    });
+
+    return {
+      done: true,
+      pageNumber: nextPage.pageNumber,
+      pageStatus: "ready",
+      readyImagesCount: readyResult.readyImagesCount,
+      totalImages: readyResult.totalImages,
+      missingPremiumPages: [],
+      failedPages: latestSummary.failedPages,
+      bookStatus: readyResult.status,
+      isReady: readyResult.isReady,
+      generated: true,
+    };
+  }
+
+  console.log("[GENERATE_NEXT_PREMIUM_IMAGE_DONE]", {
+    accessToken,
+    pageNumber: nextPage.pageNumber,
+    done: false,
+  });
+
+  return {
+    done: false,
+    pageNumber: nextPage.pageNumber,
+    pageStatus: resolvePageImageStatus(latestBook, nextPage.pageNumber),
+    readyImagesCount: latestSummary.readyImagesCount,
+    totalImages: latestSummary.totalImages,
+    missingPremiumPages: latestSummary.missingPremiumPages,
+    failedPages: latestSummary.failedPages,
+    bookStatus: latestBook.status,
+    isReady: false,
+    generated: true,
+  };
 }
 
 export async function generatePremiumImages(accessToken: string) {
@@ -158,7 +321,7 @@ export async function ensureAllBookImagesReady(accessToken: string, maxWaitMs = 
 }
 
 export function triggerPremiumImageGeneration(accessToken: string) {
-  void generatePremiumImages(accessToken).catch((error) => {
+  void generateNextPremiumImage(accessToken).catch((error) => {
     console.error("Background premium image generation failed.", error);
   });
 }
