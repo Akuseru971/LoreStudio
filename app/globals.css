@@ -724,6 +724,119 @@ button {
   border-radius: 4px 14px 14px 4px;
 }
 
+.synopsis-loading-screen {
+  justify-content: center;
+}
+
+.loading-background {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(126, 182, 255, 0.12), transparent 28rem),
+    radial-gradient(circle at 18% 82%, rgba(217, 189, 120, 0.08), transparent 22rem),
+    linear-gradient(180deg, #03050a 0%, #081225 42%, #03050a 100%);
+}
+
+.loading-background-glow {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 40%, rgba(217, 189, 120, 0.06), transparent 70%),
+    radial-gradient(ellipse 55% 35% at 50% 65%, rgba(126, 182, 255, 0.05), transparent 72%);
+}
+
+.synopsis-scroll-container {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: min(62vh, 520px);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 14%, black 86%, transparent 100%);
+}
+
+.synopsis-scroll-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 0.5rem 3rem;
+  animation: synopsisScrollDown var(--scroll-duration, 18s) linear infinite;
+  will-change: transform, opacity;
+}
+
+.synopsis-loading-title {
+  font-size: clamp(1.375rem, 5.5vw, 1.75rem);
+  line-height: 1.2;
+  max-width: 28rem;
+}
+
+.synopsis-loading-body {
+  font-size: 15px;
+  line-height: 1.55;
+  max-width: 34rem;
+}
+
+.synopsis-loading-meta {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.loading-connected-champion {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.loading-status {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@keyframes synopsisScrollDown {
+  0% {
+    transform: translateY(-35%);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(45%);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .synopsis-scroll-container {
+    height: 55vh;
+  }
+
+  .synopsis-loading-title {
+    font-size: clamp(1.375rem, 6vw, 1.75rem);
+  }
+
+  .synopsis-loading-body {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .synopsis-scroll-text {
+    animation: none;
+    transform: none;
+    opacity: 1;
+    padding-bottom: 1rem;
+  }
+
+  .synopsis-scroll-container {
+    height: auto;
+    max-height: min(62vh, 520px);
+    overflow-y: auto;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+}
+
 .ritual-particle {
   position: absolute;
   width: 3px;
