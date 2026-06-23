@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
+import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { isValidInternalFulfillmentRequest } from "@/lib/internal-auth";
-import { startPremiumFulfillment } from "@/lib/premiumFulfillment";
-import { triggerGenerateNextPremiumImage } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 10;
+export const maxDuration = 30;
 
-type FulfillBody = {
+type SendEmailBody = {
   accessToken?: string;
 };
 
@@ -16,10 +15,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: FulfillBody = {};
+  let body: SendEmailBody = {};
 
   try {
-    body = (await request.json()) as FulfillBody;
+    body = (await request.json()) as SendEmailBody;
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
@@ -29,17 +28,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const book = await startPremiumFulfillment(body.accessToken);
-    void triggerGenerateNextPremiumImage(body.accessToken);
-
-    return NextResponse.json({
-      success: true,
-      status: book.status,
-      accessToken: book.access_token,
-    });
+    const result = await sendConfirmationEmailIfNeeded(body.accessToken);
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    console.error("[FULFILL_BOOK_FAILED]", error);
-    const message = error instanceof Error ? error.message : "Fulfillment failed.";
+    console.error("[BOOK_READY_EMAIL_FAILED]", error);
+    const message = error instanceof Error ? error.message : "Unable to send ready email.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

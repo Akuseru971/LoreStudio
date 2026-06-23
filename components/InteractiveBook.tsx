@@ -22,7 +22,7 @@ import {
 } from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
 import { getDirectImageUrl, logBookImageRender } from "@/lib/book-image-utils";
-import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio, generatePremiumImages } from "@/lib/client/api";
+import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio, generateNextPremiumImage } from "@/lib/client/api";
 import { normalizeBook } from "@/lib/normalizeBook";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -339,11 +339,16 @@ export default function InteractiveBook({
     const currentAccessToken = accessToken;
 
     async function runPremiumImages() {
-      await generatePremiumImages(currentAccessToken);
-
       while (!cancelled) {
+        const { data } = await generateNextPremiumImage(currentAccessToken);
+        const result = data as { done?: boolean; error?: string };
+
         const allReady = await refreshPremiumImages();
-        if (allReady) {
+        if (allReady || result.done) {
+          break;
+        }
+
+        if (result.error) {
           break;
         }
 

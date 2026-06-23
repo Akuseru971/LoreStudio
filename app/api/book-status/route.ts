@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
-import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
+import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
+import { getBookReadinessSummary } from "@/lib/book-readiness";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -22,27 +23,31 @@ export async function GET(request: Request) {
     }
 
     const isPremium = hasPremiumAccess(storedBook.status);
+    const summary = getBookReadinessSummary(storedBook);
     const normalized = getNormalizedImagesForStoredBook(storedBook);
 
-    if (!normalized.allIllustrationsReady) {
-      logPdfReadyCheck(normalized.input, "book-status");
-    }
-
     return NextResponse.json({
-      status: storedBook.status,
+      status: summary.status,
       accessToken: storedBook.access_token,
       isPremium,
-      canDownloadPdf: isPremium && normalized.allIllustrationsReady,
+      isPaid: summary.isPaid,
+      canDownloadPdf: isPremium && summary.isReady,
       canDownloadMp3: isPremium,
+      readyImagesCount: summary.readyImagesCount,
+      totalImages: summary.totalImages,
+      illustrationsReadyCount: summary.readyImagesCount,
+      readyIllustrationCount: summary.readyImagesCount,
+      illustrationsTotal: summary.totalImages,
+      allIllustrationsReady: summary.isReady,
+      isReady: summary.isReady,
+      missingPremiumPages: summary.missingPremiumPages,
+      failedPages: summary.failedPages,
+      missingPages: normalized.missingPages,
+      emailStatus: summary.emailStatus,
       images: normalized.images,
       imageStatus: normalized.images,
-      illustrationsReadyCount: normalized.readyIllustrationCount,
-      readyIllustrationCount: normalized.readyIllustrationCount,
-      illustrationsTotal: FULL_BOOK_PAGE_COUNT,
-      allIllustrationsReady: normalized.allIllustrationsReady,
       hasFailedIllustrations: normalized.hasFailedIllustrations,
       hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
-      missingPages: normalized.missingPages,
       pdfStatus: storedBook.pdf_status || "not_started",
       pdfStoragePath: storedBook.pdf_storage_path,
       characterName:

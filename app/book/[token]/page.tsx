@@ -12,7 +12,7 @@ import {
 } from "@/lib/ambient-music-config";
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { normalizeBook } from "@/lib/normalizeBook";
-import { verifyPayment } from "@/lib/client/api";
+import { fetchBook, fetchBookStatus, generateNextPremiumImage, verifyPayment } from "@/lib/client/api";
 import type { LoreBook } from "@/lib/types";
 
 type BookResponse = {
@@ -33,7 +33,19 @@ type VerifyPaymentResponse = {
   confirmationEmailSent?: boolean;
   confirmationEmailFailed?: boolean;
   recoveryEmailAvailable?: boolean;
+  preparingAssets?: boolean;
   status?: string;
+  error?: string;
+};
+
+type BookStatusPollResponse = {
+  status?: string;
+  isPremium?: boolean;
+  isReady?: boolean;
+  allIllustrationsReady?: boolean;
+  readyImagesCount?: number;
+  readyIllustrationCount?: number;
+  canDownloadPdf?: boolean;
   error?: string;
 };
 
@@ -50,6 +62,8 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
   const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
   const [bookIsOpen, setBookIsOpen] = useState(false);
   const [initialPageIndex, setInitialPageIndex] = useState(0);
+  const [preparingAssets, setPreparingAssets] = useState(false);
+  const [readyImagesCount, setReadyImagesCount] = useState(0);
 
   useEffect(() => {
     void params.then((resolved) => setToken(resolved.token));
@@ -131,12 +145,10 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
           }
 
           if (!cancelled) {
-            const emailNotice = verifyResult.confirmationEmailSent || verifyResult.recoveryEmailAvailable
-              ? "Your legend is unlocked. Your private recovery link was also sent by email."
-              : verifyResult.confirmationEmailFailed
-                ? "Your legend is unlocked. Keep this page link safe to recover your book."
-                : "Your legend is unlocked.";
-            setNotice(emailNotice);
+            setNotice(
+              "Your legend has been unlocked. Final illustrations are being prepared.",
+            );
+            setPreparingAssets(true);
             setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
             window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
           }
@@ -163,6 +175,58 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
       cancelled = true;
     };
   }, [loadBook, token]);
+
+  useEffect(() => {
+    if (!token || !isPremium || status === "loading" || status === "error") {
+      return;
+    }
+
+    let cancelled = false;
+    const currentToken = token;
+
+    async function pollAssets() {
+      try {
+        const { response, data } = await fetchBookStatus(currentToken);
+        const statusData = data as BookStatusPollResponse;
+
+        if (!response.ok || cancelled) {
+          return;
+        }
+
+        const readyCount = statusData.readyImagesCount ?? statusData.readyIllustrationCount ?? 0;
+        setReadyImagesCount(readyCount);
+        setCanDownloadPdf(Boolean(statusData.canDownloadPdf));
+        setPreparingAssets(
+          Boolean(statusData.isPremium) &&
+            !statusData.isReady &&
+            !statusData.allIllustrationsReady &&
+            statusData.status !== "ready",
+        );
+
+        if (statusData.isPremium && !statusData.isReady && !statusData.allIllustrationsReady) {
+          await generateNextPremiumImage(currentToken);
+          await loadBook(currentToken);
+        }
+
+        if (statusData.isReady || statusData.status === "ready" || statusData.allIllustrationsReady) {
+          setPreparingAssets(false);
+          setNotice(null);
+        }
+      } catch (pollError) {
+        console.error("[BOOK_ASSET_POLL_ERROR]", pollError);
+      }
+    }
+
+    void pollAssets();
+    const intervalId = window.setInterval(() => {
+      void pollAssets();
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isPremium, loadBook, status, token]);
 
   const shouldPlayAmbientMusic = Boolean(book) && bookIsOpen && !ambientMuted;
 
@@ -219,9 +283,14 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
       <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
       {notice ? (
         <div className="pointer-events-none fixed inset-x-0 top-5 z-[90] flex justify-center px-4">
-          <p className="rounded-full border border-[#d9bd78]/25 bg-[#120d07]/85 px-5 py-2 text-xs uppercase tracking-[0.18em] text-[#e8dcc0] shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
-            {notice}
-          </p>
+          <div className="rounded-full border border-[#d9bd78]/25 bg-[#120d07]/85 px-5 py-2 text-center shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
+            <p className="text-xs uppercase tracking-[0.18em] text-[#e8dcc0]">{notice}</p>
+            {preparingAssets ? (
+              <p className="mt-1 text-[0.65rem] tracking-[0.14em] text-[#d9bd78]/85">
+                Illustrations ready: {readyImagesCount}/8
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
       <ArchiveErrorBoundary

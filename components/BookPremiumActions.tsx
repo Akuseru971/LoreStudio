@@ -6,7 +6,7 @@ import {
   downloadMp3,
   downloadPdf,
   fetchBookStatus,
-  generatePremiumImages,
+  generateNextPremiumImage,
   retryMissingImages,
 } from "@/lib/client/api";
 import { getImageForPage, isIllustrationReady, logPdfReadyCheck } from "@/lib/book-image-utils";
@@ -62,7 +62,6 @@ export default function BookPremiumActions({
 
   const statusPollRef = useRef(0);
   const pollIntervalRef = useRef<number | null>(null);
-  const premiumGenerationStartedRef = useRef(false);
 
   const pdfAvailability = resolvePdfAvailability({
     isPremium,
@@ -112,13 +111,10 @@ export default function BookPremiumActions({
   }, [accessToken]);
 
   const ensurePremiumImagesStarted = useCallback(async () => {
-    if (premiumGenerationStartedRef.current) {
-      return;
+    const { response, data } = await generateNextPremiumImage(accessToken);
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || "Unable to generate premium image.");
     }
-
-    premiumGenerationStartedRef.current = true;
-
-    await generatePremiumImages(accessToken);
   }, [accessToken]);
 
   useEffect(() => {
