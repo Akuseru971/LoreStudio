@@ -724,94 +724,105 @@ button {
   border-radius: 4px 14px 14px 4px;
 }
 
-.mobile-book-shell {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-}
+@media (max-width: 768px) {
+  .mobile-book-shell {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+  }
 
-.mobile-book-scroll {
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: auto;
-  padding-bottom: calc(110px + env(safe-area-inset-bottom));
-}
+  .mobile-book-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: auto;
+    padding-bottom: calc(110px + env(safe-area-inset-bottom));
+  }
 
-.mobile-chapter-card {
-  position: relative;
-}
+  .mobile-chapter-page {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
 
-.mobile-chapter-image-frame {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: clamp(220px, 38vh, 340px);
-  overflow: hidden;
-  border-radius: 18px 18px 0 0;
-  background: rgba(18, 13, 7, 0.45);
-}
+  .mobile-chapter-image-frame {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: clamp(360px, 58vh, 560px);
+    min-height: 320px;
+    margin-bottom: 18px;
+    overflow: hidden;
+    border-radius: 20px;
+    background: rgba(18, 13, 7, 0.45);
+  }
 
-.mobile-chapter-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center top;
-}
+  .mobile-chapter-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+  }
 
-.mobile-chapter-image-placeholder {
-  display: flex;
-  height: 100%;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  text-align: center;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(217, 189, 120, 0.16), transparent 12rem),
-    linear-gradient(160deg, #120d07, #09111e 48%, #03050a);
-}
+  .mobile-chapter-image-placeholder {
+    display: flex;
+    height: 100%;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+    background:
+      radial-gradient(circle at 50% 18%, rgba(217, 189, 120, 0.16), transparent 12rem),
+      linear-gradient(160deg, #120d07, #09111e 48%, #03050a);
+  }
 
-.mobile-chapter-text-card {
-  position: relative;
-  z-index: 2;
-  margin-top: -18px;
-  border-radius: 18px;
-  border: 1px solid rgba(107, 74, 36, 0.14);
-  background: linear-gradient(180deg, rgba(255, 248, 232, 0.98), rgba(247, 235, 206, 0.96));
-  padding: 16px;
-  box-shadow:
-    0 -8px 24px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
-}
+  .mobile-chapter-content {
+    margin-top: 0;
+    border-radius: 20px;
+    border: 1px solid rgba(107, 74, 36, 0.14);
+    background: linear-gradient(180deg, rgba(255, 248, 232, 0.98), rgba(247, 235, 206, 0.96));
+    padding: 18px 18px 24px;
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  }
 
-.mobile-chapter-body {
-  margin: 0;
-}
+  .mobile-chapter-title {
+    font-size: clamp(1.375rem, 5vw, 1.625rem);
+    line-height: 1.2;
+  }
 
-.mobile-book-scroll-footer {
-  margin-top: 1rem;
-  padding-inline: 0.25rem;
-}
+  .mobile-chapter-body {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.55;
+  }
 
-.mobile-book-scroll-footer .mx-auto.mt-6 {
-  margin-top: 0;
-}
+  .mobile-book-scroll-footer {
+    margin-top: 1rem;
+    padding-inline: 0.25rem;
+  }
 
-.chapter-actions {
-  display: flex;
-  align-items: center;
-}
+  .mobile-book-scroll-footer .mx-auto.mt-6 {
+    margin-top: 0;
+  }
 
-.mobile-bottom-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(8, 18, 37, 0.92);
-  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
-  backdrop-filter: blur(10px);
-  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.35);
+  .chapter-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(8, 18, 37, 0.92);
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    backdrop-filter: blur(10px);
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.35);
+  }
 }
 
 .ritual-particle {
