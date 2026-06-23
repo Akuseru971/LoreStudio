@@ -1,6 +1,7 @@
 import "server-only";
 
 import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE, normalizeImageQuality } from "@/lib/server/generation-config";
+import { logImageGenerationStepError, withRetry } from "@/lib/server/with-retry";
 import { buildFinalImagePrompt } from "@/lib/prompts";
 import { openai } from "@/lib/server/openai";
 import type { BookPage, LoreBook } from "@/lib/types";
@@ -11,7 +12,14 @@ type GenerateImageOptions = {
   maxAttempts?: number;
 };
 
+function supportsBase64ResponseFormat(model: string) {
+  return !model.startsWith("gpt-image");
+}
+
 export async function generateBookPageImage(book: LoreBook, page: BookPage, options: GenerateImageOptions = {}) {
+  const pageNumber = page.pageNumber;
+  console.log("[IMAGE_STEP_START]", { pageNumber, type: "book_page_image" });
+
   if (!process.env.OPENAI_API_KEY) {
     return options.fallbackOnFailure ? buildFallbackIllustration(book, page) : undefined;
   }
@@ -34,24 +42,43 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
 
     try {
       const isGptImageModel = model.startsWith("gpt-image");
-      const response = await openai.images.generate({
+      const quality = isGptImageModel ? normalizeImageQuality(IMAGE_QUALITY) : undefined;
+      const useBase64 = supportsBase64ResponseFormat(model);
+
+      console.log("[OPENAI_IMAGE_REQUEST_START]", {
+        pageNumber,
         model,
-        prompt,
-        size: size as "1024x1024" | "1024x1536" | "1536x1024",
-        quality: isGptImageModel ? normalizeImageQuality(IMAGE_QUALITY) : undefined,
-        ...(!isGptImageModel ? { response_format: "b64_json" as const } : {}),
+        quality,
+        size,
+        responseFormat: useBase64 ? "b64_json" : "url",
       });
+
+      const response = await withRetry(
+        () =>
+          openai.images.generate({
+            model,
+            prompt,
+            size: size as "1024x1024" | "1024x1536" | "1536x1024",
+            quality,
+            ...(useBase64 ? { response_format: "b64_json" as const } : {}),
+          }),
+        { pageNumber, step: "openai_generate", model, size },
+      );
+
+      console.log("[OPENAI_IMAGE_REQUEST_SUCCESS]", { pageNumber, model, size });
 
       const image = response.data?.[0];
       if (image?.b64_json) {
+        console.log("[OPENAI_IMAGE_URL_RECEIVED]", { pageNumber, hasUrl: false, hasBase64: true });
         return dataUrlFromBase64(image.b64_json, "image/png");
       }
 
       if (image?.url) {
+        console.log("[OPENAI_IMAGE_URL_RECEIVED]", { pageNumber, hasUrl: true, hasBase64: false });
         return image.url;
       }
     } catch (error) {
-      console.warn(`Image generation failed for page ${page.pageNumber} with ${model}/${size}.`, error);
+      logImageGenerationStepError(pageNumber, "openai_generate", error);
     }
   }
 

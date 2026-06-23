@@ -539,7 +539,7 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
   return data ? mapRow(data) : null;
 }
 
-export async function markPageImageFailed(bookId: string, pageNumber: number) {
+export async function markPageImageFailed(bookId: string, pageNumber: number, errorMessage?: string) {
   const supabase = requireSupabase();
   const storedBook = await getBookById(bookId);
   if (!storedBook) {
@@ -547,9 +547,26 @@ export async function markPageImageFailed(bookId: string, pageNumber: number) {
   }
 
   const key = String(pageNumber);
+  const normalized = normalizeStoredBookImages(storedBook);
+  const existingImage = normalized.images[key];
+
+  if (existingImage && isIllustrationReady(existingImage)) {
+    return storedBook;
+  }
+
+  const failedImage = mergeUpdatedImage(normalized.images, pageNumber, {
+    pageNumber,
+    status: "failed",
+    url: null,
+    storagePath: existingImage?.storagePath ?? null,
+    generatedAt: new Date().toISOString(),
+    error: errorMessage ? errorMessage.slice(0, 500) : "Image generation failed",
+  });
+
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
     .update({
+      images: failedImage,
       image_status: {
         ...storedBook.image_status,
         [key]: "failed",

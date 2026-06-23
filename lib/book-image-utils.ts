@@ -123,6 +123,7 @@ function coerceCanonicalImage(image: unknown, pageNumber: number): BookPageImage
     url: directUrl,
     storagePath,
     generatedAt: typeof image.generatedAt === "string" ? image.generatedAt : null,
+    error: typeof image.error === "string" ? image.error : null,
   };
 }
 

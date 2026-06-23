@@ -8,12 +8,30 @@ import {
   getImageForPage,
   getMissingIllustrationPages,
   getReadyIllustrationCount,
+  hasFailedIllustrations,
   isIllustrationReady,
   normalizeBookImages,
+  type BookImagesInput,
 } from "@/lib/book-images";
 import { generatePremiumImages } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { generateAndStoreFreeImageForPage } from "@/lib/freeImages";
+import { resolvePageImageStatus } from "@/lib/imageStatus";
+
+function getPagesNeedingRetry(imagesInput: BookImagesInput, maxPage: number) {
+  const pages: number[] = [];
+
+  for (let pageNumber = 1; pageNumber <= maxPage; pageNumber += 1) {
+    const image = getImageForPage(imagesInput, pageNumber);
+    if (isIllustrationReady(image)) {
+      continue;
+    }
+
+    pages.push(pageNumber);
+  }
+
+  return pages;
+}
 
 export async function retryMissingImages(accessToken: string) {
   const storedBook = await getBookByAccessToken(accessToken);
@@ -29,30 +47,36 @@ export async function retryMissingImages(accessToken: string) {
     throw new Error("Book content is missing.");
   }
 
-  const imagesInput = {
+  const imagesInput: BookImagesInput = {
     images: storedBook.images,
     imageStatus: storedBook.image_status,
     pages: sourceBook.pages,
   };
 
-  const missingBefore = getMissingIllustrationPages(imagesInput).filter((pageNumber) => pageNumber <= maxPage);
+  const pagesToRetry = getPagesNeedingRetry(imagesInput, maxPage);
 
   if (isPremium) {
     await generatePremiumImages(accessToken);
   } else {
-    for (const pageNumber of missingBefore) {
-      const image = getImageForPage(imagesInput, pageNumber);
-      if (isIllustrationReady(image)) {
-        continue;
-      }
+    await Promise.allSettled(
+      pagesToRetry.map(async (pageNumber) => {
+        const image = getImageForPage(imagesInput, pageNumber);
+        if (isIllustrationReady(image)) {
+          return;
+        }
 
-      await generateAndStoreFreeImageForPage({
-        accessToken,
-        bookId: storedBook.id,
-        book: sourceBook,
-        pageNumber,
-      });
-    }
+        if (resolvePageImageStatus(storedBook, pageNumber) === "generating") {
+          return;
+        }
+
+        await generateAndStoreFreeImageForPage({
+          accessToken,
+          bookId: storedBook.id,
+          book: sourceBook,
+          pageNumber,
+        });
+      }),
+    );
   }
 
   const finalBook = await getBookByAccessToken(accessToken);
@@ -61,7 +85,7 @@ export async function retryMissingImages(accessToken: string) {
   }
 
   const finalSource = finalBook.full_book || finalBook.free_book;
-  const finalInput = {
+  const finalInput: BookImagesInput = {
     images: finalBook.images,
     imageStatus: finalBook.image_status,
     pages: finalSource?.pages,
@@ -72,5 +96,6 @@ export async function retryMissingImages(accessToken: string) {
     readyIllustrationCount: getReadyIllustrationCount(finalInput),
     allReady: areAllIllustrationsReady(finalInput),
     missingPages: getMissingIllustrationPages(finalInput),
+    hasFailedIllustrations: hasFailedIllustrations(finalInput),
   };
 }

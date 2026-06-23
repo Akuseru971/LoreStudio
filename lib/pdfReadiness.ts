@@ -85,9 +85,9 @@ export function getPdfStatusMessage(availability: PdfAvailability) {
     case "locked_unpaid":
       return "Unlock the full story to download your illustrated PDF.";
     case "waiting_for_illustrations":
-      return "Your illustrated PDF will be available once all illustrations are ready.";
+      return "Some final illustrations are still being prepared. We'll keep trying in the background.";
     case "illustrations_failed":
-      return "Some illustrations failed. Please retry generation.";
+      return "Some final illustrations are still being prepared. We'll keep trying in the background.";
     case "generating_pdf":
       return "Creating your illustrated PDF...";
     case "failed":

@@ -2,6 +2,8 @@ import "server-only";
 
 import { BOOK_ASSETS_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
 import { isStorageAssetPath as isBookStorageAssetPath } from "@/lib/book-image-utils";
+import { safeFetch } from "@/lib/server/safe-fetch";
+import { withRetry } from "@/lib/server/with-retry";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type BookAssetType = "image" | "audio";
@@ -89,8 +91,56 @@ export function buildAssetStoragePath(
   assetType: BookAssetType,
   mimeType: string,
 ) {
+  if (assetType === "image") {
+    return buildImageStoragePath(bookId, pageNumber);
+  }
+
   const extension = extensionForMime(mimeType, assetType);
   return `books/${bookId}/page-${pageNumber}-${assetType}.${extension}`;
+}
+
+export function buildImageStoragePath(bookId: string, pageNumber: number) {
+  return `books/${bookId}/images/page-${pageNumber}.png`;
+}
+
+async function uploadBufferToStorage(
+  storagePath: string,
+  buffer: Buffer,
+  contentType: string,
+  meta: Record<string, unknown>,
+) {
+  const supabase = requireSupabase();
+  await ensureBookAssetsBucketReady(supabase);
+
+  const uploadOnce = async () => {
+    const { error } = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, buffer, {
+      contentType,
+      upsert: true,
+    });
+
+    if (error) {
+      console.error("[SUPABASE_UPLOAD_ERROR]", {
+        ...meta,
+        storagePath,
+        message: error.message,
+      });
+      throw new Error(error.message);
+    }
+  };
+
+  try {
+    await uploadOnce();
+  } catch (error) {
+    if (error instanceof Error && /bucket not found/i.test(error.message)) {
+      ensureBucketPromise = null;
+      await ensureBookAssetsBucketReady(supabase);
+      await uploadOnce();
+    } else {
+      throw error;
+    }
+  }
+
+  return storagePath;
 }
 
 export async function uploadBookAsset(
@@ -103,8 +153,34 @@ export async function uploadBookAsset(
     return assetRef;
   }
 
+  if (assetRef.startsWith("http://") || assetRef.startsWith("https://")) {
+    console.log("[IMAGE_DOWNLOAD_START]", {
+      pageNumber,
+      imageUrlPreview: assetRef.slice(0, 120),
+    });
+
+    const response = await withRetry(
+      () => safeFetch(assetRef, {}, { pageNumber, step: "image_download", bookId }),
+      { pageNumber, step: "image_download", bookId },
+    );
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get("content-type") || "image/png";
+    const storagePath = buildAssetStoragePath(bookId, pageNumber, assetType, contentType);
+
+    console.log("[IMAGE_DOWNLOAD_SUCCESS]", { pageNumber, bytes: buffer.length });
+    console.log("[SUPABASE_IMAGE_UPLOAD_START]", { pageNumber, storagePath });
+
+    const uploadedPath = await withRetry(
+      () => uploadBufferToStorage(storagePath, buffer, contentType, { pageNumber, bookId }),
+      { pageNumber, step: "supabase_upload", bookId },
+    );
+
+    console.log("[SUPABASE_IMAGE_UPLOAD_SUCCESS]", { pageNumber, storagePath: uploadedPath });
+    return uploadedPath;
+  }
+
   if (!assetRef.startsWith("data:")) {
-    return assetRef;
+    throw new Error(`Unsupported asset reference for page ${pageNumber}.`);
   }
 
   const parsed = parseDataUrl(assetRef);
@@ -112,32 +188,16 @@ export async function uploadBookAsset(
     throw new Error("Invalid asset payload.");
   }
 
-  const supabase = requireSupabase();
-  await ensureBookAssetsBucketReady(supabase);
   const storagePath = buildAssetStoragePath(bookId, pageNumber, assetType, parsed.mimeType);
-  const { error } = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, parsed.buffer, {
-    contentType: parsed.mimeType,
-    upsert: true,
-  });
+  console.log("[SUPABASE_IMAGE_UPLOAD_START]", { pageNumber, storagePath });
 
-  if (error) {
-    if (/bucket not found/i.test(error.message)) {
-      ensureBucketPromise = null;
-      await ensureBookAssetsBucketReady(supabase);
-      const retry = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, parsed.buffer, {
-        contentType: parsed.mimeType,
-        upsert: true,
-      });
-      if (retry.error) {
-        throw new Error(retry.error.message);
-      }
-      return storagePath;
-    }
+  const uploadedPath = await withRetry(
+    () => uploadBufferToStorage(storagePath, parsed.buffer, parsed.mimeType, { pageNumber, bookId }),
+    { pageNumber, step: "supabase_upload", bookId },
+  );
 
-    throw new Error(error.message);
-  }
-
-  return storagePath;
+  console.log("[SUPABASE_IMAGE_UPLOAD_SUCCESS]", { pageNumber, storagePath: uploadedPath });
+  return uploadedPath;
 }
 
 export async function createSignedAssetUrl(assetRef: string, expiresInSeconds = 3600) {
