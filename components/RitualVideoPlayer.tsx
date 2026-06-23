@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { isDirectRitualVideoUrl } from "@/lib/video-config";
 
 export type RitualVideoPlayerHandle = {
   play: (preferSound?: boolean) => Promise<boolean>;
@@ -30,6 +31,8 @@ export type RitualVideoPlayerProps = {
   onMutedChange?: (muted: boolean) => void;
   onEnded?: () => void;
   onError?: () => void;
+  onStalled?: () => void;
+  onLoadedData?: () => void;
   className?: string;
 };
 
@@ -51,6 +54,8 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
       onMutedChange,
       onEnded,
       onError,
+      onStalled,
+      onLoadedData,
       className,
     },
     ref,
@@ -198,9 +203,15 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
       }
 
       readyRef.current = false;
+
+      if (!isDirectRitualVideoUrl(src)) {
+        onError?.();
+        return;
+      }
+
       video.src = src;
       video.load();
-    }, [src]);
+    }, [onError, src]);
 
     useEffect(() => {
       const video = videoRef.current;
@@ -270,6 +281,13 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
         onCanPlayThrough={() => setBuffering(false)}
         onCanPlay={() => setBuffering(false)}
         onWaiting={() => setBuffering(true)}
+        onStalled={() => {
+          setBuffering(true);
+          onStalled?.();
+        }}
+        onLoadedData={() => {
+          onLoadedData?.();
+        }}
         onPlaying={() => {
           setBuffering(false);
           onPlaying?.();

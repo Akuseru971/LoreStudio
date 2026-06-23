@@ -22,6 +22,7 @@ import {
   isRitualLaunchVideoConfigured,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
+import { useIsMobile } from "@/lib/useIsMobile";
 import { normalizeBook } from "@/lib/normalizeBook";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
@@ -71,7 +72,8 @@ export default function Home() {
   const generationRunRef = useRef(0);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
   const synopsisRequestRef = useRef(0);
-  const introVideoSrc = getRitualLaunchVideoSrc();
+  const isMobileViewport = useIsMobile();
+  const introVideoSrc = getRitualLaunchVideoSrc(isMobileViewport);
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
   const shouldPlayAmbientMusic =
     (step === "form" || step === "synopsis" || (step === "book" && bookIsOpen)) && !ambientMuted;

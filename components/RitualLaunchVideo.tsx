@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import RitualVideoPlayer, { type RitualVideoPlayerHandle } from "@/components/RitualVideoPlayer";
+import { isDirectRitualVideoUrl } from "@/lib/video-config";
 import { cn } from "@/lib/utils";
 
 export type RitualLaunchVideoProps = {
@@ -116,6 +117,15 @@ export default function RitualLaunchVideo({
 
   const useNativeControls = isMobile && useNativeControlsOnMobile;
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const safeSrc = isDirectRitualVideoUrl(src) ? src : null;
+
+  useEffect(() => {
+    if (!safeSrc) {
+      console.error("[RITUAL_VIDEO_INVALID_SOURCE]", src);
+      setHasError(true);
+      setIsBuffering(false);
+    }
+  }, [safeSrc, src]);
 
   const finish = useCallback((handler: () => void) => {
     if (finishedRef.current) {
@@ -383,7 +393,7 @@ export default function RitualLaunchVideo({
 
           <RitualVideoPlayer
             ref={playerRef}
-            src={src}
+            src={safeSrc || ""}
             poster={poster}
             muted={isMuted}
             volume={volume}
@@ -418,6 +428,8 @@ export default function RitualLaunchVideo({
               setIsBuffering(false);
               setIsPlaying(false);
             }}
+            onStalled={() => setIsBuffering(true)}
+            onLoadedData={() => setShowSlowMessage(false)}
           />
 
           {isBuffering && !hasError && !showContinue ? (
