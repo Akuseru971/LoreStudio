@@ -2,7 +2,7 @@ import "server-only";
 
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
 import { openai } from "@/lib/server/openai";
-import { TEXT_MODEL } from "@/lib/server/generation-config";
+import { BOOK_TEXT_MODEL } from "@/lib/server/ai-config";
 import {
   attemptPage5CliffhangerRepair,
   isCliffhangerOnlyFailure,
@@ -30,7 +30,7 @@ export function isDevOrPreview() {
 }
 
 export function getLoreModel() {
-  return TEXT_MODEL;
+  return BOOK_TEXT_MODEL;
 }
 
 function requireOpenAiKey() {
@@ -266,7 +266,10 @@ export async function generateLoreBook(
   approvedSynopsis?: ApprovedSynopsis | null,
 ): Promise<GenerateLoreResult> {
   requireOpenAiKey();
-  console.log("[LORE_MODEL]", getLoreModel());
+  console.log("[TEXT_MODEL_USED]", {
+    route: "generate-book",
+    model: BOOK_TEXT_MODEL,
+  });
 
   if (!approvedSynopsis) {
     console.warn("[SYNOPSIS_MISSING] Full generation started without approved synopsis");

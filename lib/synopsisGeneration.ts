@@ -1,12 +1,12 @@
 import "server-only";
 
 import { openai } from "@/lib/server/openai";
-import { SYNOPSIS_MODEL } from "@/lib/server/generation-config";
+import { SYNOPSIS_TEXT_MODEL } from "@/lib/server/ai-config";
 import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
 import { validateSynopsisPayload } from "@/lib/synopsisValidation";
 
 export function getSynopsisModel() {
-  return SYNOPSIS_MODEL;
+  return SYNOPSIS_TEXT_MODEL;
 }
 
 function getResponseText(response: unknown) {
@@ -108,6 +108,11 @@ export async function generateSynopsis(input: BookFormInput, regenerationAttempt
 
   const { system, user } = buildSynopsisPrompt(input, regenerationAttempt);
   const model = getSynopsisModel();
+
+  console.log("[SYNOPSIS_TEXT_MODEL_USED]", {
+    route: "generate-synopsis",
+    model,
+  });
 
   const response = await openai.responses.create({
     model,
