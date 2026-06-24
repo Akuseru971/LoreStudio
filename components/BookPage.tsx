@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import NarratorButton from "@/components/NarratorButton";
+import LockedPageUnlockCta from "@/components/LockedPageUnlockCta";
 import SyncedNarrationText from "@/components/SyncedNarrationText";
 import type { BookPage as BookPageType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ type BookPageProps = {
   side?: "image" | "text";
   isImageLoading?: boolean;
   imageSealed?: boolean;
+  onUnlockClick?: () => void;
   onNarratorClick?: () => void;
   isNarratorLoading?: boolean;
   isNarratorPlaying?: boolean;
@@ -23,6 +25,7 @@ export default function BookPage({
   side = "text",
   isImageLoading = false,
   imageSealed = false,
+  onUnlockClick,
   onNarratorClick,
   isNarratorLoading = false,
   isNarratorPlaying = false,
@@ -33,6 +36,7 @@ export default function BookPage({
         page={page}
         isImageLoading={isImageLoading}
         imageSealed={imageSealed}
+        onUnlockClick={onUnlockClick}
         onNarratorClick={onNarratorClick}
         isNarratorLoading={isNarratorLoading}
         isNarratorPlaying={isNarratorPlaying}
@@ -91,6 +95,7 @@ function ImageLeaf({
   page,
   isImageLoading,
   imageSealed,
+  onUnlockClick,
   onNarratorClick,
   isNarratorLoading,
   isNarratorPlaying,
@@ -98,6 +103,7 @@ function ImageLeaf({
   page: BookPageType;
   isImageLoading: boolean;
   imageSealed: boolean;
+  onUnlockClick?: () => void;
   onNarratorClick?: () => void;
   isNarratorLoading?: boolean;
   isNarratorPlaying?: boolean;
@@ -128,7 +134,7 @@ function ImageLeaf({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={page.imageUrl} alt={page.title} className="relative z-0 h-full w-full object-cover" />
           ) : imageSealed ? (
-            <SealedCliffhangerPlaceholder pageNumber={page.pageNumber} title={page.title} />
+            <LockedPageUnlockCta onUnlockClick={onUnlockClick} />
           ) : (
             <IllustratedPlaceholder pageNumber={page.pageNumber} title={page.title} isImageLoading={isImageLoading} />
           )}
@@ -136,30 +142,6 @@ function ImageLeaf({
         </div>
       </div>
     </article>
-  );
-}
-
-function SealedCliffhangerPlaceholder({ pageNumber, title }: { pageNumber: number; title: string }) {
-  return (
-    <div
-      className={cn(
-        "flex h-full min-h-56 w-full items-center justify-center p-6 text-center",
-        "bg-[radial-gradient(circle_at_50%_18%,rgba(217,189,120,.18),transparent_12rem),linear-gradient(160deg,#120d07,#09111e_48%,#03050a)]",
-      )}
-    >
-      <div className="max-w-xs">
-        <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.32em] text-[#d9bd78]/70">
-          Chapter {pageNumber}
-        </p>
-        <p className="page-elegant-title mt-3 text-xl leading-tight text-[#f7ebce] sm:text-2xl">{title}</p>
-        <p className="mt-5 text-sm leading-7 text-[#c9d3df]/85">
-          The vision beyond this page is sealed.
-        </p>
-        <p className="mt-3 text-[0.62rem] uppercase tracking-[0.24em] text-[#8a9aad]/70">
-          Unlock the full legend to reveal the illustration
-        </p>
-      </div>
-    </div>
   );
 }
 

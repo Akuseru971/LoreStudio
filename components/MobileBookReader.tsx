@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import NarratorButton from "@/components/NarratorButton";
+import LockedPageUnlockCta from "@/components/LockedPageUnlockCta";
 import { resetMobileBookScroll, scheduleMobileBookScrollReset } from "@/lib/mobile-book-scroll";
 import type { BookPage as BookPageType } from "@/lib/types";
 
@@ -18,6 +19,7 @@ type MobileBookReaderProps = {
   onNext: () => void;
   canGoPrevious: boolean;
   canGoNext: boolean;
+  onUnlockClick?: () => void;
   scrollFooter?: ReactNode;
 };
 
@@ -36,6 +38,7 @@ export default function MobileBookReader({
   onNext,
   canGoPrevious,
   canGoNext,
+  onUnlockClick,
   scrollFooter,
 }: MobileBookReaderProps) {
   const mobileScrollRef = useRef<HTMLDivElement | null>(null);
@@ -120,15 +123,7 @@ export default function MobileBookReader({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={page.imageUrl} alt={page.title} className="mobile-chapter-image" />
             ) : imageSealed ? (
-              <div className="mobile-chapter-image-placeholder">
-                <div>
-                  <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.28em] text-[#d9bd78]/75">
-                    Chapter {page.pageNumber}
-                  </p>
-                  <p className="page-elegant-title mt-2 text-lg text-[#f7ebce]">{page.title}</p>
-                  <p className="mt-3 text-sm leading-6 text-[#c9d3df]/85">The vision beyond this page is sealed.</p>
-                </div>
-              </div>
+              <LockedPageUnlockCta onUnlockClick={onUnlockClick} />
             ) : (
               <div className="mobile-chapter-image-placeholder">
                 <p className="book-meta-label text-[0.62rem] uppercase tracking-[0.22em] text-[#8a9aad]/75">

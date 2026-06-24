@@ -388,6 +388,11 @@ export default function InteractiveBook({
     [activePageIndex, illustratedPages.length, isPremium, stopNarration],
   );
 
+  const handleUnlockClick = useCallback(() => {
+    stopNarration();
+    setShowUnlockModal(true);
+  }, [stopNarration]);
+
   const goToSpread = useCallback(
     (pageIndex: number) => {
       const nextIndex = Math.min(Math.max(pageIndex, 0), illustratedPages.length - 1);
@@ -763,6 +768,7 @@ export default function InteractiveBook({
                       activePageIndex={activePageIndex}
                       loadingImages={loadingImages}
                       imageSealedForPage={imageSealedForPage}
+                      onUnlockClick={!isPremium ? handleUnlockClick : undefined}
                       onNarratorClick={accessToken ? (pageIndex) => void handleNarratorClick(pageIndex) : undefined}
                       isNarratorLoading={isLoadingVoice}
                       isNarratorPlaying={isNarratorPlaying}
@@ -824,6 +830,7 @@ export default function InteractiveBook({
                           isActive={index === activePageIndex}
                           isImageLoading={Boolean(loadingImages[page.pageNumber])}
                           imageSealed={imageSealedForPage(page.pageNumber)}
+                          onUnlockClick={!isPremium ? handleUnlockClick : undefined}
                           onNarratorClick={undefined}
                           isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
                           isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}

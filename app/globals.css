@@ -762,8 +762,8 @@ button {
   position: relative;
   overflow: hidden;
   width: 100%;
-  height: min(42vh, 380px);
-  margin-top: 8px;
+  height: min(30vh, 260px);
+  margin-top: 6px;
   flex: 1;
   min-height: 0;
   perspective: 600px;
@@ -787,6 +787,33 @@ button {
   line-height: 1.3;
   color: #f7ebce;
   text-align: center;
+}
+
+.locked-image-placeholder {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(217, 189, 120, 0.18), transparent 12rem),
+    linear-gradient(160deg, #120d07, #09111e 48%, #03050a);
+}
+
+.unlock-full-book-button {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(218, 185, 112, 0.45);
+  background: rgba(8, 10, 16, 0.84);
+  color: #f7ebce;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  box-shadow: 0 0 24px rgba(217, 189, 120, 0.18);
+  transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.unlock-full-book-button:hover {
+  border-color: rgba(218, 185, 112, 0.72);
+  color: #fff4d6;
+  box-shadow: 0 0 28px rgba(217, 189, 120, 0.28);
 }
 
 .loading-indicator {
@@ -815,7 +842,7 @@ button {
 
 @keyframes synopsisScrollUp {
   0% {
-    transform: translateY(55%);
+    transform: translateY(28%);
     opacity: 0;
   }
 
@@ -853,7 +880,7 @@ button {
 
   .synopsis-scroll-container {
     height: auto;
-    max-height: min(42vh, 380px);
+    max-height: min(30vh, 260px);
     overflow-y: auto;
     mask-image: none;
     -webkit-mask-image: none;
@@ -919,8 +946,8 @@ button {
   }
 
   .synopsis-scroll-container {
-    height: clamp(36vh, 40vh, 42vh);
-    margin-top: 8px;
+    height: min(28vh, 240px);
+    margin-top: 4px;
   }
 
   .mobile-book-shell {
