@@ -291,6 +291,52 @@ export async function getBookById(bookId: string) {
   return data ? mapRow(data) : null;
 }
 
+function synopsisMatches(
+  storedSynopsis: ApprovedSynopsis | null | undefined,
+  requestedSynopsis: ApprovedSynopsis | null | undefined,
+) {
+  if (!storedSynopsis || !requestedSynopsis) {
+    return false;
+  }
+
+  return storedSynopsis.synopsis?.trim() === requestedSynopsis.synopsis?.trim();
+}
+
+export async function findExistingGenerationBook(
+  formInput: BookFormInput,
+  approvedSynopsis: ApprovedSynopsis | null,
+) {
+  const supabase = requireSupabase();
+  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .select("*")
+    .eq("form_input->>name", formInput.name)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (error) {
+    console.warn("[FIND_EXISTING_GENERATION_BOOK_ERROR]", error.message);
+    return null;
+  }
+
+  for (const row of data || []) {
+    const storedBook = mapRow(row);
+    if (!storedBook.free_book) {
+      continue;
+    }
+
+    if (!synopsisMatches(storedBook.approved_synopsis, approvedSynopsis)) {
+      continue;
+    }
+
+    return storedBook;
+  }
+
+  return null;
+}
+
 export async function getBookByAccessToken(accessToken: string) {
   const supabase = requireSupabase();
   const { data, error } = await supabase

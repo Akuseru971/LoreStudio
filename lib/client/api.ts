@@ -39,6 +39,16 @@ export async function fetchBook(accessToken: string) {
   return { response, data };
 }
 
+export async function generateNextFreeImage(accessToken: string) {
+  const response = await fetch("/api/generate-next-free-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accessToken }),
+  });
+  const data = await response.json();
+  return { response, data };
+}
+
 export async function retryMissingImages(accessToken: string) {
   return fetch("/api/retry-missing-images", {
     method: "POST",
