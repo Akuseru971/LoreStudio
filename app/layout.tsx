@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cinzel, Cormorant_Garamond, EB_Garamond, Inter, Kalam } from "next/font/google";
 import "./globals.css";
 
@@ -40,6 +40,12 @@ const kalam = Kalam({
 export const metadata: Metadata = {
   title: "The Book of Your Legend",
   description: "A personalized interactive dark fantasy lore book experience.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

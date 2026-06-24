@@ -166,23 +166,23 @@ export default function MobileBookReader({
         {scrollFooter ? <div className="mobile-book-scroll-footer">{scrollFooter}</div> : null}
       </div>
 
-      <div className="mobile-bottom-nav shrink-0">
+      <div className="mobile-book-bottom-nav">
         <button
           type="button"
           onClick={handlePrevious}
           disabled={!canGoPrevious || navDisabled}
-          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[0.68rem] font-bold uppercase tracking-[0.18em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
+          className="mobile-book-nav-btn"
         >
           Previous
         </button>
-        <span className="min-w-[4.5rem] text-center text-[0.62rem] uppercase tracking-[0.16em] text-[#9baabd]">
+        <span className="mobile-book-nav-page">
           Page {page.pageNumber} / {pages.length}
         </span>
         <button
           type="button"
           onClick={handleNext}
           disabled={!canGoNext || navDisabled}
-          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[0.68rem] font-bold uppercase tracking-[0.18em] text-[#c9d3df] transition hover:border-[#a89068]/45 hover:text-[#e8dcc0] disabled:cursor-not-allowed disabled:opacity-35"
+          className="mobile-book-nav-btn"
         >
           Next
         </button>
