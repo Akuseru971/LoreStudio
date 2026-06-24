@@ -659,6 +659,11 @@ export default function InteractiveBook({
     setShowUnlockModal(false);
   }
 
+  const handleUnlockClick = useCallback(() => {
+    stopNarration();
+    setShowUnlockModal(true);
+  }, [stopNarration]);
+
   function handleCloseNarratorModal() {
     teaserRef.current?.pause();
     dispatchNarrationEnd();
@@ -763,6 +768,7 @@ export default function InteractiveBook({
                       activePageIndex={activePageIndex}
                       loadingImages={loadingImages}
                       imageSealedForPage={imageSealedForPage}
+                      onUnlockClick={accessToken && !isPremium ? handleUnlockClick : undefined}
                       onNarratorClick={accessToken ? (pageIndex) => void handleNarratorClick(pageIndex) : undefined}
                       isNarratorLoading={isLoadingVoice}
                       isNarratorPlaying={isNarratorPlaying}
@@ -823,8 +829,9 @@ export default function InteractiveBook({
                           side="image"
                           isActive={index === activePageIndex}
                           isImageLoading={Boolean(loadingImages[page.pageNumber])}
-                          imageSealed={imageSealedForPage(page.pageNumber)}
-                          onNarratorClick={undefined}
+                            imageSealed={imageSealedForPage(page.pageNumber)}
+                            onUnlockClick={accessToken && !isPremium ? handleUnlockClick : undefined}
+                            onNarratorClick={undefined}
                           isNarratorLoading={isLoadingVoice && narrationPageIndex === index}
                           isNarratorPlaying={isNarratorPlaying && narrationPageIndex === index}
                         />

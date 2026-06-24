@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import NarratorButton from "@/components/NarratorButton";
+import LockedPagePaywallCta from "@/components/LockedPagePaywallCta";
 import SyncedNarrationText from "@/components/SyncedNarrationText";
 import type { BookPage as BookPageType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ type BookPageProps = {
   side?: "image" | "text";
   isImageLoading?: boolean;
   imageSealed?: boolean;
+  onUnlockClick?: () => void;
   onNarratorClick?: () => void;
   isNarratorLoading?: boolean;
   isNarratorPlaying?: boolean;
@@ -23,6 +25,7 @@ export default function BookPage({
   side = "text",
   isImageLoading = false,
   imageSealed = false,
+  onUnlockClick,
   onNarratorClick,
   isNarratorLoading = false,
   isNarratorPlaying = false,
@@ -33,6 +36,7 @@ export default function BookPage({
         page={page}
         isImageLoading={isImageLoading}
         imageSealed={imageSealed}
+        onUnlockClick={onUnlockClick}
         onNarratorClick={onNarratorClick}
         isNarratorLoading={isNarratorLoading}
         isNarratorPlaying={isNarratorPlaying}
@@ -91,6 +95,7 @@ function ImageLeaf({
   page,
   isImageLoading,
   imageSealed,
+  onUnlockClick,
   onNarratorClick,
   isNarratorLoading,
   isNarratorPlaying,
@@ -98,6 +103,7 @@ function ImageLeaf({
   page: BookPageType;
   isImageLoading: boolean;
   imageSealed: boolean;
+  onUnlockClick?: () => void;
   onNarratorClick?: () => void;
   isNarratorLoading?: boolean;
   isNarratorPlaying?: boolean;
@@ -132,6 +138,7 @@ function ImageLeaf({
           ) : (
             <IllustratedPlaceholder pageNumber={page.pageNumber} title={page.title} isImageLoading={isImageLoading} />
           )}
+          {imageSealed && onUnlockClick ? <LockedPagePaywallCta onUnlock={onUnlockClick} /> : null}
           <div className="pointer-events-none absolute inset-0 z-[3] bg-gradient-to-t from-black/25 via-transparent to-white/8" />
         </div>
       </div>
