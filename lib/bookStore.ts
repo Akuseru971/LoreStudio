@@ -19,12 +19,14 @@ import type {
   BookPageImage,
   BookStatus,
   ConfirmationEmailStatus,
+  GenerationProgressStatus,
   ImagePageStatus,
   LoreBook,
   Mp3Status,
   PdfStatus,
   StoredBook,
 } from "@/lib/types";
+import { STALE_IMAGE_GENERATING_MS } from "@/lib/server/generation-timeouts";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { resolveApprovedSynopsis } from "@/lib/synopsisValidation";
 import { stripBookAssets } from "@/lib/utils";
@@ -102,6 +104,10 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     confirmation_email_sent_at: row.confirmation_email_sent_at ? String(row.confirmation_email_sent_at) : null,
     confirmation_email_status: (row.confirmation_email_status as ConfirmationEmailStatus | null) ?? "not_started",
     confirmation_email_error: row.confirmation_email_error ? String(row.confirmation_email_error) : null,
+    generation_status: (row.generation_status as GenerationProgressStatus | null) ?? "not_started",
+    generation_started_at: row.generation_started_at ? String(row.generation_started_at) : null,
+    generation_updated_at: row.generation_updated_at ? String(row.generation_updated_at) : null,
+    generation_error: row.generation_error ? String(row.generation_error) : null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };
@@ -154,6 +160,10 @@ export async function createFreeBook(
       images: {},
       image_status: createDefaultImageStatusMap(),
       audio: {},
+      generation_status: "generating_images",
+      generation_started_at: new Date().toISOString(),
+      generation_updated_at: new Date().toISOString(),
+      generation_error: null,
     })
     .select("*")
     .single();
@@ -328,6 +338,10 @@ export async function findExistingGenerationBook(
     }
 
     if (!synopsisMatches(storedBook.approved_synopsis, approvedSynopsis)) {
+      continue;
+    }
+
+    if (storedBook.generation_status === "failed" || storedBook.status === "failed") {
       continue;
     }
 
@@ -549,6 +563,40 @@ export async function saveStripePayment(
   return mapRow(data);
 }
 
+export async function updateGenerationProgress(
+  bookId: string,
+  generationStatus: GenerationProgressStatus,
+  options: { generationError?: string | null; touchStartedAt?: boolean } = {},
+) {
+  const supabase = requireSupabase();
+  const patch: Record<string, unknown> = {
+    generation_status: generationStatus,
+    generation_updated_at: new Date().toISOString(),
+  };
+
+  if (options.generationError !== undefined) {
+    patch.generation_error = options.generationError;
+  }
+
+  if (options.touchStartedAt) {
+    patch.generation_started_at = new Date().toISOString();
+  }
+
+  const { data, error } = await supabase.from(BOOKS_TABLE).update(patch).eq("id", bookId).select("*").maybeSingle();
+
+  if (error) {
+    console.warn("[UPDATE_GENERATION_PROGRESS_FAILED]", error.message);
+    return null;
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markGenerationFailed(bookId: string, message: string) {
+  await updateGenerationProgress(bookId, "failed", { generationError: message });
+  return updateBookStatus(bookId, "failed");
+}
+
 export async function markBookReady(bookId: string) {
   return updateBookStatus(bookId, "ready");
 }
@@ -562,8 +610,21 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
 
   const key = String(pageNumber);
   const currentStatus = storedBook.image_status[key] || (storedBook.images[key] ? "ready" : "not_started");
-  if (currentStatus === "ready" || currentStatus === "generating") {
+  const existingImage = getImageForPage(
+    { images: storedBook.images, imageStatus: storedBook.image_status },
+    pageNumber,
+  );
+
+  if (currentStatus === "ready" || isIllustrationReady(existingImage)) {
     return null;
+  }
+
+  if (currentStatus === "generating") {
+    const updatedAt = new Date(storedBook.updated_at).getTime();
+    const isStale = !Number.isNaN(updatedAt) && Date.now() - updatedAt >= STALE_IMAGE_GENERATING_MS;
+    if (!isStale) {
+      return null;
+    }
   }
 
   const nextImageStatus = {

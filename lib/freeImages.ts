@@ -6,10 +6,11 @@ import {
   getBookByAccessToken,
   markPageImageFailed,
   saveBookAsset,
+  updateGenerationProgress,
 } from "@/lib/bookStore";
 import { getImageForPage, isIllustrationReady, type BookImagesInput } from "@/lib/book-images";
 import { generateBookPageImage } from "@/lib/images";
-import { IMAGE_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
+import { IMAGE_GENERATION_TIMEOUT_MS, STALE_IMAGE_GENERATING_MS, withTimeout } from "@/lib/server/generation-timeouts";
 import type { LoreBook, StoredBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
@@ -47,7 +48,11 @@ export function findNextMissingFreeImagePage(storedBook: StoredBook) {
     }
 
     if (image?.status === "generating") {
-      continue;
+      const updatedAt = new Date(storedBook.updated_at).getTime();
+      const isStale = !Number.isNaN(updatedAt) && Date.now() - updatedAt >= STALE_IMAGE_GENERATING_MS;
+      if (!isStale) {
+        continue;
+      }
     }
 
     return pageNumber;
@@ -172,6 +177,12 @@ export async function generateNextFreeImage(accessToken: string) {
 
   const missingFreePages = getMissingFreeImagePages(refreshedBook);
   const allFreeImagesReady = missingFreePages.length === 0;
+
+  if (allFreeImagesReady) {
+    await updateGenerationProgress(refreshedBook.id, "ready_free", { generationError: null });
+  } else {
+    await updateGenerationProgress(refreshedBook.id, "generating_images", { generationError: null });
+  }
 
   return {
     storedBook: refreshedBook,

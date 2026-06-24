@@ -10,6 +10,7 @@ import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
 type SynopsisLoadingScreenProps = {
   synopsis: ApprovedSynopsis | null;
   formInput?: BookFormInput | null;
+  loadingMessage?: string;
 };
 
 function getScrollDuration(synopsisText: string) {
@@ -18,7 +19,7 @@ function getScrollDuration(synopsisText: string) {
   return baseScrollDuration * 2;
 }
 
-export default function SynopsisLoadingScreen({ synopsis, formInput }: SynopsisLoadingScreenProps) {
+export default function SynopsisLoadingScreen({ synopsis, formInput, loadingMessage }: SynopsisLoadingScreenProps) {
   const characterName = formInput?.name?.trim() || "Your legend";
   const legendaryTitle = synopsis?.legendaryTitle?.trim() || "The chronicle is being written";
   const synopsisText = synopsis?.synopsis?.trim() || "Your chronicle is being written.";
@@ -52,7 +53,7 @@ export default function SynopsisLoadingScreen({ synopsis, formInput }: SynopsisL
 
         <div className="loading-indicator shrink-0" role="status" aria-live="polite">
           <div className="loading-rune" aria-hidden="true" />
-          <span>Writing your illustrated chronicle...</span>
+          <span>{loadingMessage || "Writing your illustrated chronicle..."}</span>
         </div>
 
         <div className="synopsis-scroll-container mx-auto w-full max-w-[680px]">

@@ -7,7 +7,7 @@ import { validateGenerateBookRequest } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function buildErrorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "The archives refused to open. Try again.";

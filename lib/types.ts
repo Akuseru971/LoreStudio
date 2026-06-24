@@ -141,6 +141,14 @@ export type PageImageState = {
 
 export type ConfirmationEmailStatus = "not_started" | "sending" | "sent" | "failed" | "skipped";
 
+export type GenerationProgressStatus =
+  | "not_started"
+  | "generating_text"
+  | "generating_images"
+  | "preparing"
+  | "ready_free"
+  | "failed";
+
 export type StoredBook = {
   id: string;
   access_token: string;
@@ -169,6 +177,10 @@ export type StoredBook = {
   confirmation_email_sent_at: string | null;
   confirmation_email_status: ConfirmationEmailStatus;
   confirmation_email_error: string | null;
+  generation_status: GenerationProgressStatus;
+  generation_started_at: string | null;
+  generation_updated_at: string | null;
+  generation_error: string | null;
   created_at: string;
   updated_at: string;
 };

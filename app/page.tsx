@@ -23,7 +23,17 @@ import {
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
 import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
-import { fetchBook, generateNextFreeImage } from "@/lib/client/api";
+import { fetchBook, fetchBookStatus, generateNextFreeImage, retryMissingImages } from "@/lib/client/api";
+import {
+  GENERATE_BOOK_FETCH_MS,
+  GENERATION_MAX_WAIT_MS,
+  GENERATION_POLL_MS,
+  GENERATION_PROGRESS_MESSAGES,
+  STALE_GENERATION_MS,
+  getClientProgressMessage,
+  isGenerationPreparing,
+  isGenerationStale,
+} from "@/lib/generation-progress";
 import { normalizeBook } from "@/lib/normalizeBook";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
@@ -73,6 +83,9 @@ export default function Home() {
   const [synopsisError, setSynopsisError] = useState<string | null>(null);
   const [synopsisRegenerationCount, setSynopsisRegenerationCount] = useState(0);
   const [generationError, setGenerationError] = useState("The archives refused to open. Try again.");
+  const [generationProgressMessage, setGenerationProgressMessage] = useState<string>(
+    GENERATION_PROGRESS_MESSAGES.writing,
+  );
   const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
   const [videoFinished, setVideoFinished] = useState(false);
   const [bookIsOpen, setBookIsOpen] = useState(false);
@@ -158,83 +171,154 @@ export default function Home() {
     while (generationRunRef.current === runId) {
       const { response, data } = await generateNextFreeImage(token);
 
-      if (!response.ok) {
+      if (!response.ok && !data.retryable) {
         console.warn("[FREE_IMAGE_WORKER_ERROR]", data.error);
+        await sleep(GENERATION_POLL_MS);
+        continue;
+      }
+
+      if (data.allFreeImagesReady || (data.done && !data.generated)) {
         return;
       }
 
-      if (data.allFreeImagesReady || data.done) {
-        return;
-      }
+      await sleep(500);
+    }
+  }
 
-      await sleep(250);
+  async function fetchJsonWithTimeout<T>(url: string, init: RequestInit, timeoutMs: number) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      const data = await readJsonResponse<T>(response);
+      return { response, data };
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
   async function runGeneration(input: BookFormInput, synopsis: ApprovedSynopsis | null, runId: number) {
     console.log("[GENERATION_REQUEST_STARTED]", Date.now());
+    const startedAt = Date.now();
+    setGenerationProgressMessage(GENERATION_PROGRESS_MESSAGES.writing);
 
-    const response = await fetch("/api/generate-book", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        formInput: input,
-        approvedSynopsis: synopsis,
-      }),
-    });
+    let accessToken: string;
 
-    const data = await readJsonResponse<{
-      book?: LoreBook;
-      accessToken?: string;
-      error?: string;
-      debug?: { name?: string };
-    }>(response);
+    try {
+      const { response, data } = await fetchJsonWithTimeout<{
+        book?: LoreBook;
+        accessToken?: string;
+        error?: string;
+        debug?: { name?: string };
+      }>(
+        "/api/generate-book",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            formInput: input,
+            approvedSynopsis: synopsis,
+          }),
+        },
+        GENERATE_BOOK_FETCH_MS,
+      );
 
-    if (!response.ok || !data.book || !data.accessToken) {
-      const detail = data.error || data.debug?.name;
-      throw new Error(detail || "The archives refused to open. Try again.");
+      if (!response.ok || !data.book || !data.accessToken) {
+        const detail = data.error || data.debug?.name;
+        throw new Error(detail || "The archives refused to open. Try again.");
+      }
+
+      const initialBook = normalizeBook(data.book);
+      if (!initialBook) {
+        throw new Error("The generated book could not be prepared for reading.");
+      }
+
+      accessToken = data.accessToken;
+
+      if (generationRunRef.current !== runId) {
+        return;
+      }
+
+      setAccessToken(accessToken);
+      setBook(initialBook);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("The chronicle is still being prepared. Please keep this page open.");
+      }
+
+      throw error;
     }
 
-    const accessToken = data.accessToken;
-    const initialBook = normalizeBook(data.book);
-    if (!initialBook) {
-      throw new Error("The generated book could not be prepared for reading.");
+    const kickImageWorkers = () => {
+      void Promise.allSettled(
+        Array.from({ length: FREE_IMAGE_WORKERS }, () => generateFreeImagesWorker(accessToken, runId)),
+      );
+    };
+
+    kickImageWorkers();
+
+    while (generationRunRef.current === runId && Date.now() - startedAt < GENERATION_MAX_WAIT_MS) {
+      const elapsedMs = Date.now() - startedAt;
+      const { response: statusResponse, data: statusData } = await fetchBookStatus(accessToken);
+
+      if (statusResponse.ok) {
+        const readyFreeCount = Number(statusData.readyFreeImageCount ?? 0);
+        const hasText = statusData.generationStatus !== "generating_text";
+
+        setGenerationProgressMessage(
+          (statusData.progressMessage as string | undefined) ||
+            getClientProgressMessage({
+              elapsedMs,
+              hasText,
+              readyFreeImageCount: readyFreeCount,
+            }),
+        );
+
+        if (statusData.status === "failed" || statusData.generationStatus === "failed") {
+          throw new Error(
+            (statusData.generationError as string | undefined) || "The archives refused to open. Try again.",
+          );
+        }
+
+        if (statusData.freeIllustrationsReady) {
+          const { response: bookResponse, data: bookData } = await fetchBook(accessToken);
+          if (bookResponse.ok && bookData.book) {
+            const finalBook = normalizeBook(bookData.book);
+            if (finalBook && generationRunRef.current === runId) {
+              console.log("[GENERATION_REQUEST_FINISHED]", Date.now());
+              setBook(finalBook);
+              setGenerationStatus("ready");
+              return;
+            }
+          }
+        }
+
+        const updatedAt = statusData.generationUpdatedAt as string | undefined;
+        if (isGenerationPreparing(statusData.generationStatus as string) && isGenerationStale(updatedAt, STALE_GENERATION_MS)) {
+          void retryMissingImages(accessToken);
+        }
+
+        if (!statusData.freeIllustrationsReady) {
+          kickImageWorkers();
+        }
+      }
+
+      await sleep(GENERATION_POLL_MS);
     }
-
-    if (generationRunRef.current !== runId) {
-      return;
-    }
-
-    setAccessToken(accessToken);
-    setBook(initialBook);
-
-    console.log("[FREE_IMAGES_START]", Date.now());
-
-    await Promise.allSettled(
-      Array.from({ length: FREE_IMAGE_WORKERS }, () => generateFreeImagesWorker(accessToken, runId)),
-    );
-
-    console.log("[FREE_IMAGES_DONE]", Date.now());
 
     const { response: bookResponse, data: bookData } = await fetchBook(accessToken);
-    if (!bookResponse.ok || !bookData.book) {
-      throw new Error(bookData.error || "Unable to load the prepared book.");
+    if (bookResponse.ok && bookData.book) {
+      const finalBook = normalizeBook(bookData.book);
+      if (finalBook && generationRunRef.current === runId) {
+        console.log("[GENERATION_REQUEST_FINISHED_PARTIAL]", Date.now());
+        setBook(finalBook);
+        setGenerationStatus("ready");
+        return;
+      }
     }
 
-    const finalBook = normalizeBook(bookData.book);
-    if (!finalBook) {
-      throw new Error("The generated book could not be prepared for reading.");
-    }
-
-    if (generationRunRef.current !== runId) {
-      return;
-    }
-
-    console.log("[GENERATION_REQUEST_FINISHED]", Date.now());
-
-    setBook(finalBook);
-    setAccessToken(accessToken);
-    setGenerationStatus("ready");
+    throw new Error("The chronicle could not be completed. Please try again.");
   }
 
   function handleFormSubmit(input: BookFormInput) {
@@ -269,6 +353,7 @@ export default function Home() {
     setAccessToken(null);
     setGenerationStatus("generating");
     setGenerationError("The archives refused to open. Try again.");
+    setGenerationProgressMessage(GENERATION_PROGRESS_MESSAGES.writing);
     setVideoFinished(false);
     setBookIsOpen(false);
 
@@ -357,6 +442,7 @@ export default function Home() {
     setSynopsisRegenerationCount(0);
     setGenerationStatus("idle");
     setGenerationError("The archives refused to open. Try again.");
+    setGenerationProgressMessage(GENERATION_PROGRESS_MESSAGES.writing);
     setVideoFinished(false);
     setBookIsOpen(false);
     setStep("form");
@@ -427,7 +513,11 @@ export default function Home() {
 
         {step === "creationRitual" ? (
           <motion.div key="creationRitual" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
-            <SynopsisLoadingScreen synopsis={approvedSynopsis} formInput={formInput} />
+            <SynopsisLoadingScreen
+              synopsis={approvedSynopsis}
+              formInput={formInput}
+              loadingMessage={generationProgressMessage}
+            />
           </motion.div>
         ) : null}
 
