@@ -22,6 +22,8 @@ import {
   isRitualLaunchVideoConfigured,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
+import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
+import { fetchBook, generateNextFreeImage } from "@/lib/client/api";
 import { normalizeBook } from "@/lib/normalizeBook";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
@@ -38,6 +40,13 @@ type AppStep =
 type GenerationStatus = "idle" | "generating" | "ready" | "failed";
 
 const MAX_SYNOPSIS_REGENERATIONS = 3;
+const FREE_IMAGE_WORKERS = FREE_IMAGE_PAGE_COUNT;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const rawText = await response.text();
@@ -69,6 +78,7 @@ export default function Home() {
   const [bookIsOpen, setBookIsOpen] = useState(false);
 
   const generationRunRef = useRef(0);
+  const generationStartedRef = useRef(false);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
   const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
@@ -144,6 +154,23 @@ export default function Home() {
     }
   }, []);
 
+  async function generateFreeImagesWorker(token: string, runId: number) {
+    while (generationRunRef.current === runId) {
+      const { response, data } = await generateNextFreeImage(token);
+
+      if (!response.ok) {
+        console.warn("[FREE_IMAGE_WORKER_ERROR]", data.error);
+        return;
+      }
+
+      if (data.allFreeImagesReady || data.done) {
+        return;
+      }
+
+      await sleep(250);
+    }
+  }
+
   async function runGeneration(input: BookFormInput, synopsis: ApprovedSynopsis | null, runId: number) {
     console.log("[GENERATION_REQUEST_STARTED]", Date.now());
 
@@ -168,8 +195,34 @@ export default function Home() {
       throw new Error(detail || "The archives refused to open. Try again.");
     }
 
-    const normalizedBook = normalizeBook(data.book);
-    if (!normalizedBook) {
+    const accessToken = data.accessToken;
+    const initialBook = normalizeBook(data.book);
+    if (!initialBook) {
+      throw new Error("The generated book could not be prepared for reading.");
+    }
+
+    if (generationRunRef.current !== runId) {
+      return;
+    }
+
+    setAccessToken(accessToken);
+    setBook(initialBook);
+
+    console.log("[FREE_IMAGES_START]", Date.now());
+
+    await Promise.allSettled(
+      Array.from({ length: FREE_IMAGE_WORKERS }, () => generateFreeImagesWorker(accessToken, runId)),
+    );
+
+    console.log("[FREE_IMAGES_DONE]", Date.now());
+
+    const { response: bookResponse, data: bookData } = await fetchBook(accessToken);
+    if (!bookResponse.ok || !bookData.book) {
+      throw new Error(bookData.error || "Unable to load the prepared book.");
+    }
+
+    const finalBook = normalizeBook(bookData.book);
+    if (!finalBook) {
       throw new Error("The generated book could not be prepared for reading.");
     }
 
@@ -179,8 +232,8 @@ export default function Home() {
 
     console.log("[GENERATION_REQUEST_FINISHED]", Date.now());
 
-    setBook(normalizedBook);
-    setAccessToken(data.accessToken);
+    setBook(finalBook);
+    setAccessToken(accessToken);
     setGenerationStatus("ready");
   }
 
@@ -198,10 +251,15 @@ export default function Home() {
   }
 
   function handleCreateLegend() {
+    if (generationStartedRef.current) {
+      return;
+    }
+
     if (!formInput || !approvedSynopsis || generationStatus === "generating") {
       return;
     }
 
+    generationStartedRef.current = true;
     console.log("[CREATE_LEGEND_CLICK]", Date.now());
 
     generationRunRef.current += 1;
@@ -288,6 +346,7 @@ export default function Home() {
   }
 
   function reset() {
+    generationStartedRef.current = false;
     generationRunRef.current += 1;
     synopsisRequestRef.current += 1;
     setBook(null);

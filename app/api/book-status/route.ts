@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
+import { areFreeIllustrationsReady } from "@/lib/freeImages";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
@@ -40,6 +41,7 @@ export async function GET(request: Request) {
       readyIllustrationCount: normalized.readyIllustrationCount,
       illustrationsTotal: FULL_BOOK_PAGE_COUNT,
       allIllustrationsReady: normalized.allIllustrationsReady,
+      freeIllustrationsReady: areFreeIllustrationsReady(storedBook),
       hasFailedIllustrations: normalized.hasFailedIllustrations,
       hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
       missingPages: normalized.missingPages,

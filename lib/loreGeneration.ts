@@ -3,6 +3,7 @@ import "server-only";
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
 import { openai } from "@/lib/server/openai";
 import { TEXT_MODEL } from "@/lib/server/generation-config";
+import { MAX_TEXT_REPAIR_ATTEMPTS, TEXT_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
 import {
   attemptPage5CliffhangerRepair,
   isCliffhangerOnlyFailure,
@@ -219,16 +220,20 @@ async function requestRawLoreText(input: BookFormInput, approvedSynopsis?: Appro
   const { system, user } = buildLorePrompt(input, approvedSynopsis);
   const model = getLoreModel();
 
-  const response = await openai.responses.create({
-    model,
-    instructions: `${system}\nReturn only one valid JSON object. No markdown fences. No prose outside JSON.`,
-    input: `${user}\n\nReturn only one valid JSON object. No markdown fences. No apology. No explanatory sentence.`,
-    text: {
-      format: { type: "json_object" },
-      verbosity: "medium",
-    },
-    max_output_tokens: 4500,
-  });
+  const response = await withTimeout(
+    openai.responses.create({
+      model,
+      instructions: `${system}\nReturn only one valid JSON object. No markdown fences. No prose outside JSON.`,
+      input: `${user}\n\nReturn only one valid JSON object. No markdown fences. No apology. No explanatory sentence.`,
+      text: {
+        format: { type: "json_object" },
+        verbosity: "medium",
+      },
+      max_output_tokens: 4500,
+    }),
+    TEXT_GENERATION_TIMEOUT_MS,
+    "TEXT_GENERATION",
+  );
 
   const rawText = getResponseText(response);
   if (!rawText) {
@@ -242,16 +247,20 @@ async function repairLoreJson(invalidOutput: string, input: BookFormInput) {
   const model = getLoreModel();
   const { system } = buildLorePrompt(input);
 
-  const response = await openai.responses.create({
-    model,
-    instructions: `${system}\nThe previous output was invalid. Return only valid JSON matching this schema. Do not add markdown, comments, or explanations.`,
-    input: `Repair this invalid biography JSON output:\n\n${invalidOutput.slice(0, 4000)}`,
-    text: {
-      format: { type: "json_object" },
-      verbosity: "medium",
-    },
-    max_output_tokens: 4500,
-  });
+  const response = await withTimeout(
+    openai.responses.create({
+      model,
+      instructions: `${system}\nThe previous output was invalid. Return only valid JSON matching this schema. Do not add markdown, comments, or explanations.`,
+      input: `Repair this invalid biography JSON output:\n\n${invalidOutput.slice(0, 4000)}`,
+      text: {
+        format: { type: "json_object" },
+        verbosity: "medium",
+      },
+      max_output_tokens: 4500,
+    }),
+    TEXT_GENERATION_TIMEOUT_MS,
+    "TEXT_REPAIR",
+  );
 
   const rawText = getResponseText(response);
   if (!rawText) {
@@ -266,7 +275,8 @@ export async function generateLoreBook(
   approvedSynopsis?: ApprovedSynopsis | null,
 ): Promise<GenerateLoreResult> {
   requireOpenAiKey();
-  console.log("[LORE_MODEL]", getLoreModel());
+  console.log("[BOOK_TEXT_MODEL_USED]", TEXT_MODEL);
+  console.log("[TEXT_GENERATION_START]", Date.now());
 
   if (!approvedSynopsis) {
     console.warn("[SYNOPSIS_MISSING] Full generation started without approved synopsis");
@@ -277,19 +287,35 @@ export async function generateLoreBook(
 
   try {
     lastRawText = await requestRawLoreText(input, approvedSynopsis);
-    return { book: await parseLoreBook(lastRawText, input), fallback: false };
+    console.log("[TEXT_GENERATION_DONE]", Date.now());
+    console.time("[TEXT_VALIDATION]");
+    const book = await parseLoreBook(lastRawText, input);
+    console.timeEnd("[TEXT_VALIDATION]");
+    return { book, fallback: false };
   } catch (error) {
     lastError = error;
     logLoreGenerationError(error);
   }
 
   if (lastRawText) {
-    try {
-      const repairedText = await repairLoreJson(lastRawText, input);
-      return { book: await parseLoreBook(repairedText, input), fallback: false };
-    } catch (repairError) {
-      lastError = repairError;
-      logLoreGenerationError(repairError);
+    for (let attempt = 1; attempt <= MAX_TEXT_REPAIR_ATTEMPTS; attempt += 1) {
+      console.log("[TEXT_REPAIR_ATTEMPT]", attempt, {
+        hasRawText: Boolean(lastRawText),
+      });
+      console.time("[TEXT_REPAIR]");
+
+      try {
+        const repairedText = await repairLoreJson(lastRawText, input);
+        console.timeEnd("[TEXT_REPAIR]");
+        console.time("[TEXT_VALIDATION]");
+        const book = await parseLoreBook(repairedText, input);
+        console.timeEnd("[TEXT_VALIDATION]");
+        return { book, fallback: false };
+      } catch (repairError) {
+        console.timeEnd("[TEXT_REPAIR]");
+        lastError = repairError;
+        logLoreGenerationError(repairError);
+      }
     }
   }
 

@@ -17,6 +17,7 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
   }
 
   const imageModel = IMAGE_MODEL;
+  console.log("[IMAGE_MODEL_USED]", IMAGE_MODEL, IMAGE_QUALITY);
   const models = [imageModel];
   const requestedSize = IMAGE_SIZE;
   const sizes = Array.from(new Set([requestedSize, "1024x1024"]));

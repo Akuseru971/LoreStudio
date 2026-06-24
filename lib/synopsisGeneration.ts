@@ -109,6 +109,8 @@ export async function generateSynopsis(input: BookFormInput, regenerationAttempt
   const { system, user } = buildSynopsisPrompt(input, regenerationAttempt);
   const model = getSynopsisModel();
 
+  console.log("[SYNOPSIS_TEXT_MODEL_USED]", SYNOPSIS_MODEL);
+
   const response = await openai.responses.create({
     model,
     instructions: `${system}\nReturn only one valid JSON object. No markdown fences. No prose outside JSON.`,
