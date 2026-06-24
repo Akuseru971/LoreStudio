@@ -775,7 +775,7 @@ button {
   justify-content: center;
   padding: 0 0.5rem 2rem;
   transform-origin: center bottom;
-  animation: synopsisScrollUp var(--scroll-duration, 20s) linear infinite;
+  animation: synopsisScrollUp var(--scroll-duration, 28s) linear infinite;
   will-change: transform;
 }
 
@@ -828,6 +828,26 @@ button {
 
   100% {
     transform: translateY(-75%);
+    opacity: 0;
+  }
+}
+
+@keyframes synopsisScrollUpMobile {
+  0% {
+    transform: translateY(35%);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  82% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(-80%);
     opacity: 0;
   }
 }
@@ -894,9 +914,52 @@ button {
   }
 }
 
+@media (max-width: 768px) and (max-height: 700px) {
+  .post-video-loading-screen .fixed-legend-header {
+    margin-bottom: 8px;
+  }
+
+  .post-video-loading-screen .synopsis-scroll-container {
+    height: 34vh;
+    margin-top: 8px;
+  }
+
+  .post-video-loading-screen .loading-indicator {
+    margin-top: 8px;
+  }
+}
+
 @media (max-width: 768px) {
-  .synopsis-scroll-container {
-    height: clamp(38vh, 42vh, 44vh);
+  .post-video-loading-screen {
+    justify-content: flex-start;
+    padding-top: max(28px, env(safe-area-inset-top));
+  }
+
+  .post-video-loading-screen > div.relative {
+    flex: 0 1 auto;
+  }
+
+  .post-video-loading-screen .fixed-legend-header {
+    margin-top: 0;
+    margin-bottom: 14px;
+  }
+
+  .post-video-loading-screen .synopsis-scroll-container {
+    flex: 0 1 auto;
+    margin-top: 12px;
+    height: min(38vh, 330px);
+  }
+
+  .post-video-loading-screen .synopsis-scroll-text {
+    animation: synopsisScrollUpMobile var(--scroll-duration, 28s) linear infinite;
+  }
+
+  .post-video-loading-screen .loading-indicator {
+    position: relative;
+    margin-top: 14px;
+    margin-bottom: 0;
+    transform: translateY(-8px);
+    flex-shrink: 0;
   }
 
   .mobile-book-shell {

@@ -14,7 +14,7 @@ type SynopsisLoadingScreenProps = {
 
 function getScrollDuration(synopsisText: string) {
   const synopsisLength = synopsisText.length || 0;
-  return Math.min(28, Math.max(16, synopsisLength / 35));
+  return Math.min(38, Math.max(26, synopsisLength / 24));
 }
 
 export default function SynopsisLoadingScreen({ synopsis, formInput }: SynopsisLoadingScreenProps) {
