@@ -726,6 +726,7 @@ button {
 
 .post-video-loading-screen {
   justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .loading-background {
@@ -762,7 +763,7 @@ button {
   overflow: hidden;
   width: 100%;
   height: min(42vh, 380px);
-  margin-top: 24px;
+  margin-top: 8px;
   flex: 1;
   min-height: 0;
   perspective: 600px;
@@ -793,8 +794,8 @@ button {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  margin-top: 24px;
-  padding-bottom: env(safe-area-inset-bottom);
+  margin-top: 12px;
+  margin-bottom: 14px;
   color: rgba(255, 255, 255, 0.78);
   font-size: 13px;
   letter-spacing: 0.08em;
@@ -895,8 +896,31 @@ button {
 }
 
 @media (max-width: 768px) {
+  .fixed-legend-header {
+    margin-bottom: 0;
+  }
+
+  .fixed-legend-header .legend-character-name {
+    margin-top: 0.5rem;
+  }
+
+  .fixed-legend-header .legend-nickname {
+    margin-top: 0.35rem;
+  }
+
+  .fixed-legend-header .legend-meta {
+    margin-top: 0.5rem;
+  }
+
+  .loading-indicator {
+    margin-top: 12px;
+    margin-bottom: 14px;
+    transform: translateY(-6px);
+  }
+
   .synopsis-scroll-container {
-    height: clamp(38vh, 42vh, 44vh);
+    height: clamp(36vh, 40vh, 42vh);
+    margin-top: 8px;
   }
 
   .mobile-book-shell {

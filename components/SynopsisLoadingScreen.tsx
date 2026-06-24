@@ -14,7 +14,8 @@ type SynopsisLoadingScreenProps = {
 
 function getScrollDuration(synopsisText: string) {
   const synopsisLength = synopsisText.length || 0;
-  return Math.min(28, Math.max(16, synopsisLength / 35));
+  const baseScrollDuration = Math.min(28, Math.max(16, synopsisLength / 35));
+  return baseScrollDuration * 2;
 }
 
 export default function SynopsisLoadingScreen({ synopsis, formInput }: SynopsisLoadingScreenProps) {
@@ -49,15 +50,15 @@ export default function SynopsisLoadingScreen({ synopsis, formInput }: SynopsisL
           ) : null}
         </header>
 
+        <div className="loading-indicator shrink-0" role="status" aria-live="polite">
+          <div className="loading-rune" aria-hidden="true" />
+          <span>Writing your illustrated chronicle...</span>
+        </div>
+
         <div className="synopsis-scroll-container mx-auto w-full max-w-[680px]">
           <div className="synopsis-scroll-text" style={scrollStyle}>
             <p className="synopsis-loading-body font-cover-title">{synopsisText}</p>
           </div>
-        </div>
-
-        <div className="loading-indicator shrink-0" role="status" aria-live="polite">
-          <div className="loading-rune" aria-hidden="true" />
-          <span>Writing your illustrated chronicle...</span>
         </div>
       </div>
     </main>
