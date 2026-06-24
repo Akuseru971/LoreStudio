@@ -1,6 +1,6 @@
 import "server-only";
 
-import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE, normalizeImageQuality } from "@/lib/server/generation-config";
+import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE, normalizeImageQuality } from "@/lib/server/ai-config";
 import { buildFinalImagePrompt } from "@/lib/prompts";
 import { openai } from "@/lib/server/openai";
 import type { BookPage, LoreBook } from "@/lib/types";
@@ -17,6 +17,11 @@ export async function generateBookPageImage(book: LoreBook, page: BookPage, opti
   }
 
   const imageModel = IMAGE_MODEL;
+  console.log("[IMAGE_MODEL_USED]", {
+    model: IMAGE_MODEL,
+    quality: IMAGE_QUALITY,
+    pageNumber: page.pageNumber,
+  });
   const models = [imageModel];
   const requestedSize = IMAGE_SIZE;
   const sizes = Array.from(new Set([requestedSize, "1024x1024"]));

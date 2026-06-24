@@ -1,13 +1,13 @@
 import "server-only";
 
 import { openai } from "@/lib/server/openai";
-import { TEXT_MODEL } from "@/lib/server/generation-config";
+import { BOOK_TEXT_MODEL } from "@/lib/server/ai-config";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
 
 export const PAGE_5_CLIFFHANGER_ERROR = "Page 5 must end with a cliffhanger.";
 
-function getLoreModel() {
-  return TEXT_MODEL;
+function getBookTextModel() {
+  return BOOK_TEXT_MODEL;
 }
 
 const IMMERSION_BANNED_PATTERN =
@@ -156,7 +156,7 @@ function parseRepairedPage(rawText: string): BookPage {
 }
 
 export async function repairPage5Cliffhanger(book: Partial<LoreBook>, input: BookFormInput) {
-  const model = getLoreModel();
+  const model = getBookTextModel();
   const championName = book.championConnection?.championName || "the connected champion";
   const pageFive = book.pages?.[4];
 
@@ -209,7 +209,7 @@ Expected output:
 }
 
 export async function repairPage5LastSentence(pageText: string) {
-  const model = getLoreModel();
+  const model = getBookTextModel();
   const lastSentence = getLastSentence(pageText);
 
   const response = await openai.responses.create({
