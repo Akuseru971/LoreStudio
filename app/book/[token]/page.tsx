@@ -13,6 +13,7 @@ import {
 import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { normalizeBook } from "@/lib/normalizeBook";
 import { verifyPayment } from "@/lib/client/api";
+import { startPremiumGenerationLoop } from "@/lib/client/premium-generation";
 import type { LoreBook } from "@/lib/types";
 
 type BookResponse = {
@@ -139,6 +140,8 @@ export default function BookAccessPage({ params }: { params: Promise<{ token: st
             setNotice(emailNotice);
             setInitialPageIndex(ILLUSTRATED_PAGE_COUNT - 1);
             window.history.replaceState({}, "", `/book/${encodeURIComponent(currentToken)}`);
+            console.log("[PAYMENT_VERIFIED_START_PREMIUM_GENERATION]");
+            void startPremiumGenerationLoop(currentToken);
           }
         }
 

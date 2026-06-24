@@ -27,6 +27,16 @@ export async function generatePremiumImages(accessToken: string) {
   });
 }
 
+export async function generateNextPremiumImage(accessToken: string) {
+  const response = await fetch("/api/generate-next-premium-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accessToken }),
+  });
+  const data = await response.json();
+  return { response, data };
+}
+
 export async function fetchBookStatus(accessToken: string) {
   const response = await fetch(`/api/book-status?token=${encodeURIComponent(accessToken)}`);
   const data = await response.json();

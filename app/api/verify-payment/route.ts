@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     }
 
     if (hasPremiumAccess(book.status)) {
+      console.log("[PAYMENT_VERIFIED_START_PREMIUM_GENERATION]");
       triggerPremiumImageGeneration(body.accessToken);
     }
 

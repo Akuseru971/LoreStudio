@@ -11,7 +11,7 @@ import {
   isIllustrationReady,
   normalizeBookImages,
 } from "@/lib/book-images";
-import { generatePremiumImages } from "@/lib/premiumImages";
+import { generateNextPremiumImage } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { generateAndStoreFreeImageForPage } from "@/lib/freeImages";
 
@@ -38,7 +38,21 @@ export async function retryMissingImages(accessToken: string) {
   const missingBefore = getMissingIllustrationPages(imagesInput).filter((pageNumber) => pageNumber <= maxPage);
 
   if (isPremium) {
-    await generatePremiumImages(accessToken);
+    for (const pageNumber of missingBefore) {
+      const image = getImageForPage(imagesInput, pageNumber);
+      if (isIllustrationReady(image)) {
+        continue;
+      }
+
+      const result = await generateNextPremiumImage(accessToken);
+      if (result.allIllustrationsReady) {
+        break;
+      }
+
+      if (result.pageNumber === pageNumber && !result.generated) {
+        continue;
+      }
+    }
   } else {
     for (const pageNumber of missingBefore) {
       const image = getImageForPage(imagesInput, pageNumber);

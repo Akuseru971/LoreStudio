@@ -3,6 +3,7 @@ import {
   saveEmail,
   saveStripePayment,
   updateBookStatus,
+  updateGenerationProgress,
 } from "@/lib/bookStore";
 import { getStripeClient } from "@/lib/stripe";
 import type { BookStatus, StoredBook } from "@/lib/types";
@@ -94,6 +95,7 @@ export async function verifyStripeCheckoutSession(
     email || null,
   );
   await updateBookStatus(storedBook.id, "paid");
+  await updateGenerationProgress(storedBook.id, "preparing", { touchStartedAt: true });
   void triggerFulfillment(accessToken);
 
   const updatedBook = await getBookByAccessToken(accessToken);
