@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
 import ArchiveErrorBoundary from "@/components/ArchiveErrorBoundary";
-import IntroGate from "@/components/IntroGate";
+import IntroCarousel from "@/components/IntroCarousel";
 import InteractiveBook from "@/components/InteractiveBook";
 import SynopsisLoadingScreen from "@/components/SynopsisLoadingScreen";
 import MysticalStartTransition from "@/components/MysticalStartTransition";
@@ -456,7 +456,7 @@ export default function Home() {
       <AnimatePresence>
         {step === "intro" ? (
           <motion.div key="intro" exit={{ opacity: 0, filter: "blur(18px)" }} transition={{ duration: 0.7 }}>
-            <IntroGate onStart={() => setStep("startTransition")} />
+            <IntroCarousel onBegin={() => setStep("form")} />
           </motion.div>
         ) : null}
 
