@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus } from "@/lib/bookStore";
+import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus, updateGenerationProgress } from "@/lib/bookStore";
 import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
-import { hasPremiumAccess, triggerFulfillment } from "@/lib/paymentVerification";
-import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
+import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getStripeClient } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -74,13 +73,13 @@ export async function POST(request: Request) {
 
       if (!hasPremiumAccess(storedBook.status)) {
         await updateBookStatus(storedBook.id, "paid");
-        void triggerFulfillment(accessToken);
+        await updateGenerationProgress(storedBook.id, "preparing", { touchStartedAt: true });
+        console.log("[PAYMENT_VERIFIED]", { bookId: storedBook.id, accessToken });
       }
 
       void sendConfirmationEmailIfNeeded(accessToken).catch((error) => {
         console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
       });
-      triggerPremiumImageGeneration(accessToken);
     }
 
     return NextResponse.json({ received: true });

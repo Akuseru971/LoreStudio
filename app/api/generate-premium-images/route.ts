@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { generatePremiumImages } from "@/lib/premiumImages";
+import { generateNextPremiumImage } from "@/lib/premiumImages";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 180;
 
 type GeneratePremiumImagesBody = {
   accessToken?: string;
@@ -22,10 +22,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await generatePremiumImages(body.accessToken);
+    const result = await generateNextPremiumImage(body.accessToken);
     return NextResponse.json({
-      images: result.images,
-      allReady: result.allReady,
+      generatedPage: result.pageNumber,
+      allReady: result.allIllustrationsReady,
+      done: result.done,
     });
   } catch (error) {
     console.error("Premium image generation failed.", error);

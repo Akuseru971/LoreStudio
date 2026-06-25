@@ -6,9 +6,9 @@ import {
   downloadMp3,
   downloadPdf,
   fetchBookStatus,
-  generatePremiumImages,
   retryMissingImages,
 } from "@/lib/client/api";
+import { startPremiumGenerationLoop } from "@/lib/client/premium-generation";
 import { getImageForPage, isIllustrationReady, logPdfReadyCheck } from "@/lib/book-image-utils";
 import {
   getPdfButtonLabel,
@@ -117,8 +117,7 @@ export default function BookPremiumActions({
     }
 
     premiumGenerationStartedRef.current = true;
-
-    await generatePremiumImages(accessToken);
+    await startPremiumGenerationLoop(accessToken);
   }, [accessToken]);
 
   useEffect(() => {

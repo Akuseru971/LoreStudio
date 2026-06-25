@@ -3,6 +3,7 @@ import {
   saveEmail,
   saveStripePayment,
   updateBookStatus,
+  updateGenerationProgress,
 } from "@/lib/bookStore";
 import { getStripeClient } from "@/lib/stripe";
 import type { BookStatus, StoredBook } from "@/lib/types";
@@ -13,29 +14,8 @@ export function hasPremiumAccess(status: BookStatus) {
   return PREMIUM_STATUSES.includes(status);
 }
 
-function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-}
-
-export async function triggerFulfillment(accessToken: string) {
-  const secret = process.env.INTERNAL_FULFILLMENT_SECRET?.trim();
-  if (!secret) {
-    console.warn(
-      "INTERNAL_FULFILLMENT_SECRET is not configured. Skipping async fulfillment trigger. Premium fulfillment will not run until this secret is set.",
-    );
-    return;
-  }
-
-  await fetch(`${getAppUrl()}/api/internal/fulfill-book`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-internal-fulfillment-secret": secret,
-    },
-    body: JSON.stringify({ accessToken }),
-  }).catch((error) => {
-    console.error("Failed to trigger fulfillment job.", error);
-  });
+export async function triggerFulfillment(_accessToken: string) {
+  console.log("[FULFILLMENT_DEFERRED_TO_CLIENT]");
 }
 
 export type PaymentVerificationResult = {
@@ -94,7 +74,8 @@ export async function verifyStripeCheckoutSession(
     email || null,
   );
   await updateBookStatus(storedBook.id, "paid");
-  void triggerFulfillment(accessToken);
+  await updateGenerationProgress(storedBook.id, "preparing", { touchStartedAt: true });
+  console.log("[PAYMENT_VERIFIED]", { bookId: storedBook.id, accessToken });
 
   const updatedBook = await getBookByAccessToken(accessToken);
   if (!updatedBook) {

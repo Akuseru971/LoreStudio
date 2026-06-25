@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
 import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
-import { triggerPremiumImageGeneration } from "@/lib/premiumImages";
 
 export const runtime = "nodejs";
 
@@ -50,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     if (hasPremiumAccess(book.status)) {
-      triggerPremiumImageGeneration(body.accessToken);
+      console.log("[PAYMENT_VERIFIED_START_PREMIUM_GENERATION]");
     }
 
     return NextResponse.json({

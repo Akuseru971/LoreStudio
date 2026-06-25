@@ -3,8 +3,9 @@ import { getBookByAccessToken } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { countReadyFreeImages, areFreeIllustrationsReady } from "@/lib/freeImages";
 import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generation-progress";
-import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
+import { FREE_IMAGE_PAGE_COUNT, PREMIUM_IMAGE_PAGES } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
+import { arePremiumIllustrationsReady, getMissingPremiumImagePages } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 import type { GenerationProgressStatus } from "@/lib/types";
@@ -61,9 +62,21 @@ export async function GET(request: Request) {
       readyFreeImageCount,
     });
 
+    const missingPremiumPages = isPremium ? getMissingPremiumImagePages(storedBook) : [];
+    const premiumImagesReady = isPremium ? arePremiumIllustrationsReady(storedBook) : false;
+    const pdfReady = storedBook.pdf_status === "ready" || Boolean(storedBook.pdf_storage_path);
+
     if (!normalized.allIllustrationsReady) {
       logPdfReadyCheck(normalized.input, "book-status");
     }
+
+    console.log("[BOOK_STATUS]", {
+      bookId: storedBook.id,
+      status: storedBook.status,
+      generationStatus,
+      readyImagesCount: normalized.readyIllustrationCount,
+      missingPremiumPages,
+    });
 
     return NextResponse.json({
       success: true,
@@ -77,22 +90,30 @@ export async function GET(request: Request) {
       message: isPreparing ? "Generation still in progress" : "Book status loaded",
       accessToken: storedBook.access_token,
       isPremium,
+      isPaid: isPremium,
       canDownloadPdf: isPremium && normalized.allIllustrationsReady,
       canDownloadMp3: isPremium,
       images: normalized.images,
       imageStatus: normalized.images,
       illustrationsReadyCount: normalized.readyIllustrationCount,
       readyIllustrationCount: normalized.readyIllustrationCount,
+      readyImagesCount: normalized.readyIllustrationCount,
+      totalImages: FULL_BOOK_PAGE_COUNT,
       readyFreeImageCount,
       freeImagesTotal: FREE_IMAGE_PAGE_COUNT,
       illustrationsTotal: FULL_BOOK_PAGE_COUNT,
       allIllustrationsReady: normalized.allIllustrationsReady,
       freeIllustrationsReady,
+      premiumImagesReady,
+      missingPremiumPages,
+      premiumImagesTotal: PREMIUM_IMAGE_PAGES.length,
       hasFailedIllustrations: normalized.hasFailedIllustrations,
       hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
       missingPages: normalized.missingPages,
       pdfStatus: storedBook.pdf_status || "not_started",
       pdfStoragePath: storedBook.pdf_storage_path,
+      pdfReady,
+      audioStatus: storedBook.mp3_status || "not_started",
       characterName:
         storedBook.full_book?.characterBible.name || storedBook.free_book?.characterBible.name || null,
       title: storedBook.full_book?.title || storedBook.free_book?.title || null,

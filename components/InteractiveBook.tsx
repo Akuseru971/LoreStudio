@@ -25,7 +25,8 @@ import {
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
 import { getDirectImageUrl, logBookImageRender } from "@/lib/book-image-utils";
 import { useIsMobile } from "@/lib/useIsMobile";
-import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio, generatePremiumImages } from "@/lib/client/api";
+import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio } from "@/lib/client/api";
+import { startPremiumGenerationLoop } from "@/lib/client/premium-generation";
 import { normalizeBook } from "@/lib/normalizeBook";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -328,8 +329,6 @@ export default function InteractiveBook({
     return Boolean(bookData.allIllustrationsReady);
   }, [accessToken, isPremium]);
 
-  const refreshPremiumImages = refreshBookImages;
-
   useEffect(() => {
     if (!accessToken) {
       return;
@@ -348,28 +347,8 @@ export default function InteractiveBook({
       return;
     }
 
-    let cancelled = false;
-    const currentAccessToken = accessToken;
-
-    async function runPremiumImages() {
-      await generatePremiumImages(currentAccessToken);
-
-      while (!cancelled) {
-        const allReady = await refreshPremiumImages();
-        if (allReady) {
-          break;
-        }
-
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-      }
-    }
-
-    void runPremiumImages();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, isPremium, refreshPremiumImages]);
+    void startPremiumGenerationLoop(accessToken);
+  }, [accessToken, isPremium]);
 
   const stopNarration = useCallback(() => {
     narrationRunRef.current += 1;
