@@ -77,6 +77,10 @@ export async function retryMissingImages(accessToken: string) {
   });
 }
 
+export function getPdfOpenUrl(accessToken: string) {
+  return `/api/pdf/${encodeURIComponent(accessToken)}`;
+}
+
 export async function downloadPdf(accessToken: string) {
   const response = await fetch(`/api/download-pdf?token=${encodeURIComponent(accessToken)}`);
   const data = await response.json();

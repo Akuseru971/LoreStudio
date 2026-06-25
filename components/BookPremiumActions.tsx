@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import {
   downloadMp3,
-  downloadPdf,
   fetchBookStatus,
+  getPdfOpenUrl,
   retryMissingImages,
 } from "@/lib/client/api";
 import { startPremiumGenerationLoop } from "@/lib/client/premium-generation";
+import { useIsMobile } from "@/lib/useIsMobile";
 import { getImageForPage, isIllustrationReady, logPdfReadyCheck } from "@/lib/book-image-utils";
 import {
   getPdfButtonLabel,
@@ -36,13 +37,6 @@ type BookStatusResponse = {
   error?: string;
 };
 
-type PdfDownloadResponse = {
-  status?: "ready" | "not_ready" | "generating_pdf" | "failed";
-  downloadUrl?: string;
-  message?: string;
-  reason?: string;
-};
-
 const STATUS_POLL_INTERVAL_MS = 4000;
 
 export default function BookPremiumActions({
@@ -54,7 +48,6 @@ export default function BookPremiumActions({
   const [illustrationsReadyCount, setIllustrationsReadyCount] = useState(0);
   const [isPremium, setIsPremium] = useState(isPremiumProp);
   const [pdfStatus, setPdfStatus] = useState<PdfStatus>("not_started");
-  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isDownloadingMp3, setIsDownloadingMp3] = useState(false);
   const [isRetryingIllustrations, setIsRetryingIllustrations] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -63,12 +56,12 @@ export default function BookPremiumActions({
   const statusPollRef = useRef(0);
   const pollIntervalRef = useRef<number | null>(null);
   const premiumGenerationStartedRef = useRef(false);
+  const isMobile = useIsMobile();
 
   const pdfAvailability = resolvePdfAvailability({
     isPremium,
     images: imageStatus,
     pdfStatus,
-    isDownloadingPdf,
   });
 
   const isPdfReady = isPdfDownloadReady(pdfAvailability);
@@ -177,40 +170,21 @@ export default function BookPremiumActions({
     }
   }, [accessToken, refreshBookStatus]);
 
-  const handleDownloadPdf = useCallback(async () => {
+  const handleDownloadPdf = useCallback(() => {
     if (!isPdfReady) {
       return;
     }
 
-    setIsDownloadingPdf(true);
     setPdfError(null);
+    const pdfOpenUrl = getPdfOpenUrl(accessToken);
 
-    try {
-      const { response, data } = await downloadPdf(accessToken);
-      const pdfData = data as PdfDownloadResponse;
-
-      if (pdfData.status === "ready" && pdfData.downloadUrl) {
-        window.open(pdfData.downloadUrl, "_blank", "noopener,noreferrer");
-        return;
-      }
-
-      if (pdfData.status === "not_ready") {
-        await refreshBookStatus();
-        return;
-      }
-
-      if (pdfData.status === "generating_pdf") {
-        setPdfStatus("generating");
-        return;
-      }
-
-      setPdfError(pdfData.message || "PDF could not be generated.");
-    } catch {
-      setPdfError("PDF could not be generated.");
-    } finally {
-      setIsDownloadingPdf(false);
+    if (isMobile) {
+      window.location.href = pdfOpenUrl;
+      return;
     }
-  }, [accessToken, isPdfReady, refreshBookStatus]);
+
+    window.open(pdfOpenUrl, "_blank", "noopener,noreferrer");
+  }, [accessToken, isMobile, isPdfReady]);
 
   const handleDownloadMp3 = useCallback(async () => {
     setIsDownloadingMp3(true);
@@ -240,7 +214,7 @@ export default function BookPremiumActions({
     pdfAvailability === "illustrations_failed" ||
     (isPremium && illustrationsReadyCount < FULL_BOOK_PAGE_COUNT && pdfAvailability === "waiting_for_illustrations");
   const isPdfButtonDisabled =
-    !isPdfReady || isDownloadingPdf || isDownloadingMp3 || isRetryingIllustrations;
+    !isPdfReady || isDownloadingMp3 || isRetryingIllustrations;
 
   return (
     <div className={className}>
@@ -266,7 +240,7 @@ export default function BookPremiumActions({
         <button
           type="button"
           onClick={() => void handleDownloadMp3()}
-          disabled={isDownloadingPdf || isDownloadingMp3 || isRetryingIllustrations}
+          disabled={isDownloadingMp3 || isRetryingIllustrations}
           className="rounded-full border border-[#d9bd78]/35 bg-black/35 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-[#f7ebce] transition hover:border-[#d9bd78]/55 hover:bg-[#d9bd78]/10 disabled:cursor-wait disabled:opacity-60"
         >
           {isDownloadingMp3 ? "Preparing narration..." : "Download MP3"}
