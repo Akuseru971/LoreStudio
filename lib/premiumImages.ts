@@ -81,6 +81,8 @@ async function generateSinglePremiumImage(accessToken: string, pageNumber: numbe
 }
 
 export async function generatePremiumImages(accessToken: string) {
+  console.log("[PREMIUM_IMAGE_GENERATION_PAGES]", [...PREMIUM_IMAGE_PAGE_NUMBERS]);
+
   const storedBook = await getBookByAccessToken(accessToken);
   if (!storedBook) {
     throw new Error("Book not found.");

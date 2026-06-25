@@ -17,6 +17,7 @@ import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config"
 import { buildPageNarrationText } from "@/lib/bookNarration";
 import {
   FREE_IMAGE_PAGE_COUNT,
+  isPremiumImageLockedBeforePayment,
   isPremiumImagePage,
   isSealedFreeImagePage,
   PREMIUM_IMAGE_PAGE_NUMBERS,
@@ -141,14 +142,18 @@ export default function InteractiveBook({
   const pagesWithImages = useMemo(
     () =>
       safePages.map((page) => {
-        const imageUrl = imageCache[page.pageNumber] ?? page.imageUrl ?? null;
+        const cachedImageUrl = imageCache[page.pageNumber] ?? page.imageUrl ?? null;
+        const imageUrl =
+          !isPremium && isPremiumImageLockedBeforePayment(page.pageNumber)
+            ? undefined
+            : cachedImageUrl ?? undefined;
         logBookImageRender(page.pageNumber, imageUrl ? { pageNumber: page.pageNumber, status: "ready", url: imageUrl } : null);
         return {
           ...page,
           imageUrl,
         };
       }),
-    [safePages, imageCache],
+    [safePages, imageCache, isPremium],
   );
   const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT;
   const illustratedPages = useMemo(() => pagesWithImages.slice(0, pageLimit), [pagesWithImages, pageLimit]);

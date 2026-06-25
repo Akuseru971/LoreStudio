@@ -1,6 +1,7 @@
 import "server-only";
 
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
+import { PREMIUM_IMAGE_PAGE_NUMBERS } from "@/lib/image-config";
 import type { ImagePageStatus, PageImageState, StoredBook } from "@/lib/types";
 import { getImageForPage, getImageUrl, isIllustrationReady, normalizeBookImages } from "@/lib/book-images";
 
@@ -34,7 +35,7 @@ export function buildPageImageStates(book: StoredBook): Record<string, PageImage
 }
 
 export function allPremiumImagesReady(book: StoredBook) {
-  for (let pageNumber = 5; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
+  for (const pageNumber of PREMIUM_IMAGE_PAGE_NUMBERS) {
     const image = getImageForPage({ images: book.images, imageStatus: book.image_status }, pageNumber);
     if (!isIllustrationReady(image)) {
       return false;

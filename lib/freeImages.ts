@@ -1,6 +1,6 @@
 import "server-only";
 
-import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
+import { FREE_IMAGE_PAGE_COUNT, FREE_IMAGE_PAGES } from "@/lib/image-config";
 import {
   claimPageImageGeneration,
   getBookByAccessToken,
@@ -14,7 +14,7 @@ import { IMAGE_GENERATION_TIMEOUT_MS, STALE_IMAGE_GENERATING_MS, withTimeout } f
 import type { LoreBook, StoredBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
-export const FREE_IMAGE_PAGES = Array.from({ length: FREE_IMAGE_PAGE_COUNT }, (_, index) => index + 1);
+export { FREE_IMAGE_PAGES } from "@/lib/image-config";
 
 export function getFreeImagePagesInput(storedBook: StoredBook): BookImagesInput {
   return {
@@ -72,6 +72,13 @@ export async function generateAndStoreFreeImageForPage({
   book: LoreBook;
   pageNumber: number;
 }) {
+  if (pageNumber > FREE_IMAGE_PAGE_COUNT) {
+    if (pageNumber === 4) {
+      console.warn("[BLOCKED_PAGE_4_FREE_GENERATION]");
+    }
+    return null;
+  }
+
   const claimedBook = await claimPageImageGeneration(bookId, pageNumber);
   if (!claimedBook) {
     return getBookByAccessToken(accessToken);
@@ -119,6 +126,8 @@ export async function generateAndStoreFreeImageForPage({
 }
 
 export async function generateNextFreeImage(accessToken: string) {
+  console.log("[FREE_IMAGE_GENERATION_PAGES]", [...FREE_IMAGE_PAGES]);
+
   const storedBook = await getBookByAccessToken(accessToken);
   if (!storedBook) {
     throw new Error("Book not found.");

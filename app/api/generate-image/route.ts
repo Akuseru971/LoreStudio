@@ -17,6 +17,9 @@ export async function POST(request: Request) {
       pageNumber < 1 ||
       pageNumber > FREE_IMAGE_PAGE_COUNT
     ) {
+      if (pageNumber === 4) {
+        console.warn("[BLOCKED_PAGE_4_FREE_GENERATION]");
+      }
       return NextResponse.json({ imageUrl: null, error: "Invalid image request." }, { status: 400 });
     }
 
