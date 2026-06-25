@@ -5,6 +5,7 @@ import { countReadyFreeImages, areFreeIllustrationsReady } from "@/lib/freeImage
 import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generation-progress";
 import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
+import { maybeSendPdfFinalizedEmail } from "@/lib/pdfFinalizedEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 import type { GenerationProgressStatus } from "@/lib/types";
@@ -63,6 +64,17 @@ export async function GET(request: Request) {
 
     if (!normalized.allIllustrationsReady) {
       logPdfReadyCheck(normalized.input, "book-status");
+    }
+
+    if (
+      isPremium &&
+      (storedBook.pdf_status === "ready" || storedBook.pdf_storage_path) &&
+      storedBook.pdf_ready_email_status !== "sent" &&
+      !storedBook.pdf_ready_email_sent_at
+    ) {
+      void maybeSendPdfFinalizedEmail(storedBook.id).catch((error) => {
+        console.error("[PDF_FINALIZED_EMAIL_FAILED]", { bookId: storedBook.id, error });
+      });
     }
 
     return NextResponse.json({
