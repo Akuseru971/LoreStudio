@@ -9,7 +9,6 @@ import {
   retryMissingImages,
 } from "@/lib/client/api";
 import { startPremiumGenerationLoop } from "@/lib/client/premium-generation";
-import { useIsMobile } from "@/lib/useIsMobile";
 import { getImageForPage, isIllustrationReady, logPdfReadyCheck } from "@/lib/book-image-utils";
 import {
   getPdfButtonLabel,
@@ -56,7 +55,6 @@ export default function BookPremiumActions({
   const statusPollRef = useRef(0);
   const pollIntervalRef = useRef<number | null>(null);
   const premiumGenerationStartedRef = useRef(false);
-  const isMobile = useIsMobile();
 
   const pdfAvailability = resolvePdfAvailability({
     isPremium,
@@ -170,22 +168,6 @@ export default function BookPremiumActions({
     }
   }, [accessToken, refreshBookStatus]);
 
-  const handleDownloadPdf = useCallback(() => {
-    if (!isPdfReady) {
-      return;
-    }
-
-    setPdfError(null);
-    const pdfOpenUrl = getPdfOpenUrl(accessToken);
-
-    if (isMobile) {
-      window.location.href = pdfOpenUrl;
-      return;
-    }
-
-    window.open(pdfOpenUrl, "_blank", "noopener,noreferrer");
-  }, [accessToken, isMobile, isPdfReady]);
-
   const handleDownloadMp3 = useCallback(async () => {
     setIsDownloadingMp3(true);
     setMp3Error(null);
@@ -219,14 +201,24 @@ export default function BookPremiumActions({
   return (
     <div className={className}>
       <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-        <button
-          type="button"
-          onClick={() => void handleDownloadPdf()}
-          disabled={isPdfButtonDisabled}
-          className="rounded-full border border-[#d9bd78]/35 bg-black/35 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-[#f7ebce] transition hover:border-[#d9bd78]/55 hover:bg-[#d9bd78]/10 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pdfButtonLabel}
-        </button>
+        {isPdfReady ? (
+          <a
+            href={getPdfOpenUrl(accessToken)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full border border-[#d9bd78]/35 bg-black/35 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-[#f7ebce] transition hover:border-[#d9bd78]/55 hover:bg-[#d9bd78]/10"
+          >
+            {pdfButtonLabel}
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled={isPdfButtonDisabled}
+            className="rounded-full border border-[#d9bd78]/35 bg-black/35 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-[#f7ebce] transition hover:border-[#d9bd78]/55 hover:bg-[#d9bd78]/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pdfButtonLabel}
+          </button>
+        )}
         {showRetryIllustrations ? (
           <button
             type="button"

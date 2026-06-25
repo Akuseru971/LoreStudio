@@ -841,6 +841,17 @@ export async function createSignedPdfUrl(pdfStoragePath: string, expiresInSecond
   return data.signedUrl;
 }
 
+export async function downloadBookPdf(pdfStoragePath: string): Promise<Buffer> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.storage.from(BOOK_PDF_BUCKET).download(pdfStoragePath);
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to download PDF from storage.");
+  }
+
+  return Buffer.from(await data.arrayBuffer());
+}
+
 export async function uploadBookMp3(bookId: string, mp3Buffer: Buffer) {
   const supabase = requireSupabase();
   const mp3StoragePath = `books/${bookId}/full-narration.mp3`;

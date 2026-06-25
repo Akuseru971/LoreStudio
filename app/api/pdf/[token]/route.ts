@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSignedPdfUrl, getBookByAccessToken } from "@/lib/bookStore";
-import { resolvePdfDownload } from "@/lib/pdfDownload";
+import { createSignedPdfUrl, downloadBookPdf, getBookByAccessToken } from "@/lib/bookStore";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
@@ -46,31 +45,30 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ success: false, error: "PDF_NOT_READY" }, { status: 403 });
     }
 
-    if (storedBook.pdf_storage_path) {
-      console.log("[PDF_SIGNED_URL_CREATED]", {
-        bookId: storedBook.id,
-        hasPdfPath: Boolean(storedBook.pdf_storage_path),
+    if (!storedBook.pdf_storage_path) {
+      return NextResponse.json({ success: false, error: "PDF_NOT_READY" }, { status: 409 });
+    }
+
+    console.log("[PDF_SIGNED_URL_CREATED]", {
+      bookId: storedBook.id,
+      hasPdfPath: Boolean(storedBook.pdf_storage_path),
+    });
+
+    if (isMobile) {
+      const pdfBuffer = await downloadBookPdf(storedBook.pdf_storage_path);
+      return new NextResponse(new Uint8Array(pdfBuffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": 'inline; filename="legend-book.pdf"',
+          "Cache-Control": "no-store",
+        },
       });
-      const signedUrl = await createSignedPdfUrl(storedBook.pdf_storage_path, PDF_SIGNED_URL_TTL_SECONDS);
-      console.log("[PDF_REDIRECT_TO_SIGNED_URL]", { bookId: storedBook.id });
-      return NextResponse.redirect(signedUrl, 302);
     }
 
-    const result = await resolvePdfDownload(accessToken);
-    if (result.status === "ready" && result.downloadUrl) {
-      console.log("[PDF_REDIRECT_TO_SIGNED_URL]", { bookId: storedBook.id });
-      return NextResponse.redirect(result.downloadUrl, 302);
-    }
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "PDF_NOT_READY",
-        status: result.status,
-        message: result.message,
-      },
-      { status: 409 },
-    );
+    const signedUrl = await createSignedPdfUrl(storedBook.pdf_storage_path, PDF_SIGNED_URL_TTL_SECONDS);
+    console.log("[PDF_REDIRECT_TO_SIGNED_URL]", { bookId: storedBook.id });
+    return NextResponse.redirect(signedUrl, 302);
   } catch (error) {
     console.error("[PDF_OPEN_FAILED]", {
       accessToken,
