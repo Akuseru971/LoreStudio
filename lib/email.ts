@@ -105,6 +105,70 @@ Keep this email safe. This private link lets you recover your legend without cre
   return { sent: true, id: data?.id };
 }
 
+export type FinalBookReadyEmailInput = {
+  to: string;
+  bookUrl: string;
+  pdfUrl: string;
+  idempotencyKey: string;
+};
+
+export async function sendFinalBookReadyEmail({ to, bookUrl, pdfUrl, idempotencyKey }: FinalBookReadyEmailInput) {
+  const resend = getResendClient();
+  const fromEmail = process.env.FROM_EMAIL?.trim();
+
+  if (!resend || !fromEmail) {
+    console.warn("Final book ready email not sent: missing Resend configuration.");
+    return { sent: false, error: "Email provider is not configured." };
+  }
+
+  const fromEmailError = validateFromEmail(fromEmail);
+  if (fromEmailError) {
+    console.error("[FINAL_READY_EMAIL_FAILED]", fromEmailError);
+    return { sent: false, error: fromEmailError };
+  }
+
+  const { data, error } = await resend.emails.send(
+    {
+      from: fromEmail,
+      to: [to],
+      subject: "Your complete legend is ready",
+      text: `Your complete illustrated book is ready.
+
+Access your book here:
+${bookUrl}
+
+Download your PDF here:
+${pdfUrl}
+
+Keep this email safe. Your private link lets you recover your book without creating an account.`,
+      html: `
+        <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
+          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">Your complete illustrated book is ready.</p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            Access your book here:<br />
+            <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
+          </p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            Download your PDF here:<br />
+            <a href="${pdfUrl}" style="color: #4a3724;">${pdfUrl}</a>
+          </p>
+          <p style="font-size: 14px; line-height: 1.7; color: #6b4a24;">
+            Keep this email safe. Your private link lets you recover your book without creating an account.
+          </p>
+        </div>
+      `,
+    },
+    { idempotencyKey },
+  );
+
+  if (error) {
+    console.error("[FINAL_READY_EMAIL_FAILED]", error);
+    return { sent: false, error: error.message };
+  }
+
+  return { sent: true, id: data?.id };
+}
+
 export function buildBookUnlockedEmailUrls(accessToken: string) {
   const appUrl = getAppUrl();
   return {

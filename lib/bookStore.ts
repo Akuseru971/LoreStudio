@@ -23,6 +23,7 @@ import type {
   ImagePageStatus,
   LoreBook,
   Mp3Status,
+  PdfReadyEmailStatus,
   PdfStatus,
   StoredBook,
 } from "@/lib/types";
@@ -104,6 +105,9 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     confirmation_email_sent_at: row.confirmation_email_sent_at ? String(row.confirmation_email_sent_at) : null,
     confirmation_email_status: (row.confirmation_email_status as ConfirmationEmailStatus | null) ?? "not_started",
     confirmation_email_error: row.confirmation_email_error ? String(row.confirmation_email_error) : null,
+    pdf_ready_email_sent_at: row.pdf_ready_email_sent_at ? String(row.pdf_ready_email_sent_at) : null,
+    pdf_ready_email_status: (row.pdf_ready_email_status as PdfReadyEmailStatus | null) ?? "not_started",
+    pdf_ready_email_error: row.pdf_ready_email_error ? String(row.pdf_ready_email_error) : null,
     generation_status: (row.generation_status as GenerationProgressStatus | null) ?? "not_started",
     generation_started_at: row.generation_started_at ? String(row.generation_started_at) : null,
     generation_updated_at: row.generation_updated_at ? String(row.generation_updated_at) : null,
@@ -745,6 +749,63 @@ export async function markConfirmationEmailSkipped(bookId: string) {
 
   if (error || !data) {
     throw new Error(error?.message || "Unable to mark confirmation email as skipped.");
+  }
+
+  return mapRow(data);
+}
+
+export async function claimPdfReadyEmailSend(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ pdf_ready_email_status: "sending" })
+    .eq("id", bookId)
+    .is("pdf_ready_email_sent_at", null)
+    .in("pdf_ready_email_status", ["not_started", "failed"])
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markPdfReadyEmailSent(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      pdf_ready_email_status: "sent",
+      pdf_ready_email_sent_at: new Date().toISOString(),
+      pdf_ready_email_error: null,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark PDF ready email as sent.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markPdfReadyEmailFailed(bookId: string, errorMessage?: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      pdf_ready_email_status: "failed",
+      pdf_ready_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark PDF ready email as failed.");
   }
 
   return mapRow(data);

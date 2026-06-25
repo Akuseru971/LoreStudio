@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
 import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
+import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
 import { resolvePdfDownload } from "@/lib/pdfDownload";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
@@ -44,12 +45,19 @@ export async function POST(request: Request) {
   }
 
   if (storedBook.pdf_storage_path && storedBook.pdf_status === "ready") {
+    const emailResult = await triggerFinalBookReadyEmailCheck(storedBook.id).catch((error) => {
+      console.error("[FINAL_READY_EMAIL_FAILED]", { bookId: storedBook.id, error });
+      return { sent: false, reason: "unexpected_error" as const };
+    });
+
     return NextResponse.json({
       success: true,
       status: "ready",
       pdfStatus: "ready",
       pdfReady: true,
       message: "PDF is already ready.",
+      finalEmailSent: emailResult.sent,
+      finalEmailReason: emailResult.reason,
     });
   }
 
@@ -57,11 +65,29 @@ export async function POST(request: Request) {
     console.log("[GENERATE_PDF_IF_READY_START]", { bookId: storedBook.id });
     const result = await resolvePdfDownload(accessToken);
 
+    if (result.status === "ready") {
+      const emailResult = await triggerFinalBookReadyEmailCheck(storedBook.id).catch((error) => {
+        console.error("[FINAL_READY_EMAIL_FAILED]", { bookId: storedBook.id, error });
+        return { sent: false, reason: "unexpected_error" as const };
+      });
+
+      return NextResponse.json({
+        success: true,
+        status: result.status,
+        pdfStatus: "ready",
+        pdfReady: true,
+        downloadUrl: result.downloadUrl,
+        message: result.message,
+        finalEmailSent: emailResult.sent,
+        finalEmailReason: emailResult.reason,
+      });
+    }
+
     return NextResponse.json({
-      success: result.status === "ready",
+      success: false,
       status: result.status,
-      pdfStatus: result.status === "ready" ? "ready" : storedBook.pdf_status || "generating",
-      pdfReady: result.status === "ready",
+      pdfStatus: storedBook.pdf_status || "generating",
+      pdfReady: false,
       downloadUrl: result.downloadUrl,
       message: result.message,
     });
