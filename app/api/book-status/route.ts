@@ -9,6 +9,7 @@ import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
 import { arePremiumIllustrationsReady, getMissingPremiumImagePages } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
+import { triggerPdfGenerationIfReady } from "@/lib/triggerPdfGeneration";
 import type { GenerationProgressStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -66,9 +67,21 @@ export async function GET(request: Request) {
     const missingPremiumPages = isPremium ? getMissingPremiumImagePages(storedBook) : [];
     const premiumImagesReady = isPremium ? arePremiumIllustrationsReady(storedBook) : false;
     const pdfReady = storedBook.pdf_status === "ready" || Boolean(storedBook.pdf_storage_path);
+    const pdfStatus = storedBook.pdf_status || "not_started";
 
     if (!normalized.allIllustrationsReady) {
       logPdfReadyCheck(normalized.input, "book-status");
+    }
+
+    if (
+      isPremium &&
+      normalized.allIllustrationsReady &&
+      !pdfReady &&
+      pdfStatus !== "generating"
+    ) {
+      void triggerPdfGenerationIfReady(storedBook.id, "book-status").catch((error) => {
+        console.error("[PDF_AUTO_TRIGGER_ERROR]", { bookId: storedBook.id, error });
+      });
     }
 
     if (
@@ -123,7 +136,7 @@ export async function GET(request: Request) {
       hasFailedIllustrations: normalized.hasFailedIllustrations,
       hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
       missingPages: normalized.missingPages,
-      pdfStatus: storedBook.pdf_status || "not_started",
+      pdfStatus,
       pdfStoragePath: storedBook.pdf_storage_path,
       pdfReady,
       audioStatus: storedBook.mp3_status || "not_started",

@@ -73,6 +73,10 @@ function startPdfGeneration(accessToken: string, bookId: string) {
   return task;
 }
 
+export function isPdfGenerationInProgress(bookId: string) {
+  return pdfGenerationTasks.has(bookId);
+}
+
 export async function resolvePdfDownload(accessToken: string): Promise<PdfDownloadResponse> {
   const storedBook = await getBookByAccessToken(accessToken);
   if (!storedBook) {

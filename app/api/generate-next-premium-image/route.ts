@@ -9,6 +9,8 @@ import {
 } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { normalizeBook } from "@/lib/normalizeBook";
+import { triggerPdfGenerationIfReady } from "@/lib/triggerPdfGeneration";
+import type { PdfStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +46,23 @@ export async function POST(request: Request) {
       : null;
     const book = mergedBook ? normalizeBook(mergedBook) : null;
 
+    let pdfTriggered = false;
+    let pdfStatus: PdfStatus = result.storedBook.pdf_status || "not_started";
+
+    if (result.allIllustrationsReady) {
+      console.log("[ALL_IMAGES_READY_DETECTED]", {
+        bookId: result.storedBook.id,
+        readyImagesCount: result.readyIllustrationCount,
+      });
+      console.log("[ALL_IMAGES_READY_TRIGGER_PDF]", {
+        bookId: result.storedBook.id,
+      });
+
+      const pdfTrigger = await triggerPdfGenerationIfReady(result.storedBook.id, "premium-image-complete");
+      pdfTriggered = pdfTrigger.triggered;
+      pdfStatus = pdfTrigger.pdfStatus;
+    }
+
     return NextResponse.json({
       success: true,
       status: result.allIllustrationsReady ? "ready" : "preparing_assets",
@@ -54,11 +73,14 @@ export async function POST(request: Request) {
       done: result.done,
       allPremiumImagesReady: result.allPremiumImagesReady,
       allIllustrationsReady: result.allIllustrationsReady,
+      allImagesReady: result.allIllustrationsReady,
       readyImagesCount: result.readyIllustrationCount,
       readyPremiumImageCount: result.readyPremiumImageCount,
       premiumImagesTotal: PREMIUM_IMAGE_PAGES.length,
       missingPremiumPages: result.missingPremiumPages,
       imageStatus: normalized.images,
+      pdfTriggered,
+      pdfStatus,
       book,
     });
   } catch (error) {
