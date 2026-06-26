@@ -2,9 +2,31 @@ import "server-only";
 
 import { openai } from "@/lib/server/openai";
 import { BOOK_TEXT_MODEL } from "@/lib/server/ai-config";
-import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
+import type { ApprovedSynopsis, BookFormInput, BookPage, ChampionConnection, LoreBook } from "@/lib/types";
 
 export const PAGE_5_CLIFFHANGER_ERROR = "Page 5 must end with a cliffhanger.";
+export const PAGE_5_CHAMPION_CONNECTION_ERROR = "Page 5 must reference the chosen champion connection.";
+
+const CHAMPION_REFERENCE_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "before",
+  "because",
+  "champion",
+  "connection",
+  "during",
+  "their",
+  "there",
+  "these",
+  "those",
+  "through",
+  "under",
+  "where",
+  "which",
+  "while",
+  "world",
+  "would",
+]);
 
 function getBookTextModel() {
   return BOOK_TEXT_MODEL;
@@ -95,6 +117,142 @@ export function isCliffhangerOnlyFailure(errors: string[]) {
   return cliffhangerErrors.length > 0 && otherErrors.length === 0;
 }
 
+export function isChampionConnectionOnlyFailure(errors: string[]) {
+  const championErrors = errors.filter((error) => error === PAGE_5_CHAMPION_CONNECTION_ERROR);
+  const otherErrors = errors.filter((error) => error !== PAGE_5_CHAMPION_CONNECTION_ERROR);
+  return championErrors.length > 0 && otherErrors.length === 0;
+}
+
+const PAGE_5_TEXT_ONLY_ERRORS = new Set([
+  PAGE_5_CHAMPION_CONNECTION_ERROR,
+  PAGE_5_CLIFFHANGER_ERROR,
+  "Page 5 is missing text.",
+  "Page 5 contains immersion-breaking meta text.",
+]);
+
+export function isPage5TextOnlyFailure(errors: string[]) {
+  return errors.length > 0 && errors.every((error) => PAGE_5_TEXT_ONLY_ERRORS.has(error));
+}
+
+export function getConnectedChampionName(
+  book: Partial<LoreBook>,
+  approvedSynopsis?: ApprovedSynopsis | null,
+) {
+  return (
+    book.championConnection?.championName?.trim() ||
+    approvedSynopsis?.championConnection.championName?.trim() ||
+    ""
+  );
+}
+
+export function pageReferencesChampionConnection(
+  pageText: string,
+  championConnection?: Partial<ChampionConnection>,
+  approvedSynopsis?: ApprovedSynopsis | null,
+) {
+  const normalizedText = pageText.toLowerCase().trim();
+  if (!normalizedText) {
+    return false;
+  }
+
+  const championName =
+    championConnection?.championName?.trim() || approvedSynopsis?.championConnection.championName?.trim() || "";
+
+  if (championName && normalizedText.includes(championName.toLowerCase())) {
+    return true;
+  }
+
+  if (championName) {
+    const nameParts = championName.split(/\s+/).filter((part) => part.length >= 3);
+    if (nameParts.some((part) => normalizedText.includes(part.toLowerCase()))) {
+      return true;
+    }
+  }
+
+  const connectionType = championConnection?.connectionType?.trim();
+  if (connectionType && connectionType.length >= 10 && normalizedText.includes(connectionType.toLowerCase())) {
+    return true;
+  }
+
+  const connectionSummary =
+    championConnection?.connectionSummary?.trim() ||
+    approvedSynopsis?.championConnection.connectionSummary?.trim() ||
+    "";
+
+  if (connectionSummary) {
+    const tokens = connectionSummary
+      .toLowerCase()
+      .split(/[^a-z0-9'-]+/i)
+      .filter((token) => token.length >= 5 && !CHAMPION_REFERENCE_STOP_WORDS.has(token));
+
+    const matchingTokens = tokens.filter((token) => normalizedText.includes(token));
+    if (matchingTokens.length >= 2 || (matchingTokens.length >= 1 && tokens.length === 1)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function snapshotBookPages(book: Partial<LoreBook>) {
+  return book.pages ? book.pages.map((page) => ({ ...page })) : [];
+}
+
+export function mergeRepairedPage5(originalBook: Partial<LoreBook>, candidateBook: Partial<LoreBook>) {
+  const originalPages = snapshotBookPages(originalBook);
+  if (originalPages.length !== 8) {
+    return originalBook;
+  }
+
+  const candidatePageFive = candidateBook.pages?.[4];
+  if (!candidatePageFive?.text?.trim()) {
+    return { ...originalBook, pages: originalPages };
+  }
+
+  const pages = originalPages.map((page, index) =>
+    index === 4
+      ? {
+          ...page,
+          ...candidatePageFive,
+          pageNumber: 5,
+          title: candidatePageFive.title?.trim() || page.title,
+          text: candidatePageFive.text.trim(),
+          imagePrompt: candidatePageFive.imagePrompt?.trim() || page.imagePrompt,
+        }
+      : page,
+  );
+
+  return { ...originalBook, pages };
+}
+
+function countWords(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function trimToMaxWords(text: string, maxWords: number) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) {
+    return text.trim();
+  }
+
+  return `${words.slice(0, maxWords).join(" ").trim()}…`;
+}
+
+export function applyPage5ChampionFallbackPatch(
+  pageFive: BookPage,
+  championName: string,
+  protagonistName: string,
+  maxWords = 95,
+) {
+  const patchSentence = `In that moment, the shadow of ${championName} crossed ${protagonistName}'s path, and the legend no longer belonged to one life alone.`;
+  const combinedText = `${pageFive.text.trim()} ${patchSentence}`.trim();
+  return {
+    ...pageFive,
+    pageNumber: 5,
+    text: trimToMaxWords(combinedText, maxWords),
+  };
+}
+
 export function logPage5CliffhangerFailure(book: Partial<LoreBook>) {
   const pageFive = book.pages?.[4];
   console.error("[PAGE_5_CLIFFHANGER_VALIDATION_FAILED]", {
@@ -153,6 +311,116 @@ function parseRepairedPage(rawText: string): BookPage {
     imagePrompt: parsed.imagePrompt.trim(),
     visualDirection: parsed.visualDirection,
   };
+}
+
+export async function repairPage5ChampionConnection(
+  book: Partial<LoreBook>,
+  input: BookFormInput,
+  approvedSynopsis?: ApprovedSynopsis | null,
+) {
+  const model = getBookTextModel();
+  const championName = getConnectedChampionName(book, approvedSynopsis) || "the connected champion";
+  const connectionSummary =
+    book.championConnection?.connectionSummary?.trim() ||
+    approvedSynopsis?.championConnection.connectionSummary?.trim() ||
+    "";
+  const pageFive = book.pages?.[4];
+
+  const response = await openai.responses.create({
+    model,
+    instructions:
+      "You rewrite only page 5 of an in-world Runeterra biography. Return only one valid JSON object. No markdown fences. No prose outside JSON.",
+    input: `The generated book is almost valid, but page 5 does not clearly reference the chosen champion connection.
+
+Rewrite only page 5.
+
+Rules:
+- Keep the same character: ${input.name}
+- Keep the same region: ${book.region || input.runeterraRegion}
+- Keep the same story continuity from pages 1-4
+- Keep page 5 as the turning point and end with a direct cliffhanger
+- Naturally reference ${championName} or the champion connection described below
+- Do not copy the connection summary verbatim unless it fits naturally
+- Keep the page length between 55 and 95 words
+- Do not mention page numbers, payment, unlock, reader, AI, prompt, JSON, or story structure
+- Return only the corrected page 5 JSON object
+
+Current page 5:
+${JSON.stringify(pageFive, null, 2)}
+
+Champion connection:
+${JSON.stringify(book.championConnection, null, 2)}
+
+Approved synopsis connection summary:
+${connectionSummary}
+
+Expected output:
+{
+  "pageNumber": 5,
+  "title": "...",
+  "text": "...",
+  "imagePrompt": "..."
+}`,
+    text: {
+      format: { type: "json_object" },
+      verbosity: "medium",
+    },
+    max_output_tokens: 1200,
+  });
+
+  const rawText = getResponseText(response);
+  if (!rawText) {
+    throw new Error("Page 5 champion connection repair returned an empty response.");
+  }
+
+  return parseRepairedPage(rawText);
+}
+
+export async function attemptPage5ChampionConnectionRepair(
+  book: Partial<LoreBook>,
+  input: BookFormInput,
+  approvedSynopsis: ApprovedSynopsis | null | undefined,
+  attempt: number,
+) {
+  const originalSnapshot = snapshotBookPages(book);
+  const championName = getConnectedChampionName(book, approvedSynopsis);
+
+  console.log("[TEXT_REPAIR_PAGE_5_ONLY_START]", {
+    attempt,
+    connectedChampionName: championName,
+  });
+
+  const workingBook: Partial<LoreBook> = {
+    ...book,
+    pages: snapshotBookPages(book),
+  };
+
+  try {
+    const repairedPage = await repairPage5ChampionConnection(workingBook, input, approvedSynopsis);
+    const mergedBook = mergeRepairedPage5({ ...book, pages: originalSnapshot }, {
+      ...workingBook,
+      pages: workingBook.pages!.map((page, index) => (index === 4 ? repairedPage : page)),
+    });
+
+    const pageFive = mergedBook.pages?.[4];
+    const mentionsChampion = pageFive?.text
+      ? pageReferencesChampionConnection(pageFive.text, mergedBook.championConnection, approvedSynopsis)
+      : false;
+
+    console.log("[TEXT_REPAIR_PAGE_5_ONLY_DONE]", {
+      attempt,
+      page5WordCount: pageFive?.text ? countWords(pageFive.text) : 0,
+      mentionsChampion,
+    });
+
+    return mergedBook;
+  } catch (error) {
+    console.error("[TEXT_REPAIR_PAGE_5_ONLY_ERROR]", {
+      attempt,
+      error: error instanceof Error ? error.message : error,
+    });
+    return { ...book, pages: originalSnapshot };
+  }
 }
 
 export async function repairPage5Cliffhanger(book: Partial<LoreBook>, input: BookFormInput) {
@@ -242,9 +510,10 @@ ${lastSentence}`,
 }
 
 export async function attemptPage5CliffhangerRepair(book: Partial<LoreBook>, input: BookFormInput) {
+  const originalSnapshot = snapshotBookPages(book);
   const workingBook: Partial<LoreBook> = {
     ...book,
-    pages: book.pages ? [...book.pages] : [],
+    pages: snapshotBookPages(book),
   };
 
   logPage5CliffhangerFailure(workingBook);
@@ -255,7 +524,7 @@ export async function attemptPage5CliffhangerRepair(book: Partial<LoreBook>, inp
 
     const repairedErrors = validatePage5Cliffhanger(workingBook.pages![4]);
     if (!repairedErrors.includes(PAGE_5_CLIFFHANGER_ERROR)) {
-      return workingBook;
+      return mergeRepairedPage5({ ...book, pages: originalSnapshot }, workingBook);
     }
   } catch (error) {
     console.error("[PAGE_5_CLIFFHANGER_REPAIR_ERROR]", error);
@@ -263,7 +532,7 @@ export async function attemptPage5CliffhangerRepair(book: Partial<LoreBook>, inp
 
   const currentPageFive = workingBook.pages?.[4];
   if (!currentPageFive?.text) {
-    throw new Error(PAGE_5_CLIFFHANGER_ERROR);
+    return { ...book, pages: originalSnapshot };
   }
 
   try {
@@ -274,13 +543,12 @@ export async function attemptPage5CliffhangerRepair(book: Partial<LoreBook>, inp
     };
 
     const finalErrors = validatePage5Cliffhanger(workingBook.pages![4]);
-    if (finalErrors.includes(PAGE_5_CLIFFHANGER_ERROR)) {
-      throw new Error(PAGE_5_CLIFFHANGER_ERROR);
+    if (!finalErrors.includes(PAGE_5_CLIFFHANGER_ERROR)) {
+      return mergeRepairedPage5({ ...book, pages: originalSnapshot }, workingBook);
     }
-
-    return workingBook;
   } catch (error) {
     console.error("[PAGE_5_CLIFFHANGER_REPAIR_ERROR]", error);
-    throw error instanceof Error ? error : new Error(PAGE_5_CLIFFHANGER_ERROR);
   }
+
+  return { ...book, pages: originalSnapshot };
 }

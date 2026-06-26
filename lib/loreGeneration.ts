@@ -5,8 +5,15 @@ import { openai } from "@/lib/server/openai";
 import { BOOK_TEXT_MODEL } from "@/lib/server/ai-config";
 import { MAX_TEXT_REPAIR_ATTEMPTS, TEXT_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
 import {
+  PAGE_5_CHAMPION_CONNECTION_ERROR,
+  applyPage5ChampionFallbackPatch,
+  attemptPage5ChampionConnectionRepair,
   attemptPage5CliffhangerRepair,
-  isCliffhangerOnlyFailure,
+  getConnectedChampionName,
+  isPage5TextOnlyFailure,
+  mergeRepairedPage5,
+  pageReferencesChampionConnection,
+  snapshotBookPages,
   validatePage5Cliffhanger,
 } from "@/lib/page5Cliffhanger";
 import { buildLorePrompt } from "@/lib/prompts";
@@ -20,6 +27,11 @@ const IMMERSION_BANNED_PATTERN =
 export type GenerateLoreResult = {
   book: LoreBook;
   fallback: boolean;
+};
+
+type FinalizeLoreBookOptions = {
+  repairAttempt?: number;
+  allowChampionFallback?: boolean;
 };
 
 export function isFallbackLoreEnabled() {
@@ -141,7 +153,34 @@ function getResponseText(response: unknown) {
   );
 }
 
-function validateLoreStructure(book: Partial<LoreBook>) {
+function getInvalidPages(errors: string[]) {
+  const matches = errors
+    .map((error) => error.match(/Page (\d+)/i)?.[1])
+    .filter((value): value is string => Boolean(value));
+  return [...new Set(matches.map((value) => Number(value)))];
+}
+
+function logTextValidationFailed(
+  errors: string[],
+  book: Partial<LoreBook>,
+  approvedSynopsis?: ApprovedSynopsis | null,
+) {
+  const pageFive = book.pages?.[4];
+  const connectedChampionName = getConnectedChampionName(book, approvedSynopsis);
+
+  console.log("[TEXT_VALIDATION_FAILED]", {
+    reason: errors.join(" "),
+    invalidPages: getInvalidPages(errors),
+    pageCount: book.pages?.length ?? 0,
+    hasPage5Text: Boolean(pageFive?.text?.trim()),
+    page5MentionsChampion: pageFive?.text
+      ? pageReferencesChampionConnection(pageFive.text, book.championConnection, approvedSynopsis)
+      : false,
+    connectedChampionName,
+  });
+}
+
+function validateLoreStructure(book: Partial<LoreBook>, approvedSynopsis?: ApprovedSynopsis | null) {
   const errors: string[] = [];
 
   if (!book.title?.trim()) {
@@ -164,9 +203,14 @@ function validateLoreStructure(book: Partial<LoreBook>) {
   });
 
   const pageFive = book.pages?.[4];
-  const championName = book.championConnection?.championName?.trim();
-  if (pageFive && championName && !pageFive.text?.toLowerCase().includes(championName.toLowerCase())) {
-    errors.push("Page 5 must reference the chosen champion connection.");
+  const connectedChampionName = getConnectedChampionName(book, approvedSynopsis);
+  if (pageFive && connectedChampionName) {
+    if (
+      !pageFive.text?.trim() ||
+      !pageReferencesChampionConnection(pageFive.text, book.championConnection, approvedSynopsis)
+    ) {
+      errors.push(PAGE_5_CHAMPION_CONNECTION_ERROR);
+    }
   }
 
   errors.push(...validatePage5Cliffhanger(pageFive));
@@ -174,21 +218,99 @@ function validateLoreStructure(book: Partial<LoreBook>) {
   return errors;
 }
 
-async function finalizeLoreBook(parsed: Partial<LoreBook>, input: BookFormInput) {
-  let workingBook: Partial<LoreBook> = {
-    ...parsed,
-    pages: parsed.pages ? [...parsed.pages] : [],
+function cloneBookWithPages(book: Partial<LoreBook>) {
+  return {
+    ...book,
+    pages: snapshotBookPages(book),
   };
+}
 
-  let structureErrors = validateLoreStructure(workingBook);
+async function applyPage5Repairs(
+  parsed: Partial<LoreBook>,
+  input: BookFormInput,
+  approvedSynopsis: ApprovedSynopsis | null | undefined,
+  options: FinalizeLoreBookOptions,
+) {
+  const originalSnapshot = snapshotBookPages(parsed);
+  let workingBook: Partial<LoreBook> = cloneBookWithPages(parsed);
+  let structureErrors = validateLoreStructure(workingBook, approvedSynopsis);
+  let repaired = false;
 
-  if (isCliffhangerOnlyFailure(structureErrors)) {
-    workingBook = await attemptPage5CliffhangerRepair(workingBook, input);
-    structureErrors = validateLoreStructure(workingBook);
+  if (structureErrors.length > 0) {
+    logTextValidationFailed(structureErrors, workingBook, approvedSynopsis);
   }
+
+  if (!isPage5TextOnlyFailure(structureErrors)) {
+    return { workingBook, structureErrors, repaired };
+  }
+
+  if (structureErrors.includes(PAGE_5_CHAMPION_CONNECTION_ERROR) && options.repairAttempt) {
+    const repairedBook = await attemptPage5ChampionConnectionRepair(
+      workingBook,
+      input,
+      approvedSynopsis,
+      options.repairAttempt,
+    );
+    workingBook = mergeRepairedPage5({ ...parsed, pages: originalSnapshot }, repairedBook);
+    structureErrors = validateLoreStructure(workingBook, approvedSynopsis);
+    repaired = true;
+  }
+
+  const cliffhangerErrors = validatePage5Cliffhanger(workingBook.pages?.[4]);
+  if (cliffhangerErrors.length > 0) {
+    const repairedBook = await attemptPage5CliffhangerRepair(workingBook, input);
+    workingBook = mergeRepairedPage5({ ...parsed, pages: originalSnapshot }, repairedBook);
+    structureErrors = validateLoreStructure(workingBook, approvedSynopsis);
+    repaired = true;
+  }
+
+  if (
+    options.allowChampionFallback &&
+    structureErrors.length === 1 &&
+    structureErrors[0] === PAGE_5_CHAMPION_CONNECTION_ERROR
+  ) {
+    const championName = getConnectedChampionName(workingBook, approvedSynopsis);
+    const pageFive = workingBook.pages?.[4];
+    if (championName && pageFive?.text?.trim()) {
+      workingBook = mergeRepairedPage5(
+        { ...parsed, pages: originalSnapshot },
+        {
+          ...workingBook,
+          pages: workingBook.pages!.map((page, index) =>
+            index === 4 ? applyPage5ChampionFallbackPatch(pageFive, championName, input.name) : page,
+          ),
+        },
+      );
+      console.log("[TEXT_REPAIR_FALLBACK_PATCH_USED]", {
+        connectedChampionName: championName,
+      });
+      structureErrors = validateLoreStructure(workingBook, approvedSynopsis);
+      repaired = true;
+    }
+  }
+
+  return { workingBook, structureErrors, repaired };
+}
+
+async function finalizeLoreBook(
+  parsed: Partial<LoreBook>,
+  input: BookFormInput,
+  approvedSynopsis?: ApprovedSynopsis | null,
+  options: FinalizeLoreBookOptions = {},
+) {
+  const { workingBook, structureErrors, repaired } = await applyPage5Repairs(
+    parsed,
+    input,
+    approvedSynopsis,
+    options,
+  );
 
   if (structureErrors.length > 0) {
     throw new Error(`Generated lore failed validation: ${structureErrors.join(" ")}`);
+  }
+
+  if (repaired) {
+    console.log("[TEXT_VALIDATION_PASSED_AFTER_REPAIR]");
   }
 
   const normalized = normalizeLoreBook(workingBook);
@@ -200,11 +322,20 @@ async function finalizeLoreBook(parsed: Partial<LoreBook>, input: BookFormInput)
   return normalized;
 }
 
-async function parseLoreBook(rawText: string, input: BookFormInput) {
+function parseLoreBookJson(rawText: string) {
+  return JSON.parse(extractJson(rawText)) as Partial<LoreBook>;
+}
+
+async function parseLoreBook(
+  rawText: string,
+  input: BookFormInput,
+  approvedSynopsis?: ApprovedSynopsis | null,
+  options: FinalizeLoreBookOptions = {},
+) {
   let parsed: Partial<LoreBook>;
 
   try {
-    parsed = JSON.parse(extractJson(rawText)) as Partial<LoreBook>;
+    parsed = parseLoreBookJson(rawText);
   } catch (error) {
     console.error("[LORE_JSON_PARSE_ERROR]", {
       rawPreview: rawText.slice(0, 1000),
@@ -213,7 +344,7 @@ async function parseLoreBook(rawText: string, input: BookFormInput) {
     throw error;
   }
 
-  return finalizeLoreBook(parsed, input);
+  return finalizeLoreBook(parsed, input, approvedSynopsis, options);
 }
 
 async function requestRawLoreText(input: BookFormInput, approvedSynopsis?: ApprovedSynopsis | null) {
@@ -270,6 +401,14 @@ async function repairLoreJson(invalidOutput: string, input: BookFormInput) {
   return rawText;
 }
 
+function runTimedValidation<T>(label: string, task: () => Promise<T>) {
+  const startedAt = Date.now();
+  console.log(`[${label}_START]`, { startedAt });
+  return task().finally(() => {
+    console.log(`[${label}_DONE]`, { durationMs: Date.now() - startedAt });
+  });
+}
+
 export async function generateLoreBook(
   input: BookFormInput,
   approvedSynopsis?: ApprovedSynopsis | null,
@@ -284,37 +423,69 @@ export async function generateLoreBook(
 
   let lastError: unknown;
   let lastRawText = "";
+  let parsedBook: Partial<LoreBook> | null = null;
 
   try {
     lastRawText = await requestRawLoreText(input, approvedSynopsis);
     console.log("[TEXT_GENERATION_DONE]", Date.now());
-    console.time("[TEXT_VALIDATION]");
-    const book = await parseLoreBook(lastRawText, input);
-    console.timeEnd("[TEXT_VALIDATION]");
+    const book = await runTimedValidation("TEXT_VALIDATION", () =>
+      parseLoreBook(lastRawText, input, approvedSynopsis),
+    );
     return { book, fallback: false };
   } catch (error) {
     lastError = error;
     logLoreGenerationError(error);
+    try {
+      parsedBook = parseLoreBookJson(lastRawText);
+    } catch {
+      parsedBook = null;
+    }
   }
 
-  if (lastRawText) {
+  if (parsedBook?.pages?.length === 8) {
     for (let attempt = 1; attempt <= MAX_TEXT_REPAIR_ATTEMPTS; attempt += 1) {
       console.log("[TEXT_REPAIR_ATTEMPT]", attempt, {
+        mode: "page_5_only",
         hasRawText: Boolean(lastRawText),
       });
-      console.time("[TEXT_REPAIR]");
+
+      try {
+        const book = await runTimedValidation(`TEXT_REPAIR_${attempt}`, () =>
+          finalizeLoreBook(parsedBook!, input, approvedSynopsis, {
+            repairAttempt: attempt,
+            allowChampionFallback: attempt === MAX_TEXT_REPAIR_ATTEMPTS,
+          }),
+        );
+        return { book, fallback: false };
+      } catch (repairError) {
+        lastError = repairError;
+        logLoreGenerationError(repairError);
+      }
+    }
+  } else if (lastRawText) {
+    for (let attempt = 1; attempt <= MAX_TEXT_REPAIR_ATTEMPTS; attempt += 1) {
+      console.log("[TEXT_REPAIR_ATTEMPT]", attempt, {
+        mode: "full_json",
+        hasRawText: Boolean(lastRawText),
+      });
 
       try {
         const repairedText = await repairLoreJson(lastRawText, input);
-        console.timeEnd("[TEXT_REPAIR]");
-        console.time("[TEXT_VALIDATION]");
-        const book = await parseLoreBook(repairedText, input);
-        console.timeEnd("[TEXT_VALIDATION]");
+        const book = await runTimedValidation(`TEXT_REPAIR_${attempt}`, () =>
+          parseLoreBook(repairedText, input, approvedSynopsis, {
+            repairAttempt: attempt,
+            allowChampionFallback: attempt === MAX_TEXT_REPAIR_ATTEMPTS,
+          }),
+        );
         return { book, fallback: false };
       } catch (repairError) {
-        console.timeEnd("[TEXT_REPAIR]");
         lastError = repairError;
         logLoreGenerationError(repairError);
+        try {
+          parsedBook = parseLoreBookJson(lastRawText);
+        } catch {
+          parsedBook = null;
+        }
       }
     }
   }
