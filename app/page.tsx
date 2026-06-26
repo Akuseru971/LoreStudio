@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
 import AmbientMusicToggle from "@/components/AmbientMusicToggle";
@@ -11,14 +11,13 @@ import SynopsisLoadingScreen from "@/components/SynopsisLoadingScreen";
 import MysticalStartTransition from "@/components/MysticalStartTransition";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
 import RitualLaunchVideo from "@/components/RitualLaunchVideo";
-import RitualVideoPreloader from "@/components/RitualVideoPreloader";
 import SynopsisPreview from "@/components/SynopsisPreview";
 import {
   readAmbientMusicMutedPreference,
   writeAmbientMusicMutedPreference,
 } from "@/lib/ambient-music-config";
 import {
-  getRitualLaunchVideoSrc,
+  getRitualVideoUrl,
   isRitualLaunchVideoConfigured,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
@@ -94,8 +93,11 @@ export default function Home() {
   const generationStartedRef = useRef(false);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
   const synopsisRequestRef = useRef(0);
-  const introVideoSrc = getRitualLaunchVideoSrc();
+  const introVideoSrc = useMemo(() => getRitualVideoUrl(), []);
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
+  const showRitualVideoHost =
+    hasIntroVideo && (step === "form" || step === "synopsis" || step === "ritualVideo");
+  const ritualVideoMode = step === "ritualVideo" ? "playback" : "preload";
   const shouldPlayAmbientMusic =
     (step === "form" || step === "synopsis" || (step === "book" && bookIsOpen)) && !ambientMuted;
   const ambientMusicVolume = step === "form" || step === "synopsis" ? 0.14 : 0.12;
@@ -451,7 +453,15 @@ export default function Home() {
   return (
     <>
       <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} normalVolume={ambientMusicVolume} />
-      {step === "form" ? <RitualVideoPreloader /> : null}
+      {showRitualVideoHost ? (
+        <RitualLaunchVideo
+          src={introVideoSrc}
+          poster={RITUAL_LAUNCH_VIDEO_POSTER}
+          mode={ritualVideoMode}
+          onEnded={handleVideoEnded}
+          onSkip={handleVideoSkipped}
+        />
+      ) : null}
 
       <AnimatePresence>
         {step === "intro" ? (
@@ -498,17 +508,6 @@ export default function Home() {
 
         {step === "book" ? (
           <AmbientMusicToggle muted={ambientMuted} onToggle={() => setAmbientMuted((current) => !current)} />
-        ) : null}
-
-        {step === "ritualVideo" && introVideoSrc ? (
-          <motion.div key="ritualVideo" exit={{ opacity: 0 }} transition={{ duration: 0.35 }}>
-            <RitualLaunchVideo
-              src={introVideoSrc}
-              poster={RITUAL_LAUNCH_VIDEO_POSTER}
-              onEnded={handleVideoEnded}
-              onSkip={handleVideoSkipped}
-            />
-          </motion.div>
         ) : null}
 
         {step === "creationRitual" ? (

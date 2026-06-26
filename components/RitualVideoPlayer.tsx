@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { isDirectRitualVideoUrl } from "@/lib/video-config";
 
 export type RitualVideoPlayerHandle = {
   play: (preferSound?: boolean) => Promise<boolean>;
@@ -30,6 +31,8 @@ export type RitualVideoPlayerProps = {
   onMutedChange?: (muted: boolean) => void;
   onEnded?: () => void;
   onError?: () => void;
+  onStalled?: () => void;
+  onLoadedData?: () => void;
   className?: string;
 };
 
@@ -51,6 +54,8 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
       onMutedChange,
       onEnded,
       onError,
+      onStalled,
+      onLoadedData,
       className,
     },
     ref,
@@ -198,9 +203,15 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
       }
 
       readyRef.current = false;
+
+      if (!isDirectRitualVideoUrl(src)) {
+        onError?.();
+        return;
+      }
+
       video.src = src;
       video.load();
-    }, [src]);
+    }, [onError, src]);
 
     useEffect(() => {
       const video = videoRef.current;
@@ -268,8 +279,19 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
           onMutedChange?.(video.muted);
         }}
         onCanPlayThrough={() => setBuffering(false)}
-        onCanPlay={() => setBuffering(false)}
+        onCanPlay={() => {
+          console.log("[RITUAL_VIDEO_CAN_PLAY]");
+          setBuffering(false);
+        }}
         onWaiting={() => setBuffering(true)}
+        onStalled={() => {
+          setBuffering(true);
+          onStalled?.();
+        }}
+        onLoadedData={() => {
+          console.log("[RITUAL_VIDEO_LOADED_DATA]");
+          onLoadedData?.();
+        }}
         onPlaying={() => {
           setBuffering(false);
           onPlaying?.();
@@ -279,7 +301,8 @@ const RitualVideoPlayer = forwardRef<RitualVideoPlayerHandle, RitualVideoPlayerP
           setBuffering(false);
           onEnded?.();
         }}
-        onError={() => {
+        onError={(event) => {
+          console.log("[RITUAL_VIDEO_ERROR]", event);
           setBuffering(false);
           onError?.();
         }}
