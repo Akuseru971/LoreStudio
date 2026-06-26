@@ -4,5 +4,11 @@
   "buildCommand": "npm run build",
   "env": {
     "OPENAI_IMAGE_QUALITY": "medium"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/resume-generation",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

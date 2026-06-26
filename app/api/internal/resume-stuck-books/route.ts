@@ -7,6 +7,7 @@ import {
   recoverStalePremiumImages,
 } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { triggerPdfGenerationIfReady } from "@/lib/triggerPdfGeneration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,10 +59,12 @@ export async function POST(request: Request) {
     const missingPremiumPages = getMissingPremiumImagePages(recoveredBook);
 
     if (missingPremiumPages.length === 0) {
+      const pdfTrigger = await triggerPdfGenerationIfReady(recoveredBook.id, "resume-stuck-books");
       return NextResponse.json({
         resumed: false,
         reason: "all_premium_images_ready",
         bookId: recoveredBook.id,
+        pdfTriggered: pdfTrigger.triggered,
       });
     }
 
@@ -73,6 +76,9 @@ export async function POST(request: Request) {
     });
 
     const result = await generateNextPremiumImage(recoveredBook.access_token);
+    const pdfTrigger = result.allIllustrationsReady
+      ? await triggerPdfGenerationIfReady(recoveredBook.id, "resume-stuck-books")
+      : { triggered: false };
 
     return NextResponse.json({
       resumed: true,
@@ -83,6 +89,7 @@ export async function POST(request: Request) {
       missingPremiumPages: result.missingPremiumPages,
       stalePremiumPages: result.stalePremiumPages,
       shouldContinuePremiumGeneration: result.shouldContinuePremiumGeneration,
+      pdfTriggered: pdfTrigger.triggered,
     });
   } catch (error) {
     console.error("[RESUME_STUCK_BOOKS_ERROR]", error);
