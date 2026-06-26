@@ -6,7 +6,7 @@ import {
   markPaymentEmailSent,
   markPaymentEmailSkipped,
 } from "@/lib/bookStore";
-import { buildBookUnlockedEmailUrls, logPaymentEmailEnvCheck, sendPaymentConfirmationEmail } from "@/lib/email";
+import { buildBookUnlockedEmailUrls, sendPaymentConfirmationEmail } from "@/lib/email";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import type { StoredBook } from "@/lib/types";
 
@@ -40,14 +40,6 @@ function getPaymentEmailTracking(book: StoredBook) {
   };
 }
 
-function logPaymentEmailSkipped(bookId: string, reason: string, details: Record<string, unknown>) {
-  console.log("[PAYMENT_EMAIL_SKIPPED]", {
-    bookId,
-    reason,
-    ...details,
-  });
-}
-
 export type ConfirmationEmailResult = {
   sent: boolean;
   skipped: boolean;
@@ -66,25 +58,15 @@ export type ConfirmationEmailResult = {
   error?: string;
 };
 
-export async function maybeSendPaymentConfirmationEmail(
+export async function sendPaymentConfirmationEmailIfNeeded(
   bookId: string,
-  source = "unknown",
 ): Promise<ConfirmationEmailResult> {
-  console.log("[PAYMENT_EMAIL_DIAG_START]", {
-    source,
-    bookId,
-    timestamp: new Date().toISOString(),
-  });
-  logPaymentEmailEnvCheck();
-
   try {
     const storedBook = await getBookById(bookId);
     if (!storedBook) {
-      logPaymentEmailSkipped(bookId, "book_not_found", {
-        isPaid: false,
-        hasRecipient: false,
-        paymentEmailStatus: null,
-        paymentEmailSentAt: null,
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+        bookId,
+        reason: "book_not_found",
       });
       return {
         sent: false,
@@ -100,22 +82,20 @@ export async function maybeSendPaymentConfirmationEmail(
     const tracking = getPaymentEmailTracking(storedBook);
     const emailNotSent = !tracking.sentAt && tracking.status !== "sent";
 
-    console.log("[PAYMENT_EMAIL_CHECK]", {
+    console.log("[PAYMENT_CONFIRMATION_EMAIL_CHECK]", {
       bookId: storedBook.id,
       isPaid,
       hasRecipient: Boolean(recipient),
-      recipient,
       paymentEmailStatus: tracking.status,
       paymentEmailSentAt: tracking.sentAt,
       legacyConfirmationFields: Boolean(tracking.legacyConfirmationFields),
     });
 
     if (!isPaid) {
-      logPaymentEmailSkipped(bookId, "book_not_paid", {
-        isPaid,
-        hasRecipient: Boolean(recipient),
-        paymentEmailStatus: tracking.status,
-        paymentEmailSentAt: tracking.sentAt,
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+        bookId: storedBook.id,
+        reason: "book_not_paid",
+        status: storedBook.status,
       });
       return {
         sent: false,
@@ -128,13 +108,15 @@ export async function maybeSendPaymentConfirmationEmail(
 
     if (!recipient) {
       await markPaymentEmailSkipped(storedBook.id).catch((error) => {
-        console.error("[PAYMENT_EMAIL_FAILED]", { bookId: storedBook.id, recipient: null, error });
+        console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+          bookId: storedBook.id,
+          reason: "mark_skipped_failed",
+          error,
+        });
       });
-      logPaymentEmailSkipped(bookId, "missing_email", {
-        isPaid,
-        hasRecipient: false,
-        paymentEmailStatus: tracking.status,
-        paymentEmailSentAt: tracking.sentAt,
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+        bookId: storedBook.id,
+        reason: "missing_email",
       });
       return {
         sent: false,
@@ -146,9 +128,8 @@ export async function maybeSendPaymentConfirmationEmail(
     }
 
     if (!emailNotSent) {
-      logPaymentEmailSkipped(bookId, "already_sent", {
-        isPaid,
-        hasRecipient: true,
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ALREADY_SENT]", {
+        bookId: storedBook.id,
         paymentEmailStatus: tracking.status,
         paymentEmailSentAt: tracking.sentAt,
       });
@@ -163,9 +144,9 @@ export async function maybeSendPaymentConfirmationEmail(
 
     const claimedBook = await claimPaymentEmailSend(storedBook.id);
     if (!claimedBook) {
-      logPaymentEmailSkipped(bookId, "already_claimed", {
-        isPaid,
-        hasRecipient: true,
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ALREADY_SENT]", {
+        bookId: storedBook.id,
+        reason: "already_claimed",
         paymentEmailStatus: tracking.status,
         paymentEmailSentAt: tracking.sentAt,
       });
@@ -178,11 +159,6 @@ export async function maybeSendPaymentConfirmationEmail(
       };
     }
 
-    console.log("[PAYMENT_EMAIL_SEND_START]", {
-      bookId: claimedBook.id,
-      recipient,
-    });
-
     const urls = buildBookUnlockedEmailUrls(claimedBook.access_token);
     const result = await sendPaymentConfirmationEmail({
       to: recipient,
@@ -192,13 +168,18 @@ export async function maybeSendPaymentConfirmationEmail(
 
     if (!result.sent) {
       const errorMessage = result.error || "Unable to send payment confirmation email.";
-      console.error("[PAYMENT_EMAIL_FAILED]", {
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
         bookId: claimedBook.id,
         recipient,
+        reason: "send_failed",
         error: errorMessage,
       });
       await markPaymentEmailFailed(claimedBook.id, errorMessage).catch((error) => {
-        console.error("[PAYMENT_EMAIL_FAILED]", { bookId: claimedBook.id, recipient, error });
+        console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+          bookId: claimedBook.id,
+          reason: "mark_failed",
+          error,
+        });
       });
       return {
         sent: false,
@@ -211,9 +192,13 @@ export async function maybeSendPaymentConfirmationEmail(
     }
 
     await markPaymentEmailSent(claimedBook.id).catch((error) => {
-      console.error("[PAYMENT_EMAIL_FAILED]", { bookId: claimedBook.id, recipient, error });
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+        bookId: claimedBook.id,
+        reason: "mark_sent_failed",
+        error,
+      });
     });
-    console.log("[PAYMENT_EMAIL_SENT]", {
+    console.log("[PAYMENT_CONFIRMATION_EMAIL_SENT]", {
       bookId: claimedBook.id,
       recipient,
     });
@@ -226,13 +211,17 @@ export async function maybeSendPaymentConfirmationEmail(
     };
   } catch (error) {
     const message = safeErrorMessage(error);
-    console.error("[PAYMENT_EMAIL_FAILED]", {
+    console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
       bookId,
-      recipient: null,
+      reason: "unexpected_error",
       error: message,
     });
     await markPaymentEmailFailed(bookId, message).catch((markError) => {
-      console.error("[PAYMENT_EMAIL_FAILED]", { bookId, recipient: null, error: markError });
+      console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+        bookId,
+        reason: "mark_failed",
+        error: markError,
+      });
     });
     return {
       sent: false,
@@ -245,14 +234,19 @@ export async function maybeSendPaymentConfirmationEmail(
   }
 }
 
+export async function maybeSendPaymentConfirmationEmail(
+  bookId: string,
+  _source = "unknown",
+): Promise<ConfirmationEmailResult> {
+  return sendPaymentConfirmationEmailIfNeeded(bookId);
+}
+
 export async function sendConfirmationEmailIfNeeded(accessToken: string): Promise<ConfirmationEmailResult> {
   const storedBook = await getBookByAccessToken(accessToken);
   if (!storedBook) {
-    logPaymentEmailSkipped("unknown", "book_not_found", {
-      isPaid: false,
-      hasRecipient: false,
-      paymentEmailStatus: null,
-      paymentEmailSentAt: null,
+    console.log("[PAYMENT_CONFIRMATION_EMAIL_ERROR]", {
+      bookId: "unknown",
+      reason: "book_not_found",
     });
     return {
       sent: false,
@@ -263,5 +257,5 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
     };
   }
 
-  return maybeSendPaymentConfirmationEmail(storedBook.id, "sendConfirmationEmailIfNeeded");
+  return sendPaymentConfirmationEmailIfNeeded(storedBook.id);
 }

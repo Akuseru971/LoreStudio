@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken } from "@/lib/bookStore";
-import { maybeSendPaymentConfirmationEmail } from "@/lib/confirmationEmail";
+import { sendPaymentConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { verifyStripeCheckoutSession, hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
@@ -25,29 +25,17 @@ export async function POST(request: Request) {
 
   try {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
-    const book = (await getBookByAccessToken(body.accessToken)) || result.book;
+    const paidBook = (await getBookByAccessToken(body.accessToken)) || result.book;
 
-    console.log("[PAYMENT_CONFIRMED]", {
-      source: "verify-payment",
-      bookId: book.id,
-      status: book.status,
-      hasCustomerEmail: Boolean(book.email),
+    console.log("[PAYMENT_CONFIRMATION_EMAIL_TRIGGER_FROM_VERIFY_PAYMENT]", {
+      bookId: paidBook.id,
+      status: paidBook.status,
+      alreadyUnlocked: result.alreadyUnlocked,
     });
 
-    console.log("[PAYMENT_CONFIRMED_TRIGGER_PAYMENT_EMAIL]", {
-      source: "verify-payment",
-      bookId: book.id,
-    });
+    const emailResult = await sendPaymentConfirmationEmailIfNeeded(paidBook.id);
 
-    await maybeSendPaymentConfirmationEmail(book.id, "verify-payment").catch((error) => {
-      console.error("[PAYMENT_EMAIL_FAILED]", {
-        bookId: book.id,
-        recipient: book.email,
-        error: error instanceof Error ? error.message : error,
-      });
-    });
-
-    const refreshedBook = (await getBookByAccessToken(body.accessToken)) || book;
+    const refreshedBook = (await getBookByAccessToken(body.accessToken)) || paidBook;
     const trackingSent =
       refreshedBook.payment_email_status === "sent" || refreshedBook.confirmation_email_status === "sent";
     const trackingSkipped =
@@ -67,10 +55,10 @@ export async function POST(request: Request) {
       canDownloadPdf: hasPremiumAccess(refreshedBook.status),
       canDownloadMp3: hasPremiumAccess(refreshedBook.status),
       accessToken: refreshedBook.access_token,
-      confirmationEmailSent: trackingSent,
-      confirmationEmailSkipped: trackingSkipped,
-      confirmationEmailFailed: trackingFailed,
-      recoveryEmailAvailable: Boolean(refreshedBook.email) || trackingSent,
+      confirmationEmailSent: trackingSent || emailResult.sent,
+      confirmationEmailSkipped: trackingSkipped || emailResult.skipped,
+      confirmationEmailFailed: trackingFailed || emailResult.failed,
+      recoveryEmailAvailable: Boolean(refreshedBook.email) || trackingSent || emailResult.sent,
     });
   } catch (error) {
     console.error("Payment verification failed.", error);

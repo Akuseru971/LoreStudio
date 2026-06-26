@@ -8,7 +8,7 @@ import {
   updateBookStatus,
   updateGenerationProgress,
 } from "@/lib/bookStore";
-import { maybeSendPaymentConfirmationEmail } from "@/lib/confirmationEmail";
+import { sendPaymentConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getStripeClient } from "@/lib/stripe";
 
@@ -145,27 +145,7 @@ export async function POST(request: Request) {
 
       const refreshedBook = (await getBookById(storedBook.id)) || storedBook;
 
-      console.log("[PAYMENT_CONFIRMED]", {
-        source: "stripe-webhook",
-        bookId: refreshedBook.id,
-        status: refreshedBook.status,
-        hasCustomerEmail: Boolean(refreshedBook.email),
-      });
-
-      console.log("[PAYMENT_CONFIRMED_TRIGGER_PAYMENT_EMAIL]", {
-        source: "stripe-webhook",
-        bookId: refreshedBook.id,
-      });
-
-      try {
-        await maybeSendPaymentConfirmationEmail(refreshedBook.id, "stripe-webhook");
-      } catch (error) {
-        console.error("[PAYMENT_EMAIL_FAILED]", {
-          bookId: refreshedBook.id,
-          recipient: refreshedBook.email,
-          error: error instanceof Error ? error.message : error,
-        });
-      }
+      await sendPaymentConfirmationEmailIfNeeded(refreshedBook.id);
     }
 
     return NextResponse.json({ received: true });
