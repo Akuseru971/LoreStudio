@@ -688,7 +688,7 @@ export async function claimConfirmationEmailSend(bookId: string) {
     .update({ confirmation_email_status: "sending" })
     .eq("id", bookId)
     .is("confirmation_email_sent_at", null)
-    .in("confirmation_email_status", ["not_started", "failed"])
+    .in("confirmation_email_status", ["not_started", "failed", "skipped"])
     .select("*")
     .maybeSingle();
 

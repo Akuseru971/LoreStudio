@@ -1,6 +1,7 @@
 import {
   claimConfirmationEmailSend,
   getBookByAccessToken,
+  getBookById,
   markConfirmationEmailFailed,
   markConfirmationEmailSent,
   markConfirmationEmailSkipped,
@@ -31,9 +32,9 @@ export type ConfirmationEmailResult = {
   error?: string;
 };
 
-export async function sendConfirmationEmailIfNeeded(accessToken: string): Promise<ConfirmationEmailResult> {
+export async function maybeSendPaymentConfirmationEmail(bookId: string): Promise<ConfirmationEmailResult> {
   try {
-    const storedBook = await getBookByAccessToken(accessToken);
+    const storedBook = await getBookById(bookId);
     if (!storedBook) {
       return {
         sent: false,
@@ -43,6 +44,14 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
         recoveryEmailAvailable: false,
       };
     }
+
+    console.log("[PAYMENT_EMAIL_CHECK]", {
+      bookId: storedBook.id,
+      status: storedBook.status,
+      paymentEmailStatus: storedBook.confirmation_email_status,
+      paymentEmailSentAt: storedBook.confirmation_email_sent_at,
+      hasCustomerEmail: Boolean(storedBook.email),
+    });
 
     if (storedBook.confirmation_email_sent_at || storedBook.confirmation_email_status === "sent") {
       return {
@@ -56,7 +65,7 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
 
     if (!storedBook.email) {
       await markConfirmationEmailSkipped(storedBook.id).catch((error) => {
-        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+        console.error("[PAYMENT_EMAIL_FAILED]", { bookId: storedBook.id, error });
       });
       return {
         sent: false,
@@ -78,6 +87,10 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
       };
     }
 
+    console.log("[PAYMENT_EMAIL_SEND_START]", {
+      bookId: claimedBook.id,
+    });
+
     const urls = buildBookUnlockedEmailUrls(claimedBook.access_token);
     const result = await sendBookUnlockedEmail({
       to: claimedBook.email!,
@@ -89,9 +102,12 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
 
     if (!result.sent) {
       const errorMessage = result.error || "Unable to send confirmation email.";
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", errorMessage);
+      console.error("[PAYMENT_EMAIL_FAILED]", {
+        bookId: claimedBook.id,
+        error: errorMessage,
+      });
       await markConfirmationEmailFailed(claimedBook.id, errorMessage).catch((error) => {
-        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+        console.error("[PAYMENT_EMAIL_FAILED]", { bookId: claimedBook.id, error });
       });
       return {
         sent: false,
@@ -104,7 +120,10 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
     }
 
     await markConfirmationEmailSent(claimedBook.id).catch((error) => {
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+      console.error("[PAYMENT_EMAIL_FAILED]", { bookId: claimedBook.id, error });
+    });
+    console.log("[PAYMENT_EMAIL_SENT]", {
+      bookId: claimedBook.id,
     });
     return {
       sent: true,
@@ -114,14 +133,33 @@ export async function sendConfirmationEmailIfNeeded(accessToken: string): Promis
       recoveryEmailAvailable: true,
     };
   } catch (error) {
-    console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+    const message = safeErrorMessage(error);
+    console.error("[PAYMENT_EMAIL_FAILED]", {
+      bookId,
+      error: message,
+    });
     return {
       sent: false,
       skipped: false,
       failed: true,
       reason: "unexpected_error",
       recoveryEmailAvailable: false,
-      error: safeErrorMessage(error),
+      error: message,
     };
   }
+}
+
+export async function sendConfirmationEmailIfNeeded(accessToken: string): Promise<ConfirmationEmailResult> {
+  const storedBook = await getBookByAccessToken(accessToken);
+  if (!storedBook) {
+    return {
+      sent: false,
+      skipped: true,
+      failed: false,
+      reason: "book_not_found",
+      recoveryEmailAvailable: false,
+    };
+  }
+
+  return maybeSendPaymentConfirmationEmail(storedBook.id);
 }

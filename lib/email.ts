@@ -46,13 +46,13 @@ export async function sendBookUnlockedEmail({
   const fromEmail = process.env.FROM_EMAIL?.trim();
 
   if (!resend || !fromEmail) {
-    console.warn("Confirmation email not sent: missing Resend configuration.");
+    console.warn("[PAYMENT_EMAIL_FAILED]", { error: "Email provider is not configured." });
     return { sent: false, error: "Email provider is not configured." };
   }
 
   const fromEmailError = validateFromEmail(fromEmail);
   if (fromEmailError) {
-    console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", fromEmailError);
+    console.error("[PAYMENT_EMAIL_FAILED]", { error: fromEmailError });
     return { sent: false, error: fromEmailError };
   }
 
@@ -89,7 +89,7 @@ ${bookUrl}`,
   );
 
   if (error) {
-    console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
+    console.error("[PAYMENT_EMAIL_FAILED]", { error: error.message });
     return { sent: false, error: error.message };
   }
 

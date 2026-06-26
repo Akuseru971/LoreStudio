@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { hasPremiumAccess, verifyStripeCheckoutSession } from "@/lib/paymentVerification";
-import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
+import { verifyStripeCheckoutSession, hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
 
@@ -26,28 +25,6 @@ export async function POST(request: Request) {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
     const book = result.book;
 
-    let emailResult: Awaited<ReturnType<typeof sendConfirmationEmailIfNeeded>> = {
-      sent: false,
-      skipped: true,
-      failed: false,
-      reason: "unexpected_error",
-      recoveryEmailAvailable: false,
-    };
-
-    try {
-      emailResult = await sendConfirmationEmailIfNeeded(body.accessToken);
-    } catch (error) {
-      console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
-      emailResult = {
-        sent: false,
-        skipped: false,
-        failed: true,
-        reason: "unexpected_error",
-        recoveryEmailAvailable: false,
-        error: error instanceof Error ? error.message : "Unable to send confirmation email.",
-      };
-    }
-
     if (hasPremiumAccess(book.status)) {
       console.log("[PAYMENT_VERIFIED_START_PREMIUM_GENERATION]");
     }
@@ -60,10 +37,10 @@ export async function POST(request: Request) {
       canDownloadPdf: hasPremiumAccess(book.status),
       canDownloadMp3: hasPremiumAccess(book.status),
       accessToken: book.access_token,
-      confirmationEmailSent: emailResult.sent,
-      confirmationEmailSkipped: emailResult.skipped,
-      confirmationEmailFailed: emailResult.failed,
-      recoveryEmailAvailable: Boolean(emailResult.recoveryEmailAvailable || emailResult.sent),
+      confirmationEmailSent: book.confirmation_email_status === "sent",
+      confirmationEmailSkipped: book.confirmation_email_status === "skipped",
+      confirmationEmailFailed: book.confirmation_email_status === "failed",
+      recoveryEmailAvailable: Boolean(book.email) || book.confirmation_email_status === "sent",
     });
   } catch (error) {
     console.error("Payment verification failed.", error);

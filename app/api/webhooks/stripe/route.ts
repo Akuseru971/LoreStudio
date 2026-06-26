@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus, updateGenerationProgress } from "@/lib/bookStore";
-import { sendConfirmationEmailIfNeeded } from "@/lib/confirmationEmail";
+import { maybeSendPaymentConfirmationEmail } from "@/lib/confirmationEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getStripeClient } from "@/lib/stripe";
 
@@ -77,9 +77,15 @@ export async function POST(request: Request) {
         console.log("[PAYMENT_VERIFIED]", { bookId: storedBook.id, accessToken });
       }
 
-      void sendConfirmationEmailIfNeeded(accessToken).catch((error) => {
-        console.error("[BOOK_UNLOCKED_EMAIL_FAILED]", error);
-      });
+      console.log("[PAYMENT_CONFIRMED_TRIGGER_EMAIL]", { bookId: storedBook.id });
+      try {
+        await maybeSendPaymentConfirmationEmail(storedBook.id);
+      } catch (error) {
+        console.error("[PAYMENT_EMAIL_FAILED]", {
+          bookId: storedBook.id,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
     }
 
     return NextResponse.json({ received: true });
