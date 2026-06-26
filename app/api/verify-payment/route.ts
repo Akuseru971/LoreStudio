@@ -25,32 +25,52 @@ export async function POST(request: Request) {
 
   try {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
+    const book = (await getBookByAccessToken(body.accessToken)) || result.book;
 
-    await maybeSendPaymentConfirmationEmail(result.book.id).catch((error) => {
+    console.log("[PAYMENT_CONFIRMED]", {
+      source: "verify-payment",
+      bookId: book.id,
+      status: book.status,
+      hasCustomerEmail: Boolean(book.email),
+    });
+
+    console.log("[PAYMENT_CONFIRMED_TRIGGER_PAYMENT_EMAIL]", {
+      source: "verify-payment",
+      bookId: book.id,
+    });
+
+    await maybeSendPaymentConfirmationEmail(book.id, "verify-payment").catch((error) => {
       console.error("[PAYMENT_EMAIL_FAILED]", {
-        bookId: result.book.id,
+        bookId: book.id,
+        recipient: book.email,
         error: error instanceof Error ? error.message : error,
       });
     });
 
-    const book = (await getBookByAccessToken(body.accessToken)) || result.book;
+    const refreshedBook = (await getBookByAccessToken(body.accessToken)) || book;
+    const trackingSent =
+      refreshedBook.payment_email_status === "sent" || refreshedBook.confirmation_email_status === "sent";
+    const trackingSkipped =
+      refreshedBook.payment_email_status === "skipped" || refreshedBook.confirmation_email_status === "skipped";
+    const trackingFailed =
+      refreshedBook.payment_email_status === "failed" || refreshedBook.confirmation_email_status === "failed";
 
-    if (hasPremiumAccess(book.status)) {
+    if (hasPremiumAccess(refreshedBook.status)) {
       console.log("[PAYMENT_VERIFIED_START_PREMIUM_GENERATION]");
     }
 
     return NextResponse.json({
       verified: result.verified,
       alreadyUnlocked: result.alreadyUnlocked,
-      status: book.status,
-      isPremium: hasPremiumAccess(book.status),
-      canDownloadPdf: hasPremiumAccess(book.status),
-      canDownloadMp3: hasPremiumAccess(book.status),
-      accessToken: book.access_token,
-      confirmationEmailSent: book.payment_email_status === "sent",
-      confirmationEmailSkipped: book.payment_email_status === "skipped",
-      confirmationEmailFailed: book.payment_email_status === "failed",
-      recoveryEmailAvailable: Boolean(book.email) || book.payment_email_status === "sent",
+      status: refreshedBook.status,
+      isPremium: hasPremiumAccess(refreshedBook.status),
+      canDownloadPdf: hasPremiumAccess(refreshedBook.status),
+      canDownloadMp3: hasPremiumAccess(refreshedBook.status),
+      accessToken: refreshedBook.access_token,
+      confirmationEmailSent: trackingSent,
+      confirmationEmailSkipped: trackingSkipped,
+      confirmationEmailFailed: trackingFailed,
+      recoveryEmailAvailable: Boolean(refreshedBook.email) || trackingSent,
     });
   } catch (error) {
     console.error("Payment verification failed.", error);

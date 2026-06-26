@@ -26,6 +26,15 @@ export function validateFromEmail(fromEmail: string) {
   return null;
 }
 
+export function logPaymentEmailEnvCheck() {
+  console.log("[PAYMENT_EMAIL_ENV_CHECK]", {
+    hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
+    fromEmail: process.env.FROM_EMAIL || null,
+    appUrl: process.env.NEXT_PUBLIC_APP_URL || null,
+    vercelUrl: process.env.VERCEL_URL || null,
+  });
+}
+
 export type PaymentConfirmationEmailInput = {
   to: string;
   bookUrl: string;
@@ -47,9 +56,14 @@ export async function sendPaymentConfirmationEmail({
 
   const fromEmailError = validateFromEmail(fromEmail);
   if (fromEmailError) {
-    console.error("[PAYMENT_EMAIL_FAILED]", { error: fromEmailError });
+    console.error("[PAYMENT_EMAIL_PROVIDER_CALL_FAILED]", { error: fromEmailError });
     return { sent: false, error: fromEmailError };
   }
+
+  console.log("[PAYMENT_EMAIL_PROVIDER_CALL_START]", {
+    to,
+    from: fromEmail,
+  });
 
   const { data, error } = await resend.emails.send(
     {
@@ -84,9 +98,13 @@ ${bookUrl}`,
   );
 
   if (error) {
-    console.error("[PAYMENT_EMAIL_FAILED]", { error: error.message });
+    console.error("[PAYMENT_EMAIL_PROVIDER_CALL_FAILED]", { error: error.message });
     return { sent: false, error: error.message };
   }
+
+  console.log("[PAYMENT_EMAIL_PROVIDER_CALL_DONE]", {
+    providerMessageId: data?.id,
+  });
 
   return { sent: true, id: data?.id };
 }

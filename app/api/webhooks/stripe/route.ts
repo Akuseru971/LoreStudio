@@ -143,15 +143,26 @@ export async function POST(request: Request) {
         });
       }
 
-      console.log("[PAYMENT_CONFIRMED_TRIGGER_EMAIL]", {
-        bookId: storedBook.id,
+      const refreshedBook = (await getBookById(storedBook.id)) || storedBook;
+
+      console.log("[PAYMENT_CONFIRMED]", {
+        source: "stripe-webhook",
+        bookId: refreshedBook.id,
+        status: refreshedBook.status,
+        hasCustomerEmail: Boolean(refreshedBook.email),
+      });
+
+      console.log("[PAYMENT_CONFIRMED_TRIGGER_PAYMENT_EMAIL]", {
+        source: "stripe-webhook",
+        bookId: refreshedBook.id,
       });
 
       try {
-        await maybeSendPaymentConfirmationEmail(storedBook.id);
+        await maybeSendPaymentConfirmationEmail(refreshedBook.id, "stripe-webhook");
       } catch (error) {
         console.error("[PAYMENT_EMAIL_FAILED]", {
-          bookId: storedBook.id,
+          bookId: refreshedBook.id,
+          recipient: refreshedBook.email,
           error: error instanceof Error ? error.message : error,
         });
       }
