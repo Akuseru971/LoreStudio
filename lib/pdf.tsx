@@ -1,18 +1,15 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { preparePdfStoryPages, type PdfGenerationContext, type PdfStoryPage } from "@/lib/pdfBookPages";
+import { getImageHeightForPage, preparePdfStoryPages, type PdfGenerationContext, type PdfStoryPage } from "@/lib/pdfBookPages";
 import type { LoreBook } from "@/lib/types";
 
-const PAGE_HEIGHT = 842;
-const PAGE_PADDING = 22;
-const FRAME_PADDING = 16;
-const IMAGE_FRAME_HEIGHT = Math.round((PAGE_HEIGHT - PAGE_PADDING * 2 - FRAME_PADDING * 2) * 0.44);
+const PAGE_PADDING = 30;
+const FRAME_PADDING = 20;
 
 const palette = {
   parchment: "#f3e7cf",
   pageSurface: "#faf4e6",
   frameBorder: "#c4a574",
-  imageWell: "#ebe1ce",
   imageBorder: "#b89462",
   chapter: "#7a5c36",
   title: "#26180c",
@@ -31,22 +28,22 @@ const styles = StyleSheet.create({
   },
   frame: {
     flex: 1,
+    position: "relative",
     borderWidth: 1,
     borderColor: palette.frameBorder,
     backgroundColor: palette.pageSurface,
     padding: FRAME_PADDING,
+    paddingBottom: 36,
     flexDirection: "column",
   },
   imageFrame: {
     width: "100%",
-    height: IMAGE_FRAME_HEIGHT,
-    backgroundColor: palette.imageWell,
-    borderWidth: 1,
-    borderColor: palette.imageBorder,
-    padding: 10,
-    marginBottom: 10,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.rule,
+    paddingBottom: 2,
   },
   image: {
     width: "100%",
@@ -61,7 +58,7 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 12,
   },
   placeholderLabel: {
     fontSize: 8,
@@ -71,56 +68,54 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   textBlock: {
-    flexGrow: 1,
+    width: "100%",
     flexDirection: "column",
   },
   chapter: {
-    fontSize: 7.5,
-    letterSpacing: 2.4,
+    fontSize: 8.5,
+    letterSpacing: 3,
     textTransform: "uppercase",
     color: palette.chapter,
     marginBottom: 4,
   },
   title: {
     fontFamily: "Times-Bold",
-    fontSize: 16,
-    lineHeight: 1.2,
+    fontSize: 24,
+    lineHeight: 1.15,
     color: palette.title,
-    marginBottom: 7,
+    marginTop: 4,
+    marginBottom: 10,
   },
   rule: {
     height: 1,
     backgroundColor: palette.rule,
-    marginBottom: 8,
-    width: "28%",
+    marginBottom: 10,
+    width: "22%",
   },
   body: {
-    fontSize: 10.5,
-    lineHeight: 1.58,
+    fontSize: 11.5,
+    lineHeight: 1.5,
     color: palette.body,
     textAlign: "justify",
   },
-  footerRow: {
-    marginTop: 10,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: palette.rule,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
   footer: {
-    fontSize: 7,
-    letterSpacing: 1.4,
+    position: "absolute",
+    bottom: 18,
+    right: 24,
+    fontSize: 8,
+    letterSpacing: 2,
     color: palette.footer,
     textTransform: "uppercase",
   },
 });
 
 function StoryPdfPage({ page }: { page: PdfStoryPage }) {
+  const imageHeight = getImageHeightForPage(page.text.length);
+
   return (
     <Page size="A4" style={styles.page}>
       <View style={styles.frame}>
-        <View style={styles.imageFrame}>
+        <View style={[styles.imageFrame, { height: imageHeight }]}>
           {page.imageSrc ? (
             <Image src={page.imageSrc} style={styles.image} />
           ) : (
@@ -137,9 +132,7 @@ function StoryPdfPage({ page }: { page: PdfStoryPage }) {
           <Text style={styles.body}>{page.text}</Text>
         </View>
 
-        <View style={styles.footerRow}>
-          <Text style={styles.footer}>Page {page.pageNumber}</Text>
-        </View>
+        <Text style={styles.footer}>Page {page.pageNumber}</Text>
       </View>
     </Page>
   );
