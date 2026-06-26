@@ -60,36 +60,27 @@ export async function sendBookUnlockedEmail({
     {
       from: fromEmail,
       to: [to],
-      subject: "Your legend is unlocked",
-      text: `Your complete legend is now unlocked.
+      subject: "Your legend is being prepared",
+      text: `Your legend is being prepared
 
-Read your interactive book here:
-${bookUrl}
+Your payment has been confirmed. Your complete illustrated legend is now being prepared.
 
-Download your PDF:
-${pdfUrl}
+You will receive a second email as soon as your full book and PDF are ready.
 
-Download your full narration MP3:
-${mp3Url}
-
-Keep this email safe. This private link lets you recover your legend without creating an account.`,
+You can already access your private book page here:
+${bookUrl}`,
       html: `
         <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
-          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">Your complete legend is now unlocked.</p>
+          <h1 style="font-size: 24px; line-height: 1.3; color: #2f2419; margin: 0 0 20px;">Your legend is being prepared</h1>
+          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">
+            Your payment has been confirmed. Your complete illustrated legend is now being prepared.
+          </p>
           <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
-            Read your interactive book here:<br />
+            You will receive a second email as soon as your full book and PDF are ready.
+          </p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            You can already access your private book page here:<br />
             <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
-          </p>
-          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
-            Download your PDF:<br />
-            <a href="${pdfUrl}" style="color: #4a3724;">${pdfUrl}</a>
-          </p>
-          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
-            Download your full narration MP3:<br />
-            <a href="${mp3Url}" style="color: #4a3724;">${mp3Url}</a>
-          </p>
-          <p style="font-size: 14px; line-height: 1.7; color: #6b4a24;">
-            Keep this email safe. This private link lets you recover your legend without creating an account.
           </p>
         </div>
       `,
@@ -132,28 +123,33 @@ export async function sendFinalBookReadyEmail({ to, bookUrl, pdfUrl, idempotency
       from: fromEmail,
       to: [to],
       subject: "Your complete legend is ready",
-      text: `Your complete illustrated book is ready.
+      text: `Your complete legend is fully unlocked
 
-Access your book here:
+Your complete illustrated legend is now ready.
+
+Your full book, premium illustrations, and PDF are available from your private link.
+
+Access your complete legend here:
 ${bookUrl}
 
 Download your PDF here:
-${pdfUrl}
-
-Keep this email safe. Your private link lets you recover your book without creating an account.`,
+${pdfUrl}`,
       html: `
         <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
-          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">Your complete illustrated book is ready.</p>
+          <h1 style="font-size: 24px; line-height: 1.3; color: #2f2419; margin: 0 0 20px;">Your complete legend is fully unlocked</h1>
+          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">
+            Your complete illustrated legend is now ready.
+          </p>
           <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
-            Access your book here:<br />
+            Your full book, premium illustrations, and PDF are available from your private link.
+          </p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            Access your complete legend here:<br />
             <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
           </p>
           <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
             Download your PDF here:<br />
             <a href="${pdfUrl}" style="color: #4a3724;">${pdfUrl}</a>
-          </p>
-          <p style="font-size: 14px; line-height: 1.7; color: #6b4a24;">
-            Keep this email safe. Your private link lets you recover your book without creating an account.
           </p>
         </div>
       `,
