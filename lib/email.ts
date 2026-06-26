@@ -26,22 +26,17 @@ export function validateFromEmail(fromEmail: string) {
   return null;
 }
 
-export type BookUnlockedEmailInput = {
+export type PaymentConfirmationEmailInput = {
   to: string;
   bookUrl: string;
-  pdfUrl: string;
-  mp3Url: string;
-  characterName: string;
   idempotencyKey: string;
 };
 
-export async function sendBookUnlockedEmail({
+export async function sendPaymentConfirmationEmail({
   to,
   bookUrl,
-  pdfUrl,
-  mp3Url,
   idempotencyKey,
-}: Omit<BookUnlockedEmailInput, "characterName"> & { characterName?: string }) {
+}: PaymentConfirmationEmailInput) {
   const resend = getResendClient();
   const fromEmail = process.env.FROM_EMAIL?.trim();
 
@@ -94,6 +89,27 @@ ${bookUrl}`,
   }
 
   return { sent: true, id: data?.id };
+}
+
+export type BookUnlockedEmailInput = {
+  to: string;
+  bookUrl: string;
+  pdfUrl: string;
+  mp3Url: string;
+  characterName: string;
+  idempotencyKey: string;
+};
+
+export async function sendBookUnlockedEmail({
+  to,
+  bookUrl,
+  idempotencyKey,
+}: Omit<BookUnlockedEmailInput, "characterName" | "pdfUrl" | "mp3Url"> & {
+  characterName?: string;
+  pdfUrl?: string;
+  mp3Url?: string;
+}) {
+  return sendPaymentConfirmationEmail({ to, bookUrl, idempotencyKey });
 }
 
 export type FinalBookReadyEmailInput = {

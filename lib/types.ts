@@ -141,6 +141,8 @@ export type PageImageState = {
 
 export type ConfirmationEmailStatus = "not_started" | "sending" | "sent" | "failed" | "skipped";
 
+export type PaymentEmailStatus = ConfirmationEmailStatus;
+
 export type PdfReadyEmailStatus = "not_started" | "sending" | "sent" | "failed";
 
 export type GenerationProgressStatus =
@@ -179,6 +181,9 @@ export type StoredBook = {
   confirmation_email_sent_at: string | null;
   confirmation_email_status: ConfirmationEmailStatus;
   confirmation_email_error: string | null;
+  payment_email_sent_at: string | null;
+  payment_email_status: PaymentEmailStatus;
+  payment_email_error: string | null;
   pdf_ready_email_sent_at: string | null;
   pdf_ready_email_status: PdfReadyEmailStatus;
   pdf_ready_email_error: string | null;

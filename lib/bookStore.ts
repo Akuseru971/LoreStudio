@@ -23,6 +23,7 @@ import type {
   ImagePageStatus,
   LoreBook,
   Mp3Status,
+  PaymentEmailStatus,
   PdfReadyEmailStatus,
   PdfStatus,
   StoredBook,
@@ -105,6 +106,9 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     confirmation_email_sent_at: row.confirmation_email_sent_at ? String(row.confirmation_email_sent_at) : null,
     confirmation_email_status: (row.confirmation_email_status as ConfirmationEmailStatus | null) ?? "not_started",
     confirmation_email_error: row.confirmation_email_error ? String(row.confirmation_email_error) : null,
+    payment_email_sent_at: row.payment_email_sent_at ? String(row.payment_email_sent_at) : null,
+    payment_email_status: (row.payment_email_status as PaymentEmailStatus | null) ?? "not_started",
+    payment_email_error: row.payment_email_error ? String(row.payment_email_error) : null,
     pdf_ready_email_sent_at: row.pdf_ready_email_sent_at ? String(row.pdf_ready_email_sent_at) : null,
     pdf_ready_email_status: (row.pdf_ready_email_status as PdfReadyEmailStatus | null) ?? "not_started",
     pdf_ready_email_error: row.pdf_ready_email_error ? String(row.pdf_ready_email_error) : null,
@@ -749,6 +753,79 @@ export async function markConfirmationEmailSkipped(bookId: string) {
 
   if (error || !data) {
     throw new Error(error?.message || "Unable to mark confirmation email as skipped.");
+  }
+
+  return mapRow(data);
+}
+
+export async function claimPaymentEmailSend(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ payment_email_status: "sending" })
+    .eq("id", bookId)
+    .is("payment_email_sent_at", null)
+    .in("payment_email_status", ["not_started", "failed", "skipped"])
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markPaymentEmailSent(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      payment_email_status: "sent",
+      payment_email_sent_at: new Date().toISOString(),
+      payment_email_error: null,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark payment email as sent.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markPaymentEmailFailed(bookId: string, errorMessage?: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      payment_email_status: "failed",
+      payment_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark payment email as failed.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markPaymentEmailSkipped(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ payment_email_status: "skipped" })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark payment email as skipped.");
   }
 
   return mapRow(data);

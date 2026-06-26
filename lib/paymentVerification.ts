@@ -5,7 +5,6 @@ import {
   updateBookStatus,
   updateGenerationProgress,
 } from "@/lib/bookStore";
-import { maybeSendPaymentConfirmationEmail } from "@/lib/confirmationEmail";
 import { getStripeClient } from "@/lib/stripe";
 import type { BookStatus, StoredBook } from "@/lib/types";
 
@@ -40,14 +39,6 @@ export async function verifyStripeCheckoutSession(
   }
 
   if (hasPremiumAccess(storedBook.status)) {
-    console.log("[PAYMENT_CONFIRMED_TRIGGER_EMAIL]", { bookId: storedBook.id });
-    await maybeSendPaymentConfirmationEmail(storedBook.id).catch((error) => {
-      console.error("[PAYMENT_EMAIL_FAILED]", {
-        bookId: storedBook.id,
-        error: error instanceof Error ? error.message : error,
-      });
-    });
-
     const refreshedBook = await getBookByAccessToken(accessToken);
 
     return {
@@ -63,8 +54,9 @@ export async function verifyStripeCheckoutSession(
     throw new Error("Payment has not been completed.");
   }
 
-  const sessionAccessToken = session.metadata?.access_token;
-  const sessionBookId = session.metadata?.book_id;
+  const sessionAccessToken =
+    session.metadata?.accessToken || session.metadata?.access_token || null;
+  const sessionBookId = session.metadata?.bookId || session.metadata?.book_id || null;
 
   if (!sessionAccessToken || sessionAccessToken !== accessToken) {
     throw new Error("This payment session does not match the requested book.");
@@ -87,14 +79,7 @@ export async function verifyStripeCheckoutSession(
   await updateBookStatus(storedBook.id, "paid");
   await updateGenerationProgress(storedBook.id, "preparing", { touchStartedAt: true });
   console.log("[PAYMENT_VERIFIED]", { bookId: storedBook.id, accessToken });
-
-  console.log("[PAYMENT_CONFIRMED_TRIGGER_EMAIL]", { bookId: storedBook.id });
-  await maybeSendPaymentConfirmationEmail(storedBook.id).catch((error) => {
-    console.error("[PAYMENT_EMAIL_FAILED]", {
-      bookId: storedBook.id,
-      error: error instanceof Error ? error.message : error,
-    });
-  });
+  console.log("[BOOK_MARKED_PAID]", { bookId: storedBook.id });
 
   const updatedBook = await getBookByAccessToken(accessToken);
   if (!updatedBook) {

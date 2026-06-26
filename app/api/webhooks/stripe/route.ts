@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getBookByAccessToken, saveEmail, saveStripePayment, updateBookStatus, updateGenerationProgress } from "@/lib/bookStore";
+import {
+  getBookByAccessToken,
+  getBookById,
+  saveEmail,
+  saveStripePayment,
+  updateBookStatus,
+  updateGenerationProgress,
+} from "@/lib/bookStore";
 import { maybeSendPaymentConfirmationEmail } from "@/lib/confirmationEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getStripeClient } from "@/lib/stripe";
@@ -9,6 +16,17 @@ export const runtime = "nodejs";
 
 function getWebhookSecret() {
   return process.env.STRIPE_WEBHOOK_SECRET;
+}
+
+function getSessionMetadataValue(session: Stripe.Checkout.Session, ...keys: string[]) {
+  for (const key of keys) {
+    const value = session.metadata?.[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -34,50 +52,101 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid webhook signature." }, { status: 400 });
   }
 
+  console.log("[STRIPE_WEBHOOK_RECEIVED]", {
+    type: event.type,
+  });
+
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
-      const accessToken = session.metadata?.access_token;
+      const bookId = getSessionMetadataValue(session, "bookId", "book_id");
+      const accessToken = getSessionMetadataValue(session, "accessToken", "access_token");
 
-      if (!accessToken) {
-        console.warn("Checkout session completed without access_token metadata.");
+      if (!bookId) {
+        console.error("[CHECKOUT_COMPLETED]", {
+          sessionId: session.id,
+          error: "missing_book_id",
+          hasAccessToken: Boolean(accessToken),
+        });
+      }
+
+      if (!bookId && !accessToken) {
         return NextResponse.json({ received: true });
       }
 
       if (session.payment_status !== "paid") {
-        console.warn("Checkout session completed without paid status.", session.id);
+        console.warn("[CHECKOUT_COMPLETED]", {
+          sessionId: session.id,
+          bookId,
+          error: "payment_not_paid",
+        });
         return NextResponse.json({ received: true });
       }
 
-      const storedBook = await getBookByAccessToken(accessToken);
+      let storedBook = bookId ? await getBookById(bookId) : null;
+      if (!storedBook && accessToken) {
+        storedBook = await getBookByAccessToken(accessToken);
+      }
+
       if (!storedBook) {
-        console.warn("Checkout completed for unknown access token.", accessToken);
+        console.error("[CHECKOUT_COMPLETED]", {
+          sessionId: session.id,
+          bookId,
+          accessToken,
+          error: "book_not_found",
+        });
         return NextResponse.json({ received: true });
       }
 
-      if (session.metadata?.book_id && session.metadata.book_id !== storedBook.id) {
-        console.warn("Checkout session book_id mismatch.", session.id);
+      if (bookId && storedBook.id !== bookId) {
+        console.error("[CHECKOUT_COMPLETED]", {
+          sessionId: session.id,
+          bookId,
+          error: "book_id_mismatch",
+        });
         return NextResponse.json({ received: true });
       }
 
-      const email = session.customer_details?.email || session.customer_email || storedBook.email;
-      if (email) {
-        await saveEmail(storedBook.id, email);
+      if (accessToken && storedBook.access_token !== accessToken) {
+        console.error("[CHECKOUT_COMPLETED]", {
+          sessionId: session.id,
+          bookId: storedBook.id,
+          error: "access_token_mismatch",
+        });
+        return NextResponse.json({ received: true });
+      }
+
+      const customerEmail =
+        session.customer_details?.email || session.customer_email || storedBook.email || null;
+
+      console.log("[CHECKOUT_COMPLETED]", {
+        sessionId: session.id,
+        bookId: storedBook.id,
+        hasCustomerEmail: Boolean(customerEmail),
+      });
+
+      if (customerEmail) {
+        await saveEmail(storedBook.id, customerEmail);
       }
 
       await saveStripePayment(
         storedBook.id,
         typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || null,
-        email || null,
+        customerEmail,
       );
 
       if (!hasPremiumAccess(storedBook.status)) {
         await updateBookStatus(storedBook.id, "paid");
         await updateGenerationProgress(storedBook.id, "preparing", { touchStartedAt: true });
-        console.log("[PAYMENT_VERIFIED]", { bookId: storedBook.id, accessToken });
+        console.log("[BOOK_MARKED_PAID]", {
+          bookId: storedBook.id,
+        });
       }
 
-      console.log("[PAYMENT_CONFIRMED_TRIGGER_EMAIL]", { bookId: storedBook.id });
+      console.log("[PAYMENT_CONFIRMED_TRIGGER_EMAIL]", {
+        bookId: storedBook.id,
+      });
+
       try {
         await maybeSendPaymentConfirmationEmail(storedBook.id);
       } catch (error) {

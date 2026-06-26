@@ -56,8 +56,10 @@ export async function POST(request: Request) {
           "Complete interactive Runeterra-inspired lore book. Access link sent by email and available after payment.",
       },
       metadata: {
-        access_token: storedBook.access_token,
+        bookId: storedBook.id,
+        accessToken: storedBook.access_token,
         book_id: storedBook.id,
+        access_token: storedBook.access_token,
         character_name: characterName.slice(0, 120),
       },
     });

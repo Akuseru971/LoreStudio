@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getBookByAccessToken } from "@/lib/bookStore";
+import { maybeSendPaymentConfirmationEmail } from "@/lib/confirmationEmail";
 import { verifyStripeCheckoutSession, hasPremiumAccess } from "@/lib/paymentVerification";
 
 export const runtime = "nodejs";
@@ -23,7 +25,15 @@ export async function POST(request: Request) {
 
   try {
     const result = await verifyStripeCheckoutSession(body.accessToken, body.sessionId);
-    const book = result.book;
+
+    await maybeSendPaymentConfirmationEmail(result.book.id).catch((error) => {
+      console.error("[PAYMENT_EMAIL_FAILED]", {
+        bookId: result.book.id,
+        error: error instanceof Error ? error.message : error,
+      });
+    });
+
+    const book = (await getBookByAccessToken(body.accessToken)) || result.book;
 
     if (hasPremiumAccess(book.status)) {
       console.log("[PAYMENT_VERIFIED_START_PREMIUM_GENERATION]");
@@ -37,10 +47,10 @@ export async function POST(request: Request) {
       canDownloadPdf: hasPremiumAccess(book.status),
       canDownloadMp3: hasPremiumAccess(book.status),
       accessToken: book.access_token,
-      confirmationEmailSent: book.confirmation_email_status === "sent",
-      confirmationEmailSkipped: book.confirmation_email_status === "skipped",
-      confirmationEmailFailed: book.confirmation_email_status === "failed",
-      recoveryEmailAvailable: Boolean(book.email) || book.confirmation_email_status === "sent",
+      confirmationEmailSent: book.payment_email_status === "sent",
+      confirmationEmailSkipped: book.payment_email_status === "skipped",
+      confirmationEmailFailed: book.payment_email_status === "failed",
+      recoveryEmailAvailable: Boolean(book.email) || book.payment_email_status === "sent",
     });
   } catch (error) {
     console.error("Payment verification failed.", error);
