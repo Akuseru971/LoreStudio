@@ -6,10 +6,24 @@ const PREMIUM_GENERATION_POLL_MS = 2000;
 
 const activePremiumLoops = new Set<string>();
 
+export const premiumGenerationLoopRef = {
+  current: false,
+};
+
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function isAllPremiumGenerationComplete(status: {
+  readyImagesCount?: number;
+  missingPremiumPages?: number[];
+  allIllustrationsReady?: boolean;
+}) {
+  const readyImagesCount = status.readyImagesCount ?? 0;
+  const missingPremiumPages = status.missingPremiumPages ?? [];
+  return Boolean(status.allIllustrationsReady) || (readyImagesCount >= 8 && missingPremiumPages.length === 0);
 }
 
 async function premiumImageWorker(accessToken: string) {
@@ -26,8 +40,18 @@ async function premiumImageWorker(accessToken: string) {
       continue;
     }
 
-    if (data.allIllustrationsReady || data.allPremiumImagesReady || (data.done && !data.generated)) {
+    if (isAllPremiumGenerationComplete(data)) {
+      console.log("[PREMIUM_GENERATION_LOOP_STOP_ALL_READY]", {
+        bookId: accessToken,
+      });
       return;
+    }
+
+    if (data.shouldContinuePremiumGeneration || (data.missingPremiumPages?.length ?? 0) > 0) {
+      console.log("[PREMIUM_GENERATION_LOOP_CONTINUE]", {
+        readyImagesCount: data.readyImagesCount,
+        missingPremiumPages: data.missingPremiumPages,
+      });
     }
 
     await sleep(800);
@@ -40,6 +64,7 @@ export async function startPremiumGenerationLoop(accessToken: string) {
   }
 
   activePremiumLoops.add(accessToken);
+  premiumGenerationLoopRef.current = true;
   console.log("[PREMIUM_GENERATION_LOOP_START]", accessToken);
 
   try {
@@ -60,9 +85,19 @@ export async function startPremiumGenerationLoop(accessToken: string) {
         return;
       }
 
-      if (data.allIllustrationsReady) {
-        console.log("[PREMIUM_GENERATION_LOOP_STOP]", "all_ready");
+      if (isAllPremiumGenerationComplete(data)) {
+        console.log("[PREMIUM_GENERATION_LOOP_STOP_ALL_READY]", {
+          bookId: accessToken,
+        });
         break;
+      }
+
+      if (data.shouldContinuePremiumGeneration || (data.missingPremiumPages?.length ?? 0) > 0) {
+        console.log("[PREMIUM_GENERATION_LOOP_CONTINUE]", {
+          readyImagesCount: data.readyImagesCount,
+          missingPremiumPages: data.missingPremiumPages,
+        });
+        void generateNextPremiumImage(accessToken);
       }
 
       const updatedAt = data.generationUpdatedAt as string | undefined;
@@ -79,6 +114,7 @@ export async function startPremiumGenerationLoop(accessToken: string) {
     }
   } finally {
     activePremiumLoops.delete(accessToken);
+    premiumGenerationLoopRef.current = activePremiumLoops.size > 0;
     console.log("[PREMIUM_GENERATION_LOOP_STOP]", "finished");
   }
 }

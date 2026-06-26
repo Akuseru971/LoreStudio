@@ -36,6 +36,30 @@ import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
 
+function getPageImageGenerationTimestamp(storedBook: StoredBook, pageNumber: number) {
+  const raw = storedBook.images[String(pageNumber)];
+  if (raw && typeof raw === "object" && raw !== null) {
+    const record = raw as BookPageImage;
+    return record.updatedAt || record.startedAt || null;
+  }
+
+  return null;
+}
+
+function isPageImageGeneratingStale(storedBook: StoredBook, pageNumber: number) {
+  const timestamp = getPageImageGenerationTimestamp(storedBook, pageNumber);
+  if (!timestamp) {
+    return true;
+  }
+
+  const updatedTime = new Date(timestamp).getTime();
+  if (Number.isNaN(updatedTime)) {
+    return true;
+  }
+
+  return Date.now() - updatedTime >= STALE_IMAGE_GENERATING_MS;
+}
+
 function normalizePdfStatus(value: unknown, pdfStoragePath: unknown): PdfStatus {
   if (pdfStoragePath) {
     return "ready";
@@ -308,6 +332,23 @@ export async function getBookById(bookId: string) {
     throw new Error(error.message);
   }
   return data ? mapRow(data) : null;
+}
+
+export async function findPaidBooksWithIncompletePremiumGeneration(limit = 3) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .select("*")
+    .in("status", ["paid", "generating"])
+    .in("generation_status", ["preparing", "generating_images"])
+    .order("generation_updated_at", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data || []).map(mapRow);
 }
 
 function synopsisMatches(
@@ -610,6 +651,46 @@ export async function markBookReady(bookId: string) {
   return updateBookStatus(bookId, "ready");
 }
 
+export async function resetStalePageImageGeneration(bookId: string, pageNumber: number) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    return null;
+  }
+
+  const key = String(pageNumber);
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
+    pageNumber,
+    status: "not_started",
+    url: null,
+    storagePath: null,
+    generatedAt: null,
+    startedAt: null,
+    updatedAt: new Date().toISOString(),
+  });
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [key]: "not_started" as ImagePageStatus,
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
 export async function claimPageImageGeneration(bookId: string, pageNumber: number) {
   const supabase = requireSupabase();
   const storedBook = await getBookById(bookId);
@@ -628,22 +709,32 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
     return null;
   }
 
-  if (currentStatus === "generating") {
-    const updatedAt = new Date(storedBook.updated_at).getTime();
-    const isStale = !Number.isNaN(updatedAt) && Date.now() - updatedAt >= STALE_IMAGE_GENERATING_MS;
-    if (!isStale) {
-      return null;
-    }
+  if (currentStatus === "generating" && !isPageImageGeneratingStale(storedBook, pageNumber)) {
+    return null;
   }
 
+  const now = new Date().toISOString();
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
+    pageNumber,
+    status: "generating",
+    url: null,
+    storagePath: null,
+    generatedAt: null,
+    startedAt: now,
+    updatedAt: now,
+  });
   const nextImageStatus = {
-    ...storedBook.image_status,
+    ...normalized.imageStatus,
     [key]: "generating" as ImagePageStatus,
   };
 
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
-    .update({ image_status: nextImageStatus })
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
     .eq("id", bookId)
     .select("*")
     .maybeSingle();

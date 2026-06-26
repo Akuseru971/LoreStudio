@@ -123,6 +123,8 @@ function coerceCanonicalImage(image: unknown, pageNumber: number): BookPageImage
     url: directUrl,
     storagePath,
     generatedAt: typeof image.generatedAt === "string" ? image.generatedAt : null,
+    startedAt: typeof image.startedAt === "string" ? image.startedAt : null,
+    updatedAt: typeof image.updatedAt === "string" ? image.updatedAt : null,
   };
 }
 
@@ -199,6 +201,8 @@ export function getImageForPage(book: BookImagesInput, pageNumber: number): Norm
     url: mergedUrl,
     storagePath: mergedStoragePath,
     generatedAt: coerced?.generatedAt || pageCoerced?.generatedAt || null,
+    startedAt: coerced?.startedAt || pageCoerced?.startedAt || null,
+    updatedAt: coerced?.updatedAt || pageCoerced?.updatedAt || null,
     imageUrl: pageImageUrl,
     src: coerced?.url ?? null,
   };

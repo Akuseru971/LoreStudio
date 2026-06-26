@@ -6,7 +6,7 @@ import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generatio
 import { FREE_IMAGE_PAGE_COUNT, PREMIUM_IMAGE_PAGES } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck } from "@/lib/book-images";
 import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
-import { arePremiumIllustrationsReady, getMissingPremiumImagePages } from "@/lib/premiumImages";
+import { arePremiumIllustrationsReady, getMissingPremiumImagePages, getPremiumGenerationStatus, recoverStalePremiumImages } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 import { triggerPdfGenerationIfReady } from "@/lib/triggerPdfGeneration";
@@ -50,12 +50,17 @@ export async function GET(request: Request) {
     }
 
     const isPremium = hasPremiumAccess(storedBook.status);
-    const normalized = getNormalizedImagesForStoredBook(storedBook);
-    const generationStatus = resolveGenerationStatus(storedBook);
-    const readyFreeImageCount = countReadyFreeImages(storedBook);
-    const freeIllustrationsReady = areFreeIllustrationsReady(storedBook);
-    const hasText = Boolean(storedBook.free_book);
-    const generationStartedAt = storedBook.generation_started_at || storedBook.created_at;
+    let activeBook = storedBook;
+    if (isPremium) {
+      activeBook = (await recoverStalePremiumImages(storedBook)) || storedBook;
+    }
+
+    const normalized = getNormalizedImagesForStoredBook(activeBook);
+    const generationStatus = resolveGenerationStatus(activeBook);
+    const readyFreeImageCount = countReadyFreeImages(activeBook);
+    const freeIllustrationsReady = areFreeIllustrationsReady(activeBook);
+    const hasText = Boolean(activeBook.free_book);
+    const generationStartedAt = activeBook.generation_started_at || activeBook.created_at;
     const elapsedMs = generationStartedAt ? Date.now() - new Date(generationStartedAt).getTime() : 0;
     const isPreparing = isGenerationPreparing(generationStatus) && !freeIllustrationsReady;
     const progressMessage = getClientProgressMessage({
@@ -64,10 +69,11 @@ export async function GET(request: Request) {
       readyFreeImageCount,
     });
 
-    const missingPremiumPages = isPremium ? getMissingPremiumImagePages(storedBook) : [];
-    const premiumImagesReady = isPremium ? arePremiumIllustrationsReady(storedBook) : false;
-    const pdfReady = storedBook.pdf_status === "ready" || Boolean(storedBook.pdf_storage_path);
-    const pdfStatus = storedBook.pdf_status || "not_started";
+    const missingPremiumPages = isPremium ? getMissingPremiumImagePages(activeBook) : [];
+    const premiumImagesReady = isPremium ? arePremiumIllustrationsReady(activeBook) : false;
+    const premiumGeneration = isPremium ? getPremiumGenerationStatus(activeBook) : null;
+    const pdfReady = activeBook.pdf_status === "ready" || Boolean(activeBook.pdf_storage_path);
+    const pdfStatus = activeBook.pdf_status || "not_started";
 
     if (!normalized.allIllustrationsReady) {
       logPdfReadyCheck(normalized.input, "book-status");
@@ -79,8 +85,8 @@ export async function GET(request: Request) {
       !pdfReady &&
       pdfStatus !== "generating"
     ) {
-      void triggerPdfGenerationIfReady(storedBook.id, "book-status").catch((error) => {
-        console.error("[PDF_AUTO_TRIGGER_ERROR]", { bookId: storedBook.id, error });
+      void triggerPdfGenerationIfReady(activeBook.id, "book-status").catch((error) => {
+        console.error("[PDF_AUTO_TRIGGER_ERROR]", { bookId: activeBook.id, error });
       });
     }
 
@@ -88,17 +94,24 @@ export async function GET(request: Request) {
       isPremium &&
       normalized.allIllustrationsReady &&
       pdfReady &&
-      storedBook.pdf_ready_email_status !== "sent" &&
-      !storedBook.pdf_ready_email_sent_at
+      activeBook.pdf_ready_email_status !== "sent" &&
+      !activeBook.pdf_ready_email_sent_at
     ) {
-      void triggerFinalBookReadyEmailCheck(storedBook.id).catch((error) => {
-        console.error("[FINAL_READY_EMAIL_FAILED]", { bookId: storedBook.id, error });
+      void triggerFinalBookReadyEmailCheck(activeBook.id).catch((error) => {
+        console.error("[FINAL_READY_EMAIL_FAILED]", { bookId: activeBook.id, error });
       });
     }
 
+    console.log("[PREMIUM_GENERATION_STATUS]", {
+      bookId: activeBook.id,
+      readyImagesCount: normalized.readyIllustrationCount,
+      missingPremiumPages,
+      stalePremiumPages: premiumGeneration?.stalePremiumPages || [],
+    });
+
     console.log("[BOOK_STATUS]", {
-      bookId: storedBook.id,
-      status: storedBook.status,
+      bookId: activeBook.id,
+      status: activeBook.status,
       generationStatus,
       readyImagesCount: normalized.readyIllustrationCount,
       missingPremiumPages,
@@ -106,15 +119,15 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      status: storedBook.status,
+      status: activeBook.status,
       generationStatus,
-      generationError: storedBook.generation_error,
-      generationStartedAt: storedBook.generation_started_at,
-      generationUpdatedAt: storedBook.generation_updated_at || storedBook.updated_at,
+      generationError: activeBook.generation_error,
+      generationStartedAt: activeBook.generation_started_at,
+      generationUpdatedAt: activeBook.generation_updated_at || activeBook.updated_at,
       isPreparing,
       progressMessage,
       message: isPreparing ? "Generation still in progress" : "Book status loaded",
-      accessToken: storedBook.access_token,
+      accessToken: activeBook.access_token,
       isPremium,
       isPaid: isPremium,
       canDownloadPdf: isPremium && normalized.allIllustrationsReady,
@@ -132,17 +145,19 @@ export async function GET(request: Request) {
       freeIllustrationsReady,
       premiumImagesReady,
       missingPremiumPages,
+      stalePremiumPages: premiumGeneration?.stalePremiumPages || [],
+      shouldContinuePremiumGeneration: premiumGeneration?.shouldContinuePremiumGeneration || false,
       premiumImagesTotal: PREMIUM_IMAGE_PAGES.length,
       hasFailedIllustrations: normalized.hasFailedIllustrations,
       hasGeneratingIllustrations: normalized.hasGeneratingIllustrations,
       missingPages: normalized.missingPages,
       pdfStatus,
-      pdfStoragePath: storedBook.pdf_storage_path,
+      pdfStoragePath: activeBook.pdf_storage_path,
       pdfReady,
-      audioStatus: storedBook.mp3_status || "not_started",
+      audioStatus: activeBook.mp3_status || "not_started",
       characterName:
-        storedBook.full_book?.characterBible.name || storedBook.free_book?.characterBible.name || null,
-      title: storedBook.full_book?.title || storedBook.free_book?.title || null,
+        activeBook.full_book?.characterBible.name || activeBook.free_book?.characterBible.name || null,
+      title: activeBook.full_book?.title || activeBook.free_book?.title || null,
     });
   } catch (error) {
     console.error("Failed to load book status.", error);

@@ -78,6 +78,8 @@ export async function POST(request: Request) {
       readyPremiumImageCount: result.readyPremiumImageCount,
       premiumImagesTotal: PREMIUM_IMAGE_PAGES.length,
       missingPremiumPages: result.missingPremiumPages,
+      stalePremiumPages: result.stalePremiumPages || [],
+      shouldContinuePremiumGeneration: result.shouldContinuePremiumGeneration ?? false,
       imageStatus: normalized.images,
       pdfTriggered,
       pdfStatus,
@@ -103,6 +105,7 @@ export async function POST(request: Request) {
         readyPremiumImageCount,
         premiumImagesTotal: PREMIUM_IMAGE_PAGES.length,
         missingPremiumPages: getMissingPremiumImagePages(refreshedBook),
+        shouldContinuePremiumGeneration: getMissingPremiumImagePages(refreshedBook).length > 0,
         imageStatus: normalized.images,
       });
     }
