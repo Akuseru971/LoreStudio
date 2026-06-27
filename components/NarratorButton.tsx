@@ -17,7 +17,7 @@ export default function NarratorButton({
   disabled = false,
   className,
 }: NarratorButtonProps) {
-  const label = isLoading ? "Summoning narrator..." : isPlaying ? "Listening..." : "Narrator";
+  const label = isLoading ? "Summoning..." : isPlaying ? "Listening..." : "Narrator";
 
   return (
     <button
@@ -25,10 +25,10 @@ export default function NarratorButton({
       onClick={onClick}
       disabled={disabled || isLoading}
       title="Listen to this page"
-      aria-label={label}
+      aria-label={isLoading ? "Summoning narrator" : isPlaying ? "Listening to narrator" : "Narrator"}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-[#6b4a24]/20 bg-[#fff8e8]/55 px-2.5 py-1 text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-[#6b4a24]/85 transition hover:border-[#6b4a24]/35 hover:bg-[#fff8e8]/80 disabled:cursor-wait disabled:opacity-60",
-        isPlaying ? "border-[#8a6231]/45 bg-[#f7ebce]/70 text-[#4a3018]" : null,
+        "inline-flex min-h-[32px] items-center gap-1 rounded-full border border-[#8a6231]/22 bg-[#fff8e8]/42 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.1em] text-[#6b4a24]/78 transition hover:border-[#8a6231]/34 hover:bg-[#fff8e8]/68 disabled:cursor-wait disabled:opacity-60",
+        isPlaying ? "border-[#8a6231]/38 bg-[#f7ebce]/62 text-[#4a3018]" : null,
         className,
       )}
     >
@@ -40,7 +40,7 @@ export default function NarratorButton({
 
 function SpeakerIcon({ isPlaying }: { isPlaying: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 shrink-0">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3 w-3 shrink-0">
       {isPlaying ? (
         <>
           <path d="M8 5.5v13l11-6.5-11-6.5z" fill="currentColor" />

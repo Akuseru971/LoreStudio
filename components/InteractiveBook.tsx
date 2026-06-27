@@ -19,7 +19,6 @@ import {
   FREE_IMAGE_PAGE_COUNT,
   isPremiumImageLockedBeforePayment,
   isPremiumImagePage,
-  isSealedFreeImagePage,
   PREMIUM_IMAGE_PAGE_NUMBERS,
 } from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
@@ -90,6 +89,7 @@ type InteractiveBookProps = {
 
 const OPENING_DURATION_MS = 2100;
 const PAGE_FIVE_INDEX = ILLUSTRATED_PAGE_COUNT - 1;
+const LOCKED_UNLOCK_CTA_PAGE_NUMBERS = [4, 5] as const;
 
 export default function InteractiveBook({
   book,
@@ -181,7 +181,8 @@ export default function InteractiveBook({
   const showOpenBook = bookState === "opening" || bookState === "open";
 
   const imageSealedForPage = useCallback(
-    (pageNumber: number) => !isPremium && isSealedFreeImagePage(pageNumber),
+    (pageNumber: number) =>
+      !isPremium && (LOCKED_UNLOCK_CTA_PAGE_NUMBERS as readonly number[]).includes(pageNumber),
     [isPremium],
   );
 
