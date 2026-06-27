@@ -133,6 +133,7 @@ export type BookPageImage = {
   generatedAt?: string | null;
   startedAt?: string | null;
   updatedAt?: string | null;
+  generationStartedAt?: string | null;
 };
 
 export type PageImageState = {

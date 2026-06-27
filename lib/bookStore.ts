@@ -28,37 +28,17 @@ import type {
   PdfStatus,
   StoredBook,
 } from "@/lib/types";
-import { STALE_IMAGE_GENERATING_MS } from "@/lib/server/generation-timeouts";
+import {
+  getImageGenerationTimestamp,
+  getPageGenerationStatus,
+  isImageFreshlyGenerating,
+} from "@/lib/imageGenerationTimestamps";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { resolveApprovedSynopsis } from "@/lib/synopsisValidation";
 import { isSupabaseSchemaError } from "@/lib/supabaseErrors";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
-
-function getPageImageGenerationTimestamp(storedBook: StoredBook, pageNumber: number) {
-  const raw = storedBook.images[String(pageNumber)];
-  if (raw && typeof raw === "object" && raw !== null) {
-    const record = raw as BookPageImage;
-    return record.updatedAt || record.startedAt || null;
-  }
-
-  return null;
-}
-
-function isPageImageGeneratingStale(storedBook: StoredBook, pageNumber: number) {
-  const timestamp = getPageImageGenerationTimestamp(storedBook, pageNumber);
-  if (!timestamp) {
-    return true;
-  }
-
-  const updatedTime = new Date(timestamp).getTime();
-  if (Number.isNaN(updatedTime)) {
-    return true;
-  }
-
-  return Date.now() - updatedTime >= STALE_IMAGE_GENERATING_MS;
-}
 
 function normalizePdfStatus(value: unknown, pdfStoragePath: unknown): PdfStatus {
   if (pdfStoragePath) {
@@ -651,6 +631,57 @@ export async function markBookReady(bookId: string) {
   return updateBookStatus(bookId, "ready");
 }
 
+export async function stampMissingGeneratingTimestamp(bookId: string, pageNumber: number) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    return null;
+  }
+
+  const key = String(pageNumber);
+  const status = storedBook.image_status[key];
+  if (status !== "generating") {
+    return storedBook;
+  }
+
+  if (getImageGenerationTimestamp(storedBook, pageNumber)) {
+    return storedBook;
+  }
+
+  const now = new Date().toISOString();
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
+    pageNumber,
+    status: "generating",
+    url: null,
+    storagePath: null,
+    generatedAt: null,
+    startedAt: now,
+    updatedAt: now,
+    generationStartedAt: now,
+  });
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [key]: "generating" as ImagePageStatus,
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
 export async function resetStalePageImageGeneration(bookId: string, pageNumber: number) {
   const supabase = requireSupabase();
   const storedBook = await getBookById(bookId);
@@ -692,6 +723,11 @@ export async function resetStalePageImageGeneration(bookId: string, pageNumber: 
 }
 
 export async function claimPageImageGeneration(bookId: string, pageNumber: number) {
+  console.log("[IMAGE_GENERATION_CLAIM_START]", {
+    bookId,
+    pageNumber,
+  });
+
   const supabase = requireSupabase();
   const storedBook = await getBookById(bookId);
   if (!storedBook) {
@@ -699,17 +735,13 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
   }
 
   const key = String(pageNumber);
-  const currentStatus = storedBook.image_status[key] || (storedBook.images[key] ? "ready" : "not_started");
-  const existingImage = getImageForPage(
-    { images: storedBook.images, imageStatus: storedBook.image_status },
-    pageNumber,
-  );
+  const pageState = getPageGenerationStatus(storedBook, pageNumber);
 
-  if (currentStatus === "ready" || isIllustrationReady(existingImage)) {
+  if (pageState.isReady) {
     return null;
   }
 
-  if (currentStatus === "generating" && !isPageImageGeneratingStale(storedBook, pageNumber)) {
+  if (pageState.status === "generating" && isImageFreshlyGenerating(storedBook, pageNumber)) {
     return null;
   }
 
@@ -723,11 +755,19 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
     generatedAt: null,
     startedAt: now,
     updatedAt: now,
+    generationStartedAt: now,
   });
   const nextImageStatus = {
     ...normalized.imageStatus,
     [key]: "generating" as ImagePageStatus,
   };
+
+  console.log("[IMAGE_GENERATION_CLAIM_WRITTEN]", {
+    bookId,
+    pageNumber,
+    startedAt: now,
+    updatedAt: now,
+  });
 
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
@@ -743,7 +783,19 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
     throw new Error(error.message);
   }
 
-  return data ? mapRow(data) : null;
+  const claimedBook = data ? mapRow(data) : null;
+  if (claimedBook) {
+    const claimedState = getPageGenerationStatus(claimedBook, pageNumber);
+    console.log("[IMAGE_GENERATION_CLAIM_VERIFY]", {
+      bookId,
+      pageNumber,
+      status: claimedState.status,
+      startedAt: claimedState.startedAt,
+      updatedAt: claimedState.updatedAt,
+    });
+  }
+
+  return claimedBook;
 }
 
 export async function markPageImageFailed(bookId: string, pageNumber: number) {

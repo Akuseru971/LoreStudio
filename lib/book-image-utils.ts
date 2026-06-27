@@ -125,6 +125,8 @@ function coerceCanonicalImage(image: unknown, pageNumber: number): BookPageImage
     generatedAt: typeof image.generatedAt === "string" ? image.generatedAt : null,
     startedAt: typeof image.startedAt === "string" ? image.startedAt : null,
     updatedAt: typeof image.updatedAt === "string" ? image.updatedAt : null,
+    generationStartedAt:
+      typeof image.generationStartedAt === "string" ? image.generationStartedAt : null,
   };
 }
 
@@ -203,6 +205,7 @@ export function getImageForPage(book: BookImagesInput, pageNumber: number): Norm
     generatedAt: coerced?.generatedAt || pageCoerced?.generatedAt || null,
     startedAt: coerced?.startedAt || pageCoerced?.startedAt || null,
     updatedAt: coerced?.updatedAt || pageCoerced?.updatedAt || null,
+    generationStartedAt: coerced?.generationStartedAt || pageCoerced?.generationStartedAt || null,
     imageUrl: pageImageUrl,
     src: coerced?.url ?? null,
   };
@@ -288,11 +291,17 @@ export function normalizeStoredBookImages(storedBook: Pick<StoredBook, "images" 
     const rawWasLegacyKey = isRecord(storedBook.images) && raw !== storedBook.images[key];
 
     if (!image) {
+      const raw = readRawImageForPage(storedBook.images, pageNumber);
+      const rawRecord = raw && typeof raw === "object" && raw !== null ? (raw as BookPageImage) : null;
       images[key] = {
         pageNumber,
         status: storedBook.image_status[key] || "not_started",
         url: null,
         storagePath: null,
+        generatedAt: rawRecord?.generatedAt || null,
+        startedAt: rawRecord?.startedAt || null,
+        updatedAt: rawRecord?.updatedAt || null,
+        generationStartedAt: rawRecord?.generationStartedAt || null,
       };
       imageStatus[key] = images[key].status;
       continue;
@@ -304,6 +313,9 @@ export function normalizeStoredBookImages(storedBook: Pick<StoredBook, "images" 
       url: getDirectImageUrl(image),
       storagePath: getImageStoragePath(image),
       generatedAt: image.generatedAt || null,
+      startedAt: image.startedAt || null,
+      updatedAt: image.updatedAt || null,
+      generationStartedAt: image.generationStartedAt || null,
     };
 
     images[key] = canonical;

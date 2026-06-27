@@ -1,0 +1,131 @@
+import "server-only";
+
+import { getImageForPage, isIllustrationReady, type BookImagesInput } from "@/lib/book-images";
+import { STALE_IMAGE_GENERATING_MS } from "@/lib/server/generation-timeouts";
+import type { StoredBook } from "@/lib/types";
+
+export const IMAGE_GENERATION_STALE_AFTER_MS = STALE_IMAGE_GENERATING_MS;
+
+const TIMESTAMP_FIELDS = ["updatedAt", "startedAt", "generationStartedAt", "generatedAt"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readTimestampFromRecord(record: Record<string, unknown> | null | undefined) {
+  if (!record) {
+    return null;
+  }
+
+  for (const field of TIMESTAMP_FIELDS) {
+    const value = record[field];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+export function getImageGenerationTimestamp(
+  storedBook: StoredBook,
+  pageNumber: number,
+  input?: BookImagesInput,
+) {
+  const raw = storedBook.images[String(pageNumber)];
+  const rawTimestamp = isRecord(raw) ? readTimestampFromRecord(raw) : null;
+  if (rawTimestamp) {
+    return rawTimestamp;
+  }
+
+  const image = getImageForPage(
+    input ?? {
+      images: storedBook.images,
+      imageStatus: storedBook.image_status,
+    },
+    pageNumber,
+  );
+
+  return readTimestampFromRecord(image as Record<string, unknown> | null | undefined);
+}
+
+export function getImageGeneratingAgeMs(
+  storedBook: StoredBook,
+  pageNumber: number,
+  input?: BookImagesInput,
+) {
+  const timestamp = getImageGenerationTimestamp(storedBook, pageNumber, input);
+  if (!timestamp) {
+    return null;
+  }
+
+  const updatedTime = new Date(timestamp).getTime();
+  if (Number.isNaN(updatedTime)) {
+    return null;
+  }
+
+  return Date.now() - updatedTime;
+}
+
+export function getPageGenerationStatus(
+  storedBook: StoredBook,
+  pageNumber: number,
+  input?: BookImagesInput,
+) {
+  const bookInput =
+    input ??
+    ({
+      images: storedBook.images,
+      imageStatus: storedBook.image_status,
+    } satisfies BookImagesInput);
+  const image = getImageForPage(bookInput, pageNumber);
+  const status = image?.status ?? storedBook.image_status[String(pageNumber)] ?? "not_started";
+  const timestamp = getImageGenerationTimestamp(storedBook, pageNumber, bookInput);
+  const ageMs = getImageGeneratingAgeMs(storedBook, pageNumber, bookInput);
+
+  return {
+    status,
+    startedAt: image?.startedAt ?? null,
+    updatedAt: image?.updatedAt ?? null,
+    generationStartedAt: image?.generationStartedAt ?? null,
+    timestamp,
+    ageMs,
+    isReady: isIllustrationReady(image),
+  };
+}
+
+export function isImageGeneratingStale(
+  storedBook: StoredBook,
+  pageNumber: number,
+  input?: BookImagesInput,
+  staleAfterMs = IMAGE_GENERATION_STALE_AFTER_MS,
+) {
+  const state = getPageGenerationStatus(storedBook, pageNumber, input);
+  if (state.isReady || state.status !== "generating") {
+    return false;
+  }
+
+  if (!state.timestamp || state.ageMs === null) {
+    return false;
+  }
+
+  return state.ageMs >= staleAfterMs;
+}
+
+export function isImageFreshlyGenerating(
+  storedBook: StoredBook,
+  pageNumber: number,
+  input?: BookImagesInput,
+  staleAfterMs = IMAGE_GENERATION_STALE_AFTER_MS,
+) {
+  const state = getPageGenerationStatus(storedBook, pageNumber, input);
+  if (state.isReady || state.status !== "generating") {
+    return false;
+  }
+
+  if (!state.timestamp || state.ageMs === null) {
+    return true;
+  }
+
+  return state.ageMs < staleAfterMs;
+}

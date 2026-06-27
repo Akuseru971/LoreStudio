@@ -65,6 +65,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
+      ok: true,
       status: result.allIllustrationsReady ? "ready" : "preparing_assets",
       message: result.allIllustrationsReady ? "All illustrations are ready." : "Generation still in progress",
       accessToken,
@@ -80,6 +81,9 @@ export async function POST(request: Request) {
       missingPremiumPages: result.missingPremiumPages,
       stalePremiumPages: result.stalePremiumPages || [],
       shouldContinuePremiumGeneration: result.shouldContinuePremiumGeneration ?? false,
+      retryable: "retryable" in result ? Boolean(result.retryable) : false,
+      reason: "reason" in result ? result.reason : undefined,
+      retryAfterMs: "retryAfterMs" in result ? result.retryAfterMs : undefined,
       imageStatus: normalized.images,
       pdfTriggered,
       pdfStatus,
