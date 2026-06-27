@@ -72,9 +72,11 @@ export async function sendPaymentConfirmationEmail({
       subject: "Your legend is being prepared",
       text: `Your legend is being prepared
 
-Your payment has been confirmed. Your complete illustrated legend is now being prepared.
+Your payment has been confirmed.
 
-You will receive a second email as soon as your full book and PDF are ready.
+Your complete illustrated legend is now being prepared. This usually takes around 5 to 15 minutes, depending on image generation and PDF preparation.
+
+You will receive a second email as soon as your full book, premium illustrations, and PDF are ready.
 
 You can already access your private book page here:
 ${bookUrl}`,
@@ -82,10 +84,13 @@ ${bookUrl}`,
         <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
           <h1 style="font-size: 24px; line-height: 1.3; color: #2f2419; margin: 0 0 20px;">Your legend is being prepared</h1>
           <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">
-            Your payment has been confirmed. Your complete illustrated legend is now being prepared.
+            Your payment has been confirmed.
+          </p>
+          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">
+            Your complete illustrated legend is now being prepared. This usually takes around 5 to 15 minutes, depending on image generation and PDF preparation.
           </p>
           <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
-            You will receive a second email as soon as your full book and PDF are ready.
+            You will receive a second email as soon as your full book, premium illustrations, and PDF are ready.
           </p>
           <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
             You can already access your private book page here:<br />
