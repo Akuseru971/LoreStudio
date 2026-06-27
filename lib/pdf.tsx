@@ -8,11 +8,12 @@ const A4_PAGE_HEIGHT_PT = 842;
 const A4_PAGE_WIDTH_PT = 595;
 const TEXT_PAGE_PADDING_PT = 10;
 const TEXT_FRAME_PADDING_PT = 10;
-const TEXT_INNER_FRAME_PADDING_H = 14;
+const TEXT_INNER_FRAME_PADDING_H = 17;
 const TEXT_INNER_FRAME_PADDING_TOP = 8;
 const TEXT_INNER_FRAME_PADDING_BOTTOM = 8;
 const TEXT_HEADER_RESERVED_PT = 76;
 const TARGET_TEXT_FILL_RATIO = 0.9;
+const BODY_FONT_SCALE = 0.96;
 
 const palette = {
   darkBackground: "#0f0b07",
@@ -178,6 +179,10 @@ function estimateWrappedLines(text: string, fontSize: number, maxWidth: number) 
   return lines;
 }
 
+function scaleBodyFontSize(fontSize: number) {
+  return Math.round(fontSize * BODY_FONT_SCALE * 10) / 10;
+}
+
 function resolveTextPageTypography(text: string): TextPageTypography {
   const { textBoxHeight, textBoxWidth } = getTextBoxDimensions();
   const candidates: Array<{ fontSize: number; lineHeight: number }> = [
@@ -195,23 +200,24 @@ function resolveTextPageTypography(text: string): TextPageTypography {
   ];
 
   for (const candidate of candidates) {
-    const lines = estimateWrappedLines(text, candidate.fontSize, textBoxWidth);
+    const fontSize = scaleBodyFontSize(candidate.fontSize);
+    const lines = estimateWrappedLines(text, fontSize, textBoxWidth);
     let lineHeight = candidate.lineHeight;
-    let requiredHeight = lines * candidate.fontSize * lineHeight;
+    let requiredHeight = lines * fontSize * lineHeight;
 
     if (requiredHeight <= textBoxHeight) {
       const initialFillRatio = requiredHeight / textBoxHeight;
       if (initialFillRatio < TARGET_TEXT_FILL_RATIO && lines >= 1) {
         const targetHeight = textBoxHeight * TARGET_TEXT_FILL_RATIO;
-        const expandedLineHeight = targetHeight / (lines * candidate.fontSize);
+        const expandedLineHeight = targetHeight / (lines * fontSize);
         lineHeight = Math.min(Math.max(expandedLineHeight, candidate.lineHeight), 2.08);
-        requiredHeight = lines * candidate.fontSize * lineHeight;
+        requiredHeight = lines * fontSize * lineHeight;
       }
 
       if (requiredHeight <= textBoxHeight) {
         const fillRatio = requiredHeight / textBoxHeight;
         return {
-          fontSize: candidate.fontSize,
+          fontSize,
           lineHeight,
           textBoxHeight,
           fillRatio,
@@ -221,7 +227,7 @@ function resolveTextPageTypography(text: string): TextPageTypography {
     }
   }
 
-  const fallbackFontSize = 17;
+  const fallbackFontSize = scaleBodyFontSize(17);
   const fallbackLines = estimateWrappedLines(text, fallbackFontSize, textBoxWidth);
   const fallbackLineHeight = Math.min(
     1.36,
