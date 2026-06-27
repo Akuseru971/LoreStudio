@@ -3,6 +3,9 @@ import {
   findPaidBooksNeedingPdfOrFinalEmail,
   findPaidBooksWithIncompletePremiumGeneration,
   getBookByAccessToken,
+  getBookById,
+  isFinalReadyEmailAlreadySent,
+  isFinalReadyEmailSendingInProgress,
 } from "@/lib/bookStore";
 import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
 import {
@@ -23,12 +26,35 @@ type ResumeStuckBooksBody = {
 };
 
 async function resumePdfOrFinalEmail(storedBook: NonNullable<Awaited<ReturnType<typeof getBookByAccessToken>>>) {
-  console.log("[WATCHDOG_RESUME_PDF_OR_EMAIL]", { bookId: storedBook.id });
-  const pdfTrigger = await triggerPdfGenerationIfReady(storedBook.id, "resume-stuck-books");
+  const freshBook = (await getBookById(storedBook.id)) || storedBook;
+  const normalized = getNormalizedImagesForStoredBook(freshBook);
+  const pdfReady = Boolean(freshBook.pdf_storage_path) || freshBook.pdf_status === "ready";
+
+  if (normalized.allIllustrationsReady && pdfReady && isFinalReadyEmailAlreadySent(freshBook)) {
+    console.log("[WATCHDOG_FINAL_EMAIL_ALREADY_SENT_SKIP]", {
+      bookId: freshBook.id,
+    });
+    return NextResponse.json({
+      resumed: false,
+      reason: "already_complete",
+      bookId: freshBook.id,
+    });
+  }
+
+  if (isFinalReadyEmailSendingInProgress(freshBook)) {
+    return NextResponse.json({
+      resumed: false,
+      reason: "final_email_in_progress",
+      bookId: freshBook.id,
+    });
+  }
+
+  console.log("[WATCHDOG_RESUME_PDF_OR_EMAIL]", { bookId: freshBook.id });
+  const pdfTrigger = await triggerPdfGenerationIfReady(freshBook.id, "resume-stuck-books");
   return NextResponse.json({
-    resumed: true,
+    resumed: pdfTrigger.triggered || pdfTrigger.reason === "pdf_ready_email_only",
     reason: "pdf_or_email_incomplete",
-    bookId: storedBook.id,
+    bookId: freshBook.id,
     pdfTriggered: pdfTrigger.triggered,
     pdfSkipped: pdfTrigger.skipped,
     pdfSkipReason: pdfTrigger.reason,

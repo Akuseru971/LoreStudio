@@ -3,6 +3,8 @@ import "server-only";
 import {
   claimPdfReadyEmailSend,
   getBookById,
+  isFinalReadyEmailAlreadySent,
+  isFinalReadyEmailSendingInProgress,
   markPdfReadyEmailFailed,
   markPdfReadyEmailSent,
 } from "@/lib/bookStore";
@@ -36,31 +38,52 @@ function isPdfReady(book: { pdf_status: string; pdf_storage_path: string | null 
   return book.pdf_status === "ready" || Boolean(book.pdf_storage_path);
 }
 
+function logFinalReadyEmailCheck(
+  book: NonNullable<Awaited<ReturnType<typeof getBookById>>>,
+  bookId: string,
+) {
+  console.log("[FINAL_READY_EMAIL_CHECK]", {
+    bookId,
+    pdfReadyEmailStatus: book.pdf_ready_email_status,
+    pdfReadyEmailSentAt: book.pdf_ready_email_sent_at,
+    hasPdf: Boolean(book.pdf_storage_path),
+  });
+}
+
 export async function maybeSendFinalBookReadyEmail(bookId: string): Promise<FinalBookReadyEmailResult> {
   try {
-    const book = await getBookById(bookId);
+    let book = await getBookById(bookId);
     if (!book) {
       return { sent: false, reason: "book_not_found" };
+    }
+
+    logFinalReadyEmailCheck(book, bookId);
+
+    if (isFinalReadyEmailAlreadySent(book)) {
+      console.log("[FINAL_READY_EMAIL_SKIPPED_ALREADY_SENT]", {
+        bookId,
+        pdfReadyEmailStatus: book.pdf_ready_email_status,
+        pdfReadyEmailSentAt: book.pdf_ready_email_sent_at,
+      });
+      return { sent: false, reason: "already_sent" };
+    }
+
+    if (isFinalReadyEmailSendingInProgress(book)) {
+      console.log("[FINAL_READY_EMAIL_SKIPPED_ALREADY_SENT]", {
+        bookId,
+        pdfReadyEmailStatus: book.pdf_ready_email_status,
+        pdfReadyEmailSentAt: book.pdf_ready_email_sent_at,
+        reason: "sending_in_progress",
+      });
+      return { sent: false, reason: "already_claimed" };
     }
 
     const isPaid = hasPremiumAccess(book.status);
     const normalized = getNormalizedImagesForStoredBook(book);
     const allImagesReady = normalized.allIllustrationsReady;
     const pdfReady = isPdfReady(book);
-    const emailNotSent = !book.pdf_ready_email_sent_at && book.pdf_ready_email_status !== "sent";
 
-    console.log("[FINAL_READY_EMAIL_CHECK]", {
-      bookId,
-      status: book.status,
-      readyImagesCount: normalized.readyIllustrationCount,
-      allImagesReady,
-      pdfStatus: book.pdf_status,
-      hasPdfPath: Boolean(book.pdf_storage_path),
-      emailStatus: book.pdf_ready_email_status,
-      emailSentAt: book.pdf_ready_email_sent_at,
-    });
-
-    if (!isPaid || !allImagesReady || !pdfReady || !emailNotSent) {
+    if (!isPaid || !allImagesReady || !pdfReady) {
       return { sent: false, reason: "conditions_not_met" };
     }
 
@@ -70,14 +93,46 @@ export async function maybeSendFinalBookReadyEmail(bookId: string): Promise<Fina
 
     const claimedBook = await claimPdfReadyEmailSend(bookId);
     if (!claimedBook) {
+      book = await getBookById(bookId);
+      if (book && isFinalReadyEmailAlreadySent(book)) {
+        console.log("[FINAL_READY_EMAIL_SKIPPED_ALREADY_SENT]", {
+          bookId,
+          pdfReadyEmailStatus: book.pdf_ready_email_status,
+          pdfReadyEmailSentAt: book.pdf_ready_email_sent_at,
+        });
+        return { sent: false, reason: "already_sent" };
+      }
+
       return { sent: false, reason: "already_claimed" };
     }
 
-    console.log("[FINAL_READY_EMAIL_SEND_START]", { bookId });
+    console.log("[FINAL_READY_EMAIL_MARK_SENDING]", { bookId });
+
+    book = await getBookById(bookId);
+    if (!book) {
+      return { sent: false, reason: "book_not_found" };
+    }
+
+    logFinalReadyEmailCheck(book, bookId);
+
+    if (isFinalReadyEmailAlreadySent(book)) {
+      console.log("[FINAL_READY_EMAIL_SKIPPED_ALREADY_SENT]", {
+        bookId,
+        pdfReadyEmailStatus: book.pdf_ready_email_status,
+        pdfReadyEmailSentAt: book.pdf_ready_email_sent_at,
+      });
+      return { sent: false, reason: "already_sent" };
+    }
+
+    const recipient = claimedBook.email!;
+    console.log("[FINAL_READY_EMAIL_PROVIDER_CALL_START]", {
+      bookId,
+      recipient,
+    });
 
     const urls = buildBookUnlockedEmailUrls(claimedBook.access_token);
     const result = await sendFinalBookReadyEmail({
-      to: claimedBook.email!,
+      to: recipient,
       bookUrl: urls.bookUrl,
       pdfUrl: urls.pdfUrl,
       idempotencyKey: `final-book-ready/${claimedBook.id}`,
@@ -92,14 +147,27 @@ export async function maybeSendFinalBookReadyEmail(bookId: string): Promise<Fina
       return { sent: false, reason: "send_failed", error: errorMessage };
     }
 
-    await markPdfReadyEmailSent(claimedBook.id).catch((error) => {
-      console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
-    });
-    console.log("[FINAL_READY_EMAIL_SENT]", { bookId, recipient: claimedBook.email });
+    await markPdfReadyEmailSent(claimedBook.id);
+    console.log("[FINAL_READY_EMAIL_SENT]", { bookId, recipient });
     return { sent: true, reason: "sent" };
   } catch (error) {
     const message = safeErrorMessage(error);
     console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error: message });
+
+    const latestBook = await getBookById(bookId);
+    if (latestBook && isFinalReadyEmailAlreadySent(latestBook)) {
+      console.log("[FINAL_READY_EMAIL_SKIPPED_ALREADY_SENT]", {
+        bookId,
+        pdfReadyEmailStatus: latestBook.pdf_ready_email_status,
+        pdfReadyEmailSentAt: latestBook.pdf_ready_email_sent_at,
+      });
+      return { sent: false, reason: "already_sent" };
+    }
+
+    if (latestBook?.pdf_ready_email_status === "sending") {
+      return { sent: false, reason: "already_claimed", error: message };
+    }
+
     await markPdfReadyEmailFailed(bookId, message).catch((markError) => {
       console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error: markError });
     });

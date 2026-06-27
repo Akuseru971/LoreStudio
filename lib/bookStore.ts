@@ -331,18 +331,49 @@ export async function findPaidBooksWithIncompletePremiumGeneration(limit = 3) {
   return (data || []).map(mapRow);
 }
 
-function isPdfOrFinalEmailIncomplete(book: StoredBook) {
-  const pdfIncomplete =
+export const PDF_READY_EMAIL_STALE_SENDING_MS = 10 * 60 * 1000;
+
+export function isFinalReadyEmailAlreadySent(
+  book: Pick<StoredBook, "pdf_ready_email_status" | "pdf_ready_email_sent_at">,
+) {
+  return Boolean(book.pdf_ready_email_sent_at) || book.pdf_ready_email_status === "sent";
+}
+
+export function isFinalReadyEmailSendingInProgress(
+  book: Pick<StoredBook, "pdf_ready_email_status" | "updated_at">,
+) {
+  if (book.pdf_ready_email_status !== "sending") {
+    return false;
+  }
+
+  return Date.now() - new Date(book.updated_at).getTime() < PDF_READY_EMAIL_STALE_SENDING_MS;
+}
+
+function isPdfIncomplete(book: StoredBook) {
+  return (
     !book.pdf_storage_path ||
     !book.pdf_status ||
     book.pdf_status === "not_started" ||
     book.pdf_status === "failed" ||
     book.pdf_status === "generating" ||
-    book.pdf_status === "waiting_for_images";
+    book.pdf_status === "waiting_for_images"
+  );
+}
 
-  const emailIncomplete = !book.pdf_ready_email_sent_at && book.pdf_ready_email_status !== "sent";
+function isPdfOrFinalEmailIncomplete(book: StoredBook) {
+  if (isPdfIncomplete(book)) {
+    return true;
+  }
 
-  return pdfIncomplete || emailIncomplete;
+  if (isFinalReadyEmailAlreadySent(book)) {
+    return false;
+  }
+
+  if (isFinalReadyEmailSendingInProgress(book)) {
+    return false;
+  }
+
+  return true;
 }
 
 export async function findPaidBooksNeedingPdfOrFinalEmail(limit = 3) {
@@ -1076,6 +1107,31 @@ export async function markPaymentEmailSkipped(bookId: string) {
 
 export async function claimPdfReadyEmailSend(bookId: string) {
   const supabase = requireSupabase();
+  const freshBook = await getBookById(bookId);
+  if (!freshBook || isFinalReadyEmailAlreadySent(freshBook)) {
+    return null;
+  }
+
+  if (freshBook.pdf_ready_email_status === "sending" && isFinalReadyEmailSendingInProgress(freshBook)) {
+    return null;
+  }
+
+  if (freshBook.pdf_ready_email_status === "sending" && !isFinalReadyEmailSendingInProgress(freshBook)) {
+    const { error: recoverError } = await supabase
+      .from(BOOKS_TABLE)
+      .update({
+        pdf_ready_email_status: "failed",
+        pdf_ready_email_error: "Stale sending state recovered for retry.",
+      })
+      .eq("id", bookId)
+      .eq("pdf_ready_email_status", "sending")
+      .is("pdf_ready_email_sent_at", null);
+
+    if (recoverError) {
+      throw new Error(recoverError.message);
+    }
+  }
+
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
     .update({ pdf_ready_email_status: "sending" })
@@ -1102,11 +1158,22 @@ export async function markPdfReadyEmailSent(bookId: string) {
       pdf_ready_email_error: null,
     })
     .eq("id", bookId)
+    .is("pdf_ready_email_sent_at", null)
+    .neq("pdf_ready_email_status", "sent")
     .select("*")
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    throw new Error(error?.message || "Unable to mark PDF ready email as sent.");
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    const existing = await getBookById(bookId);
+    if (existing && isFinalReadyEmailAlreadySent(existing)) {
+      return existing;
+    }
+
+    throw new Error("Unable to mark PDF ready email as sent.");
   }
 
   return mapRow(data);
@@ -1121,11 +1188,22 @@ export async function markPdfReadyEmailFailed(bookId: string, errorMessage?: str
       pdf_ready_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
     })
     .eq("id", bookId)
+    .is("pdf_ready_email_sent_at", null)
+    .neq("pdf_ready_email_status", "sent")
     .select("*")
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    throw new Error(error?.message || "Unable to mark PDF ready email as failed.");
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    const existing = await getBookById(bookId);
+    if (existing) {
+      return existing;
+    }
+
+    throw new Error("Unable to mark PDF ready email as failed.");
   }
 
   return mapRow(data);

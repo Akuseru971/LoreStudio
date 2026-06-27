@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getBookById, recoverStalePdfGeneration } from "@/lib/bookStore";
+import { getBookById, isFinalReadyEmailAlreadySent, isFinalReadyEmailSendingInProgress, recoverStalePdfGeneration } from "@/lib/bookStore";
 import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
 import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
@@ -29,12 +29,26 @@ function isPdfReady(book: { pdf_status: PdfStatus; pdf_storage_path: string | nu
 async function sendFinalReadyEmailIfNeeded(bookId: string) {
   console.log("[FINAL_READY_EMAIL_TRIGGER_START]", { bookId });
   try {
+    const latestBook = await getBookById(bookId);
+    if (latestBook && isFinalReadyEmailAlreadySent(latestBook)) {
+      console.log("[FINAL_READY_EMAIL_SKIPPED_ALREADY_SENT]", {
+        bookId,
+        pdfReadyEmailStatus: latestBook.pdf_ready_email_status,
+        pdfReadyEmailSentAt: latestBook.pdf_ready_email_sent_at,
+      });
+      return { sent: false, reason: "already_sent" as const };
+    }
+
+    if (latestBook && isFinalReadyEmailSendingInProgress(latestBook)) {
+      return { sent: false, reason: "already_claimed" as const };
+    }
+
     const result = await triggerFinalBookReadyEmailCheck(bookId);
     if (result.sent) {
-      const latestBook = await getBookById(bookId);
+      const sentBook = await getBookById(bookId);
       console.log("[FINAL_READY_EMAIL_SENT]", {
         bookId,
-        recipient: latestBook?.email || null,
+        recipient: sentBook?.email || null,
       });
     }
     return result;
@@ -125,7 +139,7 @@ export async function triggerPdfGenerationIfReady(
     return { triggered: false, skipped: true, reason: "images_not_ready", pdfStatus };
   }
 
-  if (book.pdf_ready_email_sent_at || book.pdf_ready_email_status === "sent") {
+  if (isFinalReadyEmailAlreadySent(book)) {
     console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
       bookId,
       reason: "email_already_sent",
@@ -134,6 +148,19 @@ export async function triggerPdfGenerationIfReady(
       triggered: false,
       skipped: true,
       reason: "email_already_sent",
+      pdfStatus: isPdfReady(book) ? "ready" : pdfStatus,
+    };
+  }
+
+  if (isFinalReadyEmailSendingInProgress(book)) {
+    console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
+      bookId,
+      reason: "final_email_in_progress",
+    });
+    return {
+      triggered: false,
+      skipped: true,
+      reason: "final_email_in_progress",
       pdfStatus: isPdfReady(book) ? "ready" : pdfStatus,
     };
   }
