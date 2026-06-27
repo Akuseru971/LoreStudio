@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { findPaidBooksWithIncompletePremiumGeneration, getBookByAccessToken } from "@/lib/bookStore";
+import {
+  findPaidBooksNeedingPdfOrFinalEmail,
+  findPaidBooksWithIncompletePremiumGeneration,
+  getBookByAccessToken,
+} from "@/lib/bookStore";
+import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
 import {
   generateNextPremiumImage,
   getMissingPremiumImagePages,
@@ -16,6 +21,20 @@ export const maxDuration = 180;
 type ResumeStuckBooksBody = {
   accessToken?: string;
 };
+
+async function resumePdfOrFinalEmail(storedBook: NonNullable<Awaited<ReturnType<typeof getBookByAccessToken>>>) {
+  console.log("[WATCHDOG_RESUME_PDF_OR_EMAIL]", { bookId: storedBook.id });
+  const pdfTrigger = await triggerPdfGenerationIfReady(storedBook.id, "resume-stuck-books");
+  return NextResponse.json({
+    resumed: true,
+    reason: "pdf_or_email_incomplete",
+    bookId: storedBook.id,
+    pdfTriggered: pdfTrigger.triggered,
+    pdfSkipped: pdfTrigger.skipped,
+    pdfSkipReason: pdfTrigger.reason,
+    pdfStatus: pdfTrigger.pdfStatus,
+  });
+}
 
 export async function POST(request: Request) {
   const expectedSecret = process.env.INTERNAL_FULFILLMENT_SECRET;
@@ -34,6 +53,34 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (body.accessToken) {
+      const storedBook = await getBookByAccessToken(body.accessToken);
+      if (!storedBook) {
+        return NextResponse.json({ resumed: false, reason: "book_not_found" });
+      }
+
+      if (!hasPremiumAccess(storedBook.status)) {
+        return NextResponse.json({
+          resumed: false,
+          reason: "not_premium",
+          bookId: storedBook.id,
+        });
+      }
+
+      const recoveredBook = (await recoverStalePremiumImages(storedBook)) || storedBook;
+      const normalized = getNormalizedImagesForStoredBook(recoveredBook);
+      const missingPremiumPages = getMissingPremiumImagePages(recoveredBook);
+
+      if (normalized.allIllustrationsReady && missingPremiumPages.length === 0) {
+        return resumePdfOrFinalEmail(recoveredBook);
+      }
+    } else {
+      const pdfEmailCandidates = await findPaidBooksNeedingPdfOrFinalEmail(1);
+      if (pdfEmailCandidates.length > 0) {
+        return resumePdfOrFinalEmail(pdfEmailCandidates[0]!);
+      }
+    }
+
     const candidates = body.accessToken
       ? [(await getBookByAccessToken(body.accessToken))].filter(Boolean)
       : await findPaidBooksWithIncompletePremiumGeneration(1);
@@ -61,10 +108,13 @@ export async function POST(request: Request) {
     if (missingPremiumPages.length === 0) {
       const pdfTrigger = await triggerPdfGenerationIfReady(recoveredBook.id, "resume-stuck-books");
       return NextResponse.json({
-        resumed: false,
-        reason: "all_premium_images_ready",
+        resumed: pdfTrigger.triggered,
+        reason: pdfTrigger.triggered ? "pdf_or_email_incomplete" : "all_premium_images_ready",
         bookId: recoveredBook.id,
         pdfTriggered: pdfTrigger.triggered,
+        pdfSkipped: pdfTrigger.skipped,
+        pdfSkipReason: pdfTrigger.reason,
+        pdfStatus: pdfTrigger.pdfStatus,
       });
     }
 

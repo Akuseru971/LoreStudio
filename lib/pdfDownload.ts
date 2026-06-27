@@ -8,6 +8,7 @@ import {
   markPdfFailed,
   markPdfWaitingForImages,
   mergeBookAssets,
+  recoverStalePdfGeneration,
 } from "@/lib/bookStore";
 import {
   areAllIllustrationsReady,
@@ -44,12 +45,15 @@ async function buildMergedBook(accessToken: string) {
 
 async function runPdfGeneration(accessToken: string, bookId: string) {
   try {
+    console.log("[PDF_GENERATION_START]", { bookId });
     const mergedBook = await buildMergedBook(accessToken);
     await ensureBookPdf(bookId, mergedBook);
+    console.log("[PDF_GENERATION_DONE]", { bookId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "PDF generation failed.";
+    console.error("[PDF_GENERATION_FAILED]", { bookId, error: message });
     await markPdfFailed(bookId, message).catch((markError) => {
-      console.error("[PDF_GENERATION_ERROR]", markError);
+      console.error("[PDF_GENERATION_FAILED]", { bookId, error: markError });
     });
     throw error;
   }
@@ -122,14 +126,24 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     return { status: "ready", downloadUrl };
   }
 
-  if (storedBook.pdf_status === "generating" || pdfGenerationTasks.has(storedBook.id)) {
+  let activeBook = storedBook;
+  if (activeBook.pdf_status === "generating" && !pdfGenerationTasks.has(activeBook.id)) {
+    const recoveredBook = await recoverStalePdfGeneration(activeBook.id);
+    activeBook = recoveredBook || activeBook;
+    if (activeBook.pdf_storage_path) {
+      const downloadUrl = await createSignedPdfUrl(activeBook.pdf_storage_path, 3600);
+      return { status: "ready", downloadUrl };
+    }
+  }
+
+  if (activeBook.pdf_status === "generating" || pdfGenerationTasks.has(activeBook.id)) {
     return {
       status: "generating_pdf",
       message: "PDF is being generated.",
     };
   }
 
-  const claimedBook = await claimPdfGeneration(storedBook.id);
+  const claimedBook = await claimPdfGeneration(activeBook.id);
   if (!claimedBook) {
     const latestBook = await getBookByAccessToken(accessToken);
     if (latestBook?.pdf_storage_path) {

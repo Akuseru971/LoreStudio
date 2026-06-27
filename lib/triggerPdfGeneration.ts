@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getBookById } from "@/lib/bookStore";
+import { getBookById, recoverStalePdfGeneration } from "@/lib/bookStore";
 import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
 import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
@@ -9,6 +9,12 @@ import type { PdfStatus } from "@/lib/types";
 
 const autoTriggerTasks = new Set<string>();
 
+const AWAIT_COMPLETION_SOURCES = new Set([
+  "resume-stuck-books",
+  "premium-image-complete",
+  "generate-pdf-if-ready",
+]);
+
 export type TriggerPdfGenerationResult = {
   triggered: boolean;
   skipped: boolean;
@@ -16,27 +22,66 @@ export type TriggerPdfGenerationResult = {
   pdfStatus: PdfStatus;
 };
 
+function isPdfReady(book: { pdf_status: PdfStatus; pdf_storage_path: string | null }) {
+  return book.pdf_status === "ready" || Boolean(book.pdf_storage_path);
+}
+
+async function sendFinalReadyEmailIfNeeded(bookId: string) {
+  console.log("[FINAL_READY_EMAIL_TRIGGER_START]", { bookId });
+  try {
+    const result = await triggerFinalBookReadyEmailCheck(bookId);
+    if (result.sent) {
+      const latestBook = await getBookById(bookId);
+      console.log("[FINAL_READY_EMAIL_SENT]", {
+        bookId,
+        recipient: latestBook?.email || null,
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
+    throw error;
+  }
+}
+
 async function runPdfAutoTrigger(accessToken: string, bookId: string) {
   try {
-    const result = await resolvePdfDownload(accessToken);
-    const latestBook = await getBookById(bookId);
-    const pdfStatus = latestBook?.pdf_status || (result.status === "ready" ? "ready" : "generating");
+    await recoverStalePdfGeneration(bookId);
 
-    console.log("[PDF_AUTO_TRIGGER_DONE]", {
+    const result = await resolvePdfDownload(accessToken);
+    console.log("[PDF_GENERATION_DONE]", { bookId, status: result.status });
+
+    const latestBook = await getBookById(bookId);
+    console.log("[PDF_STATUS_UPDATED]", {
       bookId,
-      pdfStatus,
+      pdfStatus: latestBook?.pdf_status || null,
+      pdfStoragePath: latestBook?.pdf_storage_path || null,
     });
 
     if (result.status === "ready" || latestBook?.pdf_storage_path) {
-      await triggerFinalBookReadyEmailCheck(bookId).catch((error) => {
-        console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
-      });
+      await sendFinalReadyEmailIfNeeded(bookId);
+      return;
     }
+
+    if (result.status === "failed") {
+      console.error("[PDF_AUTO_TRIGGER_FAILED]", {
+        bookId,
+        error: result.message || "PDF generation failed.",
+      });
+      return;
+    }
+
+    console.log("[PDF_AUTO_TRIGGER_DONE]", {
+      bookId,
+      pdfStatus: latestBook?.pdf_status || "generating",
+      status: result.status,
+    });
   } catch (error) {
-    console.error("[PDF_AUTO_TRIGGER_ERROR]", {
+    console.error("[PDF_AUTO_TRIGGER_FAILED]", {
       bookId,
       error: error instanceof Error ? error.message : error,
     });
+    throw error;
   }
 }
 
@@ -44,6 +89,8 @@ export async function triggerPdfGenerationIfReady(
   bookId: string,
   source: string,
 ): Promise<TriggerPdfGenerationResult> {
+  console.log("[PDF_AUTO_TRIGGER_CALL_START]", { bookId, source });
+
   const book = await getBookById(bookId);
   if (!book) {
     console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
@@ -54,6 +101,12 @@ export async function triggerPdfGenerationIfReady(
   }
 
   const pdfStatus = book.pdf_status || "not_started";
+  console.log("[PDF_AUTO_TRIGGER_PDF_STATUS_BEFORE]", {
+    bookId,
+    pdfStatus: book.pdf_status,
+    pdfStoragePath: book.pdf_storage_path,
+  });
+
   const normalized = getNormalizedImagesForStoredBook(book);
 
   if (!hasPremiumAccess(book.status)) {
@@ -72,26 +125,53 @@ export async function triggerPdfGenerationIfReady(
     return { triggered: false, skipped: true, reason: "images_not_ready", pdfStatus };
   }
 
-  if (book.pdf_storage_path && pdfStatus === "ready") {
+  if (book.pdf_ready_email_sent_at || book.pdf_ready_email_status === "sent") {
     console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
       bookId,
-      reason: "already_ready",
-    });
-    void triggerFinalBookReadyEmailCheck(bookId).catch((error) => {
-      console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
-    });
-    return { triggered: false, skipped: true, reason: "already_ready", pdfStatus: "ready" };
-  }
-
-  if (pdfStatus === "generating" || isPdfGenerationInProgress(bookId) || autoTriggerTasks.has(bookId)) {
-    console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
-      bookId,
-      reason: pdfStatus === "generating" ? "already_generating" : "trigger_in_progress",
+      reason: "email_already_sent",
     });
     return {
       triggered: false,
       skipped: true,
-      reason: pdfStatus === "generating" ? "already_generating" : "trigger_in_progress",
+      reason: "email_already_sent",
+      pdfStatus: isPdfReady(book) ? "ready" : pdfStatus,
+    };
+  }
+
+  if (isPdfReady(book)) {
+    console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
+      bookId,
+      reason: "pdf_ready_email_only",
+    });
+    await sendFinalReadyEmailIfNeeded(bookId).catch((error) => {
+      console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
+    });
+    return { triggered: false, skipped: true, reason: "pdf_ready_email_only", pdfStatus: "ready" };
+  }
+
+  if (
+    pdfStatus === "generating" &&
+    !book.pdf_storage_path &&
+    !isPdfGenerationInProgress(bookId) &&
+    !autoTriggerTasks.has(bookId)
+  ) {
+    await recoverStalePdfGeneration(bookId);
+  }
+
+  const refreshedBook = await getBookById(bookId);
+  const currentPdfStatus = refreshedBook?.pdf_status || pdfStatus;
+  if (
+    currentPdfStatus === "generating" &&
+    (isPdfGenerationInProgress(bookId) || autoTriggerTasks.has(bookId))
+  ) {
+    console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
+      bookId,
+      reason: "already_generating",
+    });
+    return {
+      triggered: false,
+      skipped: true,
+      reason: "already_generating",
       pdfStatus: "generating",
     };
   }
@@ -102,9 +182,21 @@ export async function triggerPdfGenerationIfReady(
   });
 
   autoTriggerTasks.add(bookId);
-  void runPdfAutoTrigger(book.access_token, bookId).finally(() => {
+  const accessToken = refreshedBook?.access_token || book.access_token;
+  const task = runPdfAutoTrigger(accessToken, bookId).finally(() => {
     autoTriggerTasks.delete(bookId);
   });
 
-  return { triggered: true, skipped: false, pdfStatus: "generating" };
+  if (AWAIT_COMPLETION_SOURCES.has(source)) {
+    await task;
+  } else {
+    void task;
+  }
+
+  const latestBook = await getBookById(bookId);
+  return {
+    triggered: true,
+    skipped: false,
+    pdfStatus: latestBook?.pdf_status || "generating",
+  };
 }

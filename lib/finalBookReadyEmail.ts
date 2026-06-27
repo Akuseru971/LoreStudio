@@ -95,7 +95,7 @@ export async function maybeSendFinalBookReadyEmail(bookId: string): Promise<Fina
     await markPdfReadyEmailSent(claimedBook.id).catch((error) => {
       console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
     });
-    console.log("[FINAL_READY_EMAIL_SENT]", { bookId });
+    console.log("[FINAL_READY_EMAIL_SENT]", { bookId, recipient: claimedBook.email });
     return { sent: true, reason: "sent" };
   } catch (error) {
     const message = safeErrorMessage(error);

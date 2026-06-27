@@ -331,6 +331,49 @@ export async function findPaidBooksWithIncompletePremiumGeneration(limit = 3) {
   return (data || []).map(mapRow);
 }
 
+function isPdfOrFinalEmailIncomplete(book: StoredBook) {
+  const pdfIncomplete =
+    !book.pdf_storage_path ||
+    !book.pdf_status ||
+    book.pdf_status === "not_started" ||
+    book.pdf_status === "failed" ||
+    book.pdf_status === "generating" ||
+    book.pdf_status === "waiting_for_images";
+
+  const emailIncomplete = !book.pdf_ready_email_sent_at && book.pdf_ready_email_status !== "sent";
+
+  return pdfIncomplete || emailIncomplete;
+}
+
+export async function findPaidBooksNeedingPdfOrFinalEmail(limit = 3) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .select("*")
+    .in("status", ["paid", "generating", "ready"])
+    .or(
+      "pdf_status.is.null,pdf_status.in.(not_started,failed,generating,waiting_for_images),pdf_storage_path.is.null,pdf_ready_email_status.is.null,pdf_ready_email_status.in.(not_started,failed)",
+    )
+    .neq("pdf_ready_email_status", "sent")
+    .is("pdf_ready_email_sent_at", null)
+    .order("generation_updated_at", { ascending: true })
+    .limit(Math.max(limit * 10, 20));
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { getNormalizedImagesForStoredBook } = await import("@/lib/book-images");
+
+  return (data || [])
+    .map(mapRow)
+    .filter((book) => {
+      const normalized = getNormalizedImagesForStoredBook(book);
+      return normalized.allIllustrationsReady && isPdfOrFinalEmailIncomplete(book);
+    })
+    .slice(0, limit);
+}
+
 function synopsisMatches(
   storedSynopsis: ApprovedSynopsis | null | undefined,
   requestedSynopsis: ApprovedSynopsis | null | undefined,
@@ -1092,6 +1135,7 @@ export async function uploadBookPdf(bookId: string, pdfBuffer: Buffer) {
   const supabase = requireSupabase();
   const pdfStoragePath = `books/${bookId}/book.pdf`;
 
+  console.log("[PDF_UPLOAD_START]", { bookId });
   const { error } = await supabase.storage.from(BOOK_PDF_BUCKET).upload(pdfStoragePath, pdfBuffer, {
     contentType: "application/pdf",
     upsert: true,
@@ -1101,7 +1145,13 @@ export async function uploadBookPdf(bookId: string, pdfBuffer: Buffer) {
     throw new Error(error.message);
   }
 
-  await savePdfPath(bookId, pdfStoragePath);
+  const savedBook = await savePdfPath(bookId, pdfStoragePath);
+  console.log("[PDF_UPLOAD_DONE]", { bookId, pdfStoragePath });
+  console.log("[PDF_STATUS_UPDATED]", {
+    bookId,
+    pdfStatus: savedBook.pdf_status,
+    pdfStoragePath: savedBook.pdf_storage_path,
+  });
   return pdfStoragePath;
 }
 
@@ -1249,6 +1299,36 @@ export async function markPdfWaitingForImages(bookId: string) {
   }
 
   return mapRow(data);
+}
+
+export async function recoverStalePdfGeneration(bookId: string) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook || storedBook.pdf_storage_path || storedBook.pdf_status !== "generating") {
+    return storedBook;
+  }
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      pdf_status: "not_started",
+      pdf_error: null,
+    })
+    .eq("id", bookId)
+    .eq("pdf_status", "generating")
+    .is("pdf_storage_path", null)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (data) {
+    console.log("[PDF_STALE_GENERATION_RECOVERED]", { bookId });
+  }
+
+  return data ? mapRow(data) : storedBook;
 }
 
 export async function claimPdfGeneration(bookId: string) {
