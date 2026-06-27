@@ -6,12 +6,13 @@ import type { LoreBook } from "@/lib/types";
 const PAGE_PADDING = 18;
 const A4_PAGE_HEIGHT_PT = 842;
 const A4_PAGE_WIDTH_PT = 595;
-const TEXT_PAGE_PADDING_PT = 14;
-const TEXT_FRAME_PADDING_PT = 14;
-const TEXT_INNER_FRAME_PADDING_H = 22;
-const TEXT_INNER_FRAME_PADDING_TOP = 12;
-const TEXT_INNER_FRAME_PADDING_BOTTOM = 10;
-const TEXT_HEADER_RESERVED_PT = 92;
+const TEXT_PAGE_PADDING_PT = 10;
+const TEXT_FRAME_PADDING_PT = 10;
+const TEXT_INNER_FRAME_PADDING_H = 14;
+const TEXT_INNER_FRAME_PADDING_TOP = 8;
+const TEXT_INNER_FRAME_PADDING_BOTTOM = 8;
+const TEXT_HEADER_RESERVED_PT = 76;
+const TARGET_TEXT_FILL_RATIO = 0.9;
 
 const palette = {
   darkBackground: "#0f0b07",
@@ -88,39 +89,41 @@ const textStyles = StyleSheet.create({
   },
   header: {
     flexShrink: 0,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   pageLabel: {
-    fontSize: 10,
-    letterSpacing: 2.8,
+    fontSize: 9,
+    letterSpacing: 2.6,
     textTransform: "uppercase",
     color: palette.pageLabel,
     textAlign: "center",
-    marginBottom: 5,
+    marginBottom: 3,
   },
   title: {
     fontFamily: "Times-Bold",
-    fontSize: 27,
-    lineHeight: 1.18,
+    fontSize: 26,
+    lineHeight: 1.12,
     color: palette.title,
     textAlign: "center",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   rule: {
     height: 1,
     backgroundColor: palette.rule,
-    marginBottom: 8,
-    width: "34%",
+    marginBottom: 5,
+    width: "28%",
     alignSelf: "center",
   },
   bodyBox: {
-    flexGrow: 1,
+    flex: 1,
     flexDirection: "column",
     justifyContent: "flex-start",
+    width: "100%",
   },
   body: {
     color: palette.body,
-    textAlign: "justify",
+    textAlign: "left",
+    width: "100%",
   },
 });
 
@@ -128,7 +131,8 @@ type TextPageTypography = {
   fontSize: number;
   lineHeight: number;
   textBoxHeight: number;
-  bodyJustify: "flex-start" | "center";
+  bodyJustify: "flex-start" | "center" | "space-between";
+  fillRatio: number;
 };
 
 function getTextBoxDimensions() {
@@ -148,8 +152,8 @@ function getTextBoxDimensions() {
 }
 
 function estimateWrappedLines(text: string, fontSize: number, maxWidth: number) {
-  const avgCharWidth = fontSize * 0.5;
-  const charsPerLine = Math.max(18, Math.floor(maxWidth / avgCharWidth));
+  const avgCharWidth = fontSize * 0.48;
+  const charsPerLine = Math.max(20, Math.floor(maxWidth / avgCharWidth));
   const words = text.trim().split(/\s+/).filter(Boolean);
 
   if (words.length === 0) {
@@ -177,13 +181,17 @@ function estimateWrappedLines(text: string, fontSize: number, maxWidth: number) 
 function resolveTextPageTypography(text: string): TextPageTypography {
   const { textBoxHeight, textBoxWidth } = getTextBoxDimensions();
   const candidates: Array<{ fontSize: number; lineHeight: number }> = [
-    { fontSize: 24, lineHeight: 1.58 },
-    { fontSize: 23, lineHeight: 1.55 },
-    { fontSize: 22, lineHeight: 1.52 },
-    { fontSize: 21, lineHeight: 1.5 },
-    { fontSize: 20, lineHeight: 1.47 },
-    { fontSize: 19, lineHeight: 1.44 },
-    { fontSize: 18, lineHeight: 1.4 },
+    { fontSize: 28, lineHeight: 1.62 },
+    { fontSize: 27, lineHeight: 1.6 },
+    { fontSize: 26, lineHeight: 1.58 },
+    { fontSize: 25, lineHeight: 1.55 },
+    { fontSize: 24, lineHeight: 1.52 },
+    { fontSize: 23, lineHeight: 1.5 },
+    { fontSize: 22, lineHeight: 1.48 },
+    { fontSize: 21, lineHeight: 1.45 },
+    { fontSize: 20, lineHeight: 1.42 },
+    { fontSize: 19, lineHeight: 1.38 },
+    { fontSize: 18, lineHeight: 1.34 },
   ];
 
   for (const candidate of candidates) {
@@ -192,32 +200,39 @@ function resolveTextPageTypography(text: string): TextPageTypography {
     let requiredHeight = lines * candidate.fontSize * lineHeight;
 
     if (requiredHeight <= textBoxHeight) {
-      const fillRatio = requiredHeight / textBoxHeight;
-      if (fillRatio < 0.78 && lines >= 1) {
-        const targetHeight = textBoxHeight * 0.82;
+      const initialFillRatio = requiredHeight / textBoxHeight;
+      if (initialFillRatio < TARGET_TEXT_FILL_RATIO && lines >= 1) {
+        const targetHeight = textBoxHeight * TARGET_TEXT_FILL_RATIO;
         const expandedLineHeight = targetHeight / (lines * candidate.fontSize);
-        lineHeight = Math.min(Math.max(expandedLineHeight, candidate.lineHeight), 1.9);
+        lineHeight = Math.min(Math.max(expandedLineHeight, candidate.lineHeight), 2.08);
         requiredHeight = lines * candidate.fontSize * lineHeight;
       }
 
       if (requiredHeight <= textBoxHeight) {
+        const fillRatio = requiredHeight / textBoxHeight;
         return {
           fontSize: candidate.fontSize,
           lineHeight,
           textBoxHeight,
-          bodyJustify: requiredHeight < textBoxHeight * 0.72 ? "center" : "flex-start",
+          fillRatio,
+          bodyJustify: fillRatio < 0.68 ? "center" : "flex-start",
         };
       }
     }
   }
 
-  const fallbackLines = estimateWrappedLines(text, 17, textBoxWidth);
-  const fallbackLineHeight = Math.min(1.38, textBoxHeight / Math.max(fallbackLines, 1) / 17);
+  const fallbackFontSize = 17;
+  const fallbackLines = estimateWrappedLines(text, fallbackFontSize, textBoxWidth);
+  const fallbackLineHeight = Math.min(
+    1.36,
+    (textBoxHeight * TARGET_TEXT_FILL_RATIO) / Math.max(fallbackLines, 1) / fallbackFontSize,
+  );
 
   return {
-    fontSize: 17,
+    fontSize: fallbackFontSize,
     lineHeight: fallbackLineHeight,
     textBoxHeight,
+    fillRatio: (fallbackLines * fallbackFontSize * fallbackLineHeight) / textBoxHeight,
     bodyJustify: "flex-start",
   };
 }
@@ -246,7 +261,9 @@ function TextPdfPage({ page }: { page: PdfStoryPage }) {
     fontSize: typography.fontSize,
     lineHeight: typography.lineHeight,
     textBoxHeight: typography.textBoxHeight,
-    pageHeightUsage: "84%",
+    fillRatio: typography.fillRatio.toFixed(2),
+    pageHeightUsage: "90%",
+    textAlign: "left",
   });
 
   return (
@@ -263,7 +280,6 @@ function TextPdfPage({ page }: { page: PdfStoryPage }) {
               textStyles.bodyBox,
               {
                 minHeight: typography.textBoxHeight,
-                height: typography.textBoxHeight,
                 justifyContent: typography.bodyJustify,
               },
             ]}
