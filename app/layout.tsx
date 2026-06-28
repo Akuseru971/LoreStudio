@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { Cinzel, Cormorant_Garamond, EB_Garamond, Inter, Kalam } from "next/font/google";
 import "./globals.css";
 
@@ -58,7 +59,10 @@ export default function RootLayout({
       lang="en"
       className={`${cinzel.variable} ${cormorant.variable} ${ebGaramond.variable} ${inter.variable} ${kalam.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
