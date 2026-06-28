@@ -1,10 +1,11 @@
 import { fetchBookStatus, generateNextPremiumImage, generatePdfIfReady, retryMissingImages } from "@/lib/client/api";
 import { STALE_GENERATION_MS, isGenerationStale } from "@/lib/generation-progress";
 
-const PREMIUM_IMAGE_WORKERS = 2;
+const PREMIUM_IMAGE_WORKERS = 1;
 const PREMIUM_GENERATION_POLL_MS = 2000;
 
 const activePremiumLoops = new Set<string>();
+const premiumImageGenerationInFlightRef: { current: Promise<unknown> | null } = { current: null };
 
 export const premiumGenerationLoopRef = {
   current: false,
@@ -14,6 +15,22 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+async function requestNextPremiumImage(accessToken: string) {
+  while (premiumImageGenerationInFlightRef.current) {
+    await premiumImageGenerationInFlightRef.current;
+  }
+
+  const request = generateNextPremiumImage(accessToken);
+  premiumImageGenerationInFlightRef.current = request;
+  try {
+    return await request;
+  } finally {
+    if (premiumImageGenerationInFlightRef.current === request) {
+      premiumImageGenerationInFlightRef.current = null;
+    }
+  }
 }
 
 function isAllPremiumGenerationComplete(status: {
@@ -28,7 +45,7 @@ function isAllPremiumGenerationComplete(status: {
 
 async function premiumImageWorker(accessToken: string) {
   while (activePremiumLoops.has(accessToken)) {
-    const { response, data } = await generateNextPremiumImage(accessToken);
+    const { response, data } = await requestNextPremiumImage(accessToken);
 
     if (!response.ok && response.status === 403) {
       return;
@@ -97,7 +114,6 @@ export async function startPremiumGenerationLoop(accessToken: string) {
           readyImagesCount: data.readyImagesCount,
           missingPremiumPages: data.missingPremiumPages,
         });
-        void generateNextPremiumImage(accessToken);
       }
 
       const updatedAt = data.generationUpdatedAt as string | undefined;

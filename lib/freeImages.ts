@@ -6,6 +6,7 @@ import {
   getBookByAccessToken,
   getBookById,
   markPageImageFailed,
+  reloadAndVerifyPageImageClaim,
   saveBookAsset,
   stampMissingGeneratingTimestamp,
   updateGenerationProgress,
@@ -102,16 +103,16 @@ export async function generateAndStoreFreeImageForPage({
       });
     }
     return {
-      book: refreshedBook || (await getBookByAccessToken(accessToken)),
+      book: refreshedBook || (await getBookById(bookId)),
       generated: false,
       claimLost: true,
     };
   }
 
   const { claimId } = claim;
-  let latestBook = (await getBookById(bookId)) || claim.book;
+  let latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || claim.book;
 
-  if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+  if (!latestBook || !verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
     return { book: latestBook, generated: false, claimLost: true };
   }
 
@@ -122,8 +123,8 @@ export async function generateAndStoreFreeImageForPage({
 
   if (!verifyState.timestamp) {
     const stampedBook = await stampMissingGeneratingTimestamp(bookId, pageNumber);
-    latestBook = stampedBook || latestBook;
-    if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+    latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || stampedBook || latestBook;
+    if (!latestBook || !verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
       return { book: latestBook, generated: false, claimLost: true };
     }
   }
@@ -137,6 +138,11 @@ export async function generateAndStoreFreeImageForPage({
       message: `Page ${pageNumber} is missing.`,
     });
     return { book: latestBook, generated: false, claimLost: false };
+  }
+
+  latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || latestBook;
+  if (!latestBook) {
+    return { book: await getBookById(bookId), generated: false, claimLost: true };
   }
 
   try {

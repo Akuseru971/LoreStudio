@@ -8,6 +8,7 @@ import {
   getReadyIllustrationCount,
   isIllustrationReady,
   mergeUpdatedImage,
+  mergeNormalizedImagesPreservingGenerationClaims,
   normalizeStoredBookImages,
   resolveImageDisplayUrl,
 } from "@/lib/book-images";
@@ -490,13 +491,27 @@ export async function getBookByAccessToken(accessToken: string) {
 
   const storedBook = mapRow(data);
   const normalized = normalizeStoredBookImages(storedBook);
+  const preserved = mergeNormalizedImagesPreservingGenerationClaims(
+    storedBook,
+    normalized.images,
+    normalized.imageStatus,
+  );
+  const hasGeneratingPages = Object.values(storedBook.image_status).includes("generating");
 
   if (!normalized.changed) {
     return storedBook;
   }
 
+  if (hasGeneratingPages) {
+    return {
+      ...storedBook,
+      images: preserved.images,
+      image_status: preserved.imageStatus,
+    };
+  }
+
   try {
-    return await saveNormalizedBookImages(storedBook.id, normalized.images, normalized.imageStatus);
+    return await saveNormalizedBookImages(storedBook.id, preserved.images, preserved.imageStatus);
   } catch (repairError) {
     console.warn("[IMAGE_NORMALIZE_PERSIST_FAILED]", repairError);
     return {
@@ -741,6 +756,7 @@ export async function stampMissingGeneratingTimestamp(bookId: string, pageNumber
 
   const now = new Date().toISOString();
   const normalized = normalizeStoredBookImages(storedBook);
+  const existingImage = normalized.images[key];
   const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
     pageNumber,
     status: "generating",
@@ -750,6 +766,7 @@ export async function stampMissingGeneratingTimestamp(bookId: string, pageNumber
     startedAt: now,
     updatedAt: now,
     generationStartedAt: now,
+    generationClaimId: existingImage?.generationClaimId ?? null,
   });
   const nextImageStatus = {
     ...normalized.imageStatus,
@@ -894,21 +911,46 @@ export async function claimPageImageGeneration(
     updatedAt: now,
   });
 
-  const { data, error } = await supabase
+  const previousStatus = storedBook.image_status[key] ?? pageState.status;
+  const isReclaimMissingClaim =
+    previousStatus === "generating" && !getImageGenerationClaimId(storedBook, pageNumber);
+
+  let updateQuery = supabase
     .from(BOOKS_TABLE)
     .update({
       images: updatedImages,
       image_status: nextImageStatus,
     })
-    .eq("id", bookId)
-    .select("*")
-    .maybeSingle();
+    .eq("id", bookId);
+
+  if (previousStatus === "not_started" || previousStatus === "failed" || previousStatus === undefined) {
+    updateQuery = updateQuery.or(
+      `image_status->>${key}.is.null,image_status->>${key}.eq.not_started,image_status->>${key}.eq.failed`,
+    );
+  } else if (isReclaimMissingClaim) {
+    updateQuery = updateQuery.eq(`image_status->>${key}`, "generating");
+  } else if (previousStatus === "generating") {
+    return null;
+  }
+
+  const { data, error } = await updateQuery.select("*").maybeSingle();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const latestBook = (data ? mapRow(data) : null) || (await getBookById(bookId));
+  if (!data) {
+    console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+      bookId,
+      pageNumber,
+      claimId,
+      currentClaimId: null,
+      reason: "conditional_update_missed",
+    });
+    return null;
+  }
+
+  const latestBook = mapRow(data);
   if (!latestBook) {
     return null;
   }
@@ -944,6 +986,31 @@ export async function claimPageImageGeneration(
   });
 
   return { book: latestBook, claimId };
+}
+
+export async function reloadAndVerifyPageImageClaim(
+  bookId: string,
+  pageNumber: number,
+  claimId: string,
+) {
+  const latestBook = await getBookById(bookId);
+  if (!latestBook) {
+    return null;
+  }
+
+  if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+    const key = String(pageNumber);
+    console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+      bookId,
+      pageNumber,
+      claimId,
+      currentClaimId: getImageGenerationClaimId(latestBook, pageNumber),
+      image: latestBook.images[key],
+    });
+    return null;
+  }
+
+  return latestBook;
 }
 
 export async function markPageImageFailed(bookId: string, pageNumber: number, claimId?: string) {

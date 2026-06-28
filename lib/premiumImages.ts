@@ -8,6 +8,7 @@ import {
   getBookById,
   markBookReady,
   markPageImageFailed,
+  reloadAndVerifyPageImageClaim,
   resetStalePageImageGeneration,
   saveBookAsset,
   stampMissingGeneratingTimestamp,
@@ -202,9 +203,9 @@ async function generateAndStorePremiumImageForPage({
   }
 
   const { claimId } = claim;
-  let latestBook = (await getBookById(bookId)) || claim.book;
+  let latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || claim.book;
 
-  if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+  if (!latestBook || !verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
     return { skipped: true as const, claimLost: true as const, book: latestBook };
   }
 
@@ -215,8 +216,8 @@ async function generateAndStorePremiumImageForPage({
 
   if (!verifyState.timestamp) {
     const stampedBook = await stampMissingGeneratingTimestamp(bookId, pageNumber);
-    latestBook = stampedBook || latestBook;
-    if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+    latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || stampedBook || latestBook;
+    if (!latestBook || !verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
       return { skipped: true as const, claimLost: true as const, book: latestBook };
     }
   }
@@ -230,6 +231,11 @@ async function generateAndStorePremiumImageForPage({
       message: `Page ${pageNumber} is missing.`,
     });
     return { skipped: true as const, claimLost: false as const, book: latestBook };
+  }
+
+  latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || latestBook;
+  if (!latestBook) {
+    return { skipped: true as const, claimLost: true as const, book: await getBookById(bookId) };
   }
 
   try {

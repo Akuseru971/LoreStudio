@@ -337,6 +337,54 @@ export function normalizeStoredBookImages(storedBook: Pick<StoredBook, "images" 
   return { images, imageStatus, changed };
 }
 
+export function mergeNormalizedImagesPreservingGenerationClaims(
+  storedBook: Pick<StoredBook, "images" | "image_status">,
+  images: Record<string, BookPageImage>,
+  imageStatus: Record<string, ImagePageStatus>,
+) {
+  const preservedImages = { ...images };
+  const preservedStatus = { ...imageStatus };
+
+  for (let pageNumber = 1; pageNumber <= FULL_BOOK_PAGE_COUNT; pageNumber += 1) {
+    const key = String(pageNumber);
+    const raw = readRawImageForPage(storedBook.images, pageNumber);
+    if (!isRecord(raw)) {
+      continue;
+    }
+
+    const rawStatus = storedBook.image_status[key];
+    const normalizedStatus = preservedStatus[key] || preservedImages[key]?.status;
+    if (rawStatus !== "generating" && normalizedStatus !== "generating") {
+      continue;
+    }
+
+    preservedImages[key] = {
+      ...preservedImages[key],
+      pageNumber,
+      status: "generating",
+      generationClaimId:
+        (typeof raw.generationClaimId === "string" ? raw.generationClaimId : null) ||
+        preservedImages[key]?.generationClaimId ||
+        null,
+      startedAt:
+        (typeof raw.startedAt === "string" ? raw.startedAt : null) ||
+        preservedImages[key]?.startedAt ||
+        null,
+      updatedAt:
+        (typeof raw.updatedAt === "string" ? raw.updatedAt : null) ||
+        preservedImages[key]?.updatedAt ||
+        null,
+      generationStartedAt:
+        (typeof raw.generationStartedAt === "string" ? raw.generationStartedAt : null) ||
+        preservedImages[key]?.generationStartedAt ||
+        null,
+    };
+    preservedStatus[key] = "generating";
+  }
+
+  return { images: preservedImages, imageStatus: preservedStatus };
+}
+
 export function getReadyIllustrationCount(book: BookImagesInput) {
   let count = 0;
 
