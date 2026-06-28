@@ -94,6 +94,35 @@ export function getPageGenerationStatus(
   };
 }
 
+export function getImageGenerationClaimId(
+  storedBook: StoredBook,
+  pageNumber: number,
+  input?: BookImagesInput,
+) {
+  const image = getImageForPage(
+    input ?? {
+      images: storedBook.images,
+      imageStatus: storedBook.image_status,
+    },
+    pageNumber,
+  );
+
+  return typeof image?.generationClaimId === "string" && image.generationClaimId.trim()
+    ? image.generationClaimId
+    : null;
+}
+
+export function verifyImageGenerationClaimOwnership(
+  storedBook: StoredBook,
+  pageNumber: number,
+  claimId: string,
+  input?: BookImagesInput,
+) {
+  const state = getPageGenerationStatus(storedBook, pageNumber, input);
+  const currentClaimId = getImageGenerationClaimId(storedBook, pageNumber, input);
+  return state.status === "generating" && currentClaimId === claimId;
+}
+
 export function isImageGeneratingStale(
   storedBook: StoredBook,
   pageNumber: number,

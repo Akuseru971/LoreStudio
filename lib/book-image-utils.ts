@@ -127,6 +127,8 @@ function coerceCanonicalImage(image: unknown, pageNumber: number): BookPageImage
     updatedAt: typeof image.updatedAt === "string" ? image.updatedAt : null,
     generationStartedAt:
       typeof image.generationStartedAt === "string" ? image.generationStartedAt : null,
+    generationClaimId:
+      typeof image.generationClaimId === "string" ? image.generationClaimId : null,
   };
 }
 
@@ -302,6 +304,7 @@ export function normalizeStoredBookImages(storedBook: Pick<StoredBook, "images" 
         startedAt: rawRecord?.startedAt || null,
         updatedAt: rawRecord?.updatedAt || null,
         generationStartedAt: rawRecord?.generationStartedAt || null,
+        generationClaimId: rawRecord?.generationClaimId || null,
       };
       imageStatus[key] = images[key].status;
       continue;
@@ -316,6 +319,7 @@ export function normalizeStoredBookImages(storedBook: Pick<StoredBook, "images" 
       startedAt: image.startedAt || null,
       updatedAt: image.updatedAt || null,
       generationStartedAt: image.generationStartedAt || null,
+      generationClaimId: image.generationClaimId || null,
     };
 
     images[key] = canonical;

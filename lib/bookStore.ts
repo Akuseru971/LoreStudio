@@ -30,8 +30,11 @@ import type {
 } from "@/lib/types";
 import {
   getImageGenerationTimestamp,
+  getImageGenerationClaimId,
   getPageGenerationStatus,
   isImageFreshlyGenerating,
+  isImageGeneratingStale,
+  verifyImageGenerationClaimOwnership,
 } from "@/lib/imageGenerationTimestamps";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { resolveApprovedSynopsis } from "@/lib/synopsisValidation";
@@ -216,6 +219,7 @@ export async function saveBookAsset(
   pageNumber: number,
   assetType: "image" | "audio",
   assetRef: string,
+  options: { claimId?: string } = {},
 ) {
   const supabase = requireSupabase();
 
@@ -259,6 +263,18 @@ export async function saveBookAsset(
       return mapRow(data);
     }
 
+    if (assetType === "image" && options.claimId) {
+      if (!verifyImageGenerationClaimOwnership(storedBook, pageNumber, options.claimId)) {
+        console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+          bookId: storedBook.id,
+          pageNumber,
+          claimId: options.claimId,
+          currentClaimId: getImageGenerationClaimId(storedBook, pageNumber),
+        });
+        return storedBook;
+      }
+    }
+
     const signedUrl = await createSignedAssetUrl(persistedRef, 3600);
     const normalized = normalizeStoredBookImages(storedBook);
     const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
@@ -267,6 +283,7 @@ export async function saveBookAsset(
       url: signedUrl,
       storagePath: persistedRef,
       generatedAt: new Date().toISOString(),
+      generationClaimId: null,
     });
     const nextImageStatus = {
       ...normalized.imageStatus,
@@ -773,6 +790,7 @@ export async function resetStalePageImageGeneration(bookId: string, pageNumber: 
     generatedAt: null,
     startedAt: null,
     updatedAt: new Date().toISOString(),
+    generationClaimId: null,
   });
   const nextImageStatus = {
     ...normalized.imageStatus,
@@ -796,10 +814,27 @@ export async function resetStalePageImageGeneration(bookId: string, pageNumber: 
   return data ? mapRow(data) : null;
 }
 
-export async function claimPageImageGeneration(bookId: string, pageNumber: number) {
+export type PageImageGenerationClaim = {
+  book: StoredBook;
+  claimId: string;
+};
+
+export async function claimPageImageGeneration(
+  bookId: string,
+  pageNumber: number,
+): Promise<PageImageGenerationClaim | null> {
+  const claimId = crypto.randomUUID();
+
+  console.log("[IMAGE_GENERATION_CLAIM_CREATED]", {
+    bookId,
+    pageNumber,
+    claimId,
+  });
+
   console.log("[IMAGE_GENERATION_CLAIM_START]", {
     bookId,
     pageNumber,
+    claimId,
   });
 
   const supabase = requireSupabase();
@@ -830,6 +865,7 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
     startedAt: now,
     updatedAt: now,
     generationStartedAt: now,
+    generationClaimId: claimId,
   });
   const nextImageStatus = {
     ...normalized.imageStatus,
@@ -839,6 +875,7 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
   console.log("[IMAGE_GENERATION_CLAIM_WRITTEN]", {
     bookId,
     pageNumber,
+    claimId,
     startedAt: now,
     updatedAt: now,
   });
@@ -857,32 +894,62 @@ export async function claimPageImageGeneration(bookId: string, pageNumber: numbe
     throw new Error(error.message);
   }
 
-  const claimedBook = data ? mapRow(data) : null;
-  if (claimedBook) {
-    const claimedState = getPageGenerationStatus(claimedBook, pageNumber);
-    console.log("[IMAGE_GENERATION_CLAIM_VERIFY]", {
-      bookId,
-      pageNumber,
-      status: claimedState.status,
-      startedAt: claimedState.startedAt,
-      updatedAt: claimedState.updatedAt,
-    });
+  const latestBook = (data ? mapRow(data) : null) || (await getBookById(bookId));
+  if (!latestBook) {
+    return null;
   }
 
-  return claimedBook;
+  if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+    console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+      bookId,
+      pageNumber,
+      claimId,
+      currentClaimId: getImageGenerationClaimId(latestBook, pageNumber),
+    });
+    return null;
+  }
+
+  console.log("[IMAGE_GENERATION_CLAIM_OWNERSHIP_CONFIRMED]", {
+    bookId,
+    pageNumber,
+    claimId,
+  });
+
+  return { book: latestBook, claimId };
 }
 
-export async function markPageImageFailed(bookId: string, pageNumber: number) {
+export async function markPageImageFailed(bookId: string, pageNumber: number, claimId?: string) {
   const supabase = requireSupabase();
   const storedBook = await getBookById(bookId);
   if (!storedBook) {
     throw new Error("Book not found.");
   }
 
+  if (claimId && !verifyImageGenerationClaimOwnership(storedBook, pageNumber, claimId)) {
+    console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+      bookId,
+      pageNumber,
+      claimId,
+      currentClaimId: getImageGenerationClaimId(storedBook, pageNumber),
+    });
+    return storedBook;
+  }
+
   const key = String(pageNumber);
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
+    pageNumber,
+    status: "failed",
+    url: null,
+    storagePath: null,
+    generatedAt: null,
+    generationClaimId: null,
+    updatedAt: new Date().toISOString(),
+  });
   const { data, error } = await supabase
     .from(BOOKS_TABLE)
     .update({
+      images: updatedImages,
       image_status: {
         ...storedBook.image_status,
         [key]: "failed",

@@ -19,6 +19,7 @@ import {
   getPageGenerationStatus,
   isImageFreshlyGenerating,
   isImageGeneratingStale,
+  verifyImageGenerationClaimOwnership,
 } from "@/lib/imageGenerationTimestamps";
 import { generateBookPageImage } from "@/lib/images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
@@ -184,8 +185,8 @@ async function generateAndStorePremiumImageForPage({
   book: LoreBook;
   pageNumber: number;
 }) {
-  const claimedBook = await claimPageImageGeneration(bookId, pageNumber);
-  if (!claimedBook) {
+  const claim = await claimPageImageGeneration(bookId, pageNumber);
+  if (!claim) {
     const refreshedBook = await getBookById(bookId);
     if (refreshedBook && isImageFreshlyGenerating(refreshedBook, pageNumber)) {
       const state = getPageGenerationStatus(refreshedBook, pageNumber);
@@ -197,39 +198,45 @@ async function generateAndStorePremiumImageForPage({
         ageMs: state.ageMs,
       });
     }
-    return { skipped: true as const, book: refreshedBook };
+    return { skipped: true as const, claimLost: true as const, book: refreshedBook };
   }
 
-  const latestBook = (await getBookById(bookId)) || claimedBook;
+  const { claimId } = claim;
+  let latestBook = (await getBookById(bookId)) || claim.book;
+
+  if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+    return { skipped: true as const, claimLost: true as const, book: latestBook };
+  }
+
   const verifyState = getPageGenerationStatus(latestBook, pageNumber);
   if (verifyState.isReady) {
-    return { skipped: true as const, book: latestBook };
+    return { skipped: true as const, claimLost: false as const, book: latestBook };
   }
 
-  if (verifyState.status === "generating" && isImageFreshlyGenerating(latestBook, pageNumber)) {
-    if (!verifyState.timestamp) {
-      const stampedBook = await stampMissingGeneratingTimestamp(bookId, pageNumber);
-      return { skipped: true as const, book: stampedBook || latestBook };
+  if (!verifyState.timestamp) {
+    const stampedBook = await stampMissingGeneratingTimestamp(bookId, pageNumber);
+    latestBook = stampedBook || latestBook;
+    if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+      return { skipped: true as const, claimLost: true as const, book: latestBook };
     }
-  } else {
-    return { skipped: true as const, book: latestBook };
   }
 
   const normalizedBook = normalizeLoreBook(book);
   const page = normalizedBook.pages.find((item) => item.pageNumber === pageNumber);
   if (!page) {
-    await markPageImageFailed(bookId, pageNumber);
+    await markPageImageFailed(bookId, pageNumber, claimId);
     console.error("[IMAGE_GENERATION_ERROR]", {
       pageNumber,
       message: `Page ${pageNumber} is missing.`,
     });
-    return { skipped: true as const, book: latestBook };
+    return { skipped: true as const, claimLost: false as const, book: latestBook };
   }
 
   try {
     console.log("[OPENAI_IMAGE_API_CALL_START]", {
       bookId,
       pageNumber,
+      claimId,
     });
 
     const imageUrl = await withTimeout(
@@ -242,23 +249,23 @@ async function generateAndStorePremiumImageForPage({
     );
 
     if (!imageUrl) {
-      await markPageImageFailed(bookId, pageNumber);
+      await markPageImageFailed(bookId, pageNumber, claimId);
       console.error("[IMAGE_GENERATION_ERROR]", {
         pageNumber,
         message: "No image URL returned.",
       });
-      return { skipped: true as const, book: latestBook };
+      return { skipped: true as const, claimLost: false as const, book: latestBook };
     }
 
-    const savedBook = await saveBookAsset(accessToken, pageNumber, "image", imageUrl);
-    return { skipped: false as const, book: savedBook };
+    const savedBook = await saveBookAsset(accessToken, pageNumber, "image", imageUrl, { claimId });
+    return { skipped: false as const, claimLost: false as const, book: savedBook };
   } catch (error) {
-    await markPageImageFailed(bookId, pageNumber);
+    await markPageImageFailed(bookId, pageNumber, claimId);
     console.error("[IMAGE_GENERATION_ERROR]", {
       pageNumber,
       message: error instanceof Error ? error.message : "Image generation failed.",
     });
-    return { skipped: true as const, book: latestBook };
+    return { skipped: true as const, claimLost: false as const, book: latestBook };
   }
 }
 
@@ -353,6 +360,18 @@ export async function generateNextPremiumImage(accessToken: string) {
 
   if (generationResult.skipped) {
     const refreshedBook = (await getBookByAccessToken(accessToken)) || generationResult.book || workingBook;
+    if (generationResult.claimLost) {
+      return {
+        ...buildPremiumGenerationBaseResult(refreshedBook),
+        pageNumber,
+        generated: false,
+        done: false,
+        retryable: true,
+        reason: "claim_lost_to_another_request" as const,
+        retryAfterMs: PAGE_ALREADY_GENERATING_RETRY_MS,
+      };
+    }
+
     if (isImageFreshlyGenerating(refreshedBook, pageNumber, getPremiumImagePagesInput(refreshedBook))) {
       return buildPageAlreadyGeneratingResult(refreshedBook, pageNumber);
     }

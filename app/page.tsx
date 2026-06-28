@@ -93,6 +93,7 @@ export default function Home() {
   const generationRunRef = useRef(0);
   const generationStartedRef = useRef(false);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
+  const freeImageGenerationInFlightRef = useRef<Promise<unknown> | null>(null);
   const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
@@ -167,9 +168,25 @@ export default function Home() {
     }
   }, []);
 
+  async function requestNextFreeImage(token: string) {
+    while (freeImageGenerationInFlightRef.current) {
+      await freeImageGenerationInFlightRef.current;
+    }
+
+    const request = generateNextFreeImage(token);
+    freeImageGenerationInFlightRef.current = request;
+    try {
+      return await request;
+    } finally {
+      if (freeImageGenerationInFlightRef.current === request) {
+        freeImageGenerationInFlightRef.current = null;
+      }
+    }
+  }
+
   async function generateFreeImagesWorker(token: string, runId: number) {
     while (generationRunRef.current === runId) {
-      const { response, data } = await generateNextFreeImage(token);
+      const { response, data } = await requestNextFreeImage(token);
 
       if (!response.ok && !data.retryable) {
         console.warn("[FREE_IMAGE_WORKER_ERROR]", data.error);
@@ -179,6 +196,11 @@ export default function Home() {
 
       if (data.allFreeImagesReady || (data.done && !data.generated)) {
         return;
+      }
+
+      if (data.retryable) {
+        await sleep(500);
+        continue;
       }
 
       await sleep(500);

@@ -42,6 +42,8 @@ export async function POST(request: Request) {
       readyFreeImageCount: result.readyFreeImageCount,
       freeImagesTotal: FREE_IMAGE_PAGE_COUNT,
       missingFreePages: result.missingFreePages,
+      retryable: "retryable" in result ? result.retryable : undefined,
+      reason: "reason" in result ? result.reason : undefined,
       imageStatus: normalized.images,
       book,
     });
