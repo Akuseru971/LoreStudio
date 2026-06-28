@@ -838,20 +838,34 @@ export async function claimPageImageGeneration(
   });
 
   const supabase = requireSupabase();
-  const storedBook = await getBookById(bookId);
+  let storedBook = await getBookById(bookId);
   if (!storedBook) {
     return null;
   }
 
   const key = String(pageNumber);
-  const pageState = getPageGenerationStatus(storedBook, pageNumber);
+  let pageState = getPageGenerationStatus(storedBook, pageNumber);
 
   if (pageState.isReady) {
     return null;
   }
 
-  if (pageState.status === "generating" && isImageFreshlyGenerating(storedBook, pageNumber)) {
-    return null;
+  if (pageState.status === "generating") {
+    if (isImageGeneratingStale(storedBook, pageNumber)) {
+      const resetBook = await resetStalePageImageGeneration(bookId, pageNumber);
+      storedBook = resetBook || storedBook;
+      pageState = getPageGenerationStatus(storedBook, pageNumber);
+    } else if (isImageFreshlyGenerating(storedBook, pageNumber)) {
+      const existingClaimId = getImageGenerationClaimId(storedBook, pageNumber);
+      if (existingClaimId) {
+        return null;
+      }
+
+      console.log("[IMAGE_GENERATION_CLAIM_RECLAIM_MISSING_ID]", {
+        bookId,
+        pageNumber,
+      });
+    }
   }
 
   const now = new Date().toISOString();
@@ -900,6 +914,14 @@ export async function claimPageImageGeneration(
   }
 
   if (!verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+    const rawImage = latestBook.images[key];
+    console.error("[IMAGE_GENERATION_CLAIM_VERIFY_FAILED]", {
+      bookId,
+      pageNumber,
+      expectedClaimId: claimId,
+      actualClaimId: getImageGenerationClaimId(latestBook, pageNumber),
+      image: rawImage,
+    });
     console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
       bookId,
       pageNumber,
@@ -908,6 +930,12 @@ export async function claimPageImageGeneration(
     });
     return null;
   }
+
+  console.log("[IMAGE_GENERATION_CLAIM_VERIFY]", {
+    bookId,
+    pageNumber,
+    generationClaimId: claimId,
+  });
 
   console.log("[IMAGE_GENERATION_CLAIM_OWNERSHIP_CONFIRMED]", {
     bookId,

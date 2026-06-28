@@ -208,6 +208,7 @@ export function getImageForPage(book: BookImagesInput, pageNumber: number): Norm
     startedAt: coerced?.startedAt || pageCoerced?.startedAt || null,
     updatedAt: coerced?.updatedAt || pageCoerced?.updatedAt || null,
     generationStartedAt: coerced?.generationStartedAt || pageCoerced?.generationStartedAt || null,
+    generationClaimId: coerced?.generationClaimId || pageCoerced?.generationClaimId || null,
     imageUrl: pageImageUrl,
     src: coerced?.url ?? null,
   };
@@ -319,7 +320,10 @@ export function normalizeStoredBookImages(storedBook: Pick<StoredBook, "images" 
       startedAt: image.startedAt || null,
       updatedAt: image.updatedAt || null,
       generationStartedAt: image.generationStartedAt || null,
-      generationClaimId: image.generationClaimId || null,
+      generationClaimId:
+        image.generationClaimId ||
+        (isRecord(raw) && typeof raw.generationClaimId === "string" ? raw.generationClaimId : null) ||
+        null,
     };
 
     images[key] = canonical;

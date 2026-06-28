@@ -99,6 +99,15 @@ export function getImageGenerationClaimId(
   pageNumber: number,
   input?: BookImagesInput,
 ) {
+  const key = String(pageNumber);
+  const raw = storedBook.images[key];
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    const rawClaimId = (raw as { generationClaimId?: unknown }).generationClaimId;
+    if (typeof rawClaimId === "string" && rawClaimId.trim()) {
+      return rawClaimId.trim();
+    }
+  }
+
   const image = getImageForPage(
     input ?? {
       images: storedBook.images,
