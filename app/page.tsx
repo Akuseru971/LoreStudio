@@ -100,6 +100,12 @@ export default function Home() {
     (step === "form" || step === "synopsis" || (step === "book" && bookIsOpen)) && !ambientMuted;
   const ambientMusicVolume = step === "form" || step === "synopsis" ? 0.14 : 0.12;
   const isGenerating = generationStatus === "generating";
+  const showRiotDisclaimer =
+    step === "intro" ||
+    step === "startTransition" ||
+    step === "form" ||
+    step === "synopsis" ||
+    step === "error";
 
   useEffect(() => {
     writeAmbientMusicMutedPreference(ambientMuted);
@@ -559,6 +565,12 @@ export default function Home() {
           </motion.main>
         ) : null}
       </AnimatePresence>
+
+      {showRiotDisclaimer ? (
+        <p className="pointer-events-none fixed inset-x-0 bottom-3 z-20 px-4 text-center text-[0.62rem] leading-relaxed text-[#9baabd]/70">
+          This site is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+        </p>
+      ) : null}
     </>
   );
 }
