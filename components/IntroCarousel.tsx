@@ -117,6 +117,12 @@ export default function IntroCarousel({ onBegin }: IntroCarouselProps) {
             </button>
           </div>
         </div>
+
+        {index === 0 ? (
+          <p className="mt-5 px-2 text-center text-[0.62rem] leading-relaxed text-[#9baabd]/70">
+            This site is not affiliated with, endorsed, sponsored, or approved by Riot Games.
+          </p>
+        ) : null}
       </section>
     </main>
   );
