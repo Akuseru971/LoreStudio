@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const PDF_SIGNED_URL_TTL_SECONDS = 60 * 10;
+const PDF_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 function isMobileUserAgent(userAgent: string | null) {
   if (!userAgent) {
@@ -30,16 +30,18 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ success: false, error: "PDF_NOT_READY" }, { status: 400 });
   }
 
-  console.log("[PDF_OPEN_REQUEST]", {
-    accessToken,
-    isMobile,
-  });
+  console.log("[PDF_DOWNLOAD_ROUTE_HIT]", { accessToken });
 
   try {
     const storedBook = await getBookByAccessToken(accessToken);
     if (!storedBook) {
       return NextResponse.json({ success: false, error: "BOOK_NOT_FOUND" }, { status: 404 });
     }
+
+    console.log("[PDF_DOWNLOAD_BOOK_FOUND]", {
+      bookId: storedBook.id,
+      hasPdfStoragePath: Boolean(storedBook.pdf_storage_path),
+    });
 
     if (!hasPremiumAccess(storedBook.status)) {
       return NextResponse.json({ success: false, error: "PDF_NOT_READY" }, { status: 403 });
@@ -49,10 +51,7 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ success: false, error: "PDF_NOT_READY" }, { status: 409 });
     }
 
-    console.log("[PDF_SIGNED_URL_CREATED]", {
-      bookId: storedBook.id,
-      hasPdfPath: Boolean(storedBook.pdf_storage_path),
-    });
+    console.log("[PDF_DOWNLOAD_SIGNED_URL_CREATED]", { bookId: storedBook.id });
 
     if (isMobile) {
       const pdfBuffer = await downloadBookPdf(storedBook.pdf_storage_path);
@@ -67,11 +66,10 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const signedUrl = await createSignedPdfUrl(storedBook.pdf_storage_path, PDF_SIGNED_URL_TTL_SECONDS);
-    console.log("[PDF_REDIRECT_TO_SIGNED_URL]", { bookId: storedBook.id });
+    console.log("[PDF_DOWNLOAD_REDIRECT]", { bookId: storedBook.id });
     return NextResponse.redirect(signedUrl, 302);
   } catch (error) {
-    console.error("[PDF_OPEN_FAILED]", {
-      accessToken,
+    console.error("[PDF_DOWNLOAD_ROUTE_FAILED]", {
       error: error instanceof Error ? error.message : error,
     });
     return NextResponse.json({ success: false, error: "PDF_OPEN_FAILED" }, { status: 500 });

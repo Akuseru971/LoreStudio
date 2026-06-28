@@ -9,7 +9,7 @@ import {
   markPdfReadyEmailSent,
 } from "@/lib/bookStore";
 import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
-import { buildBookUnlockedEmailUrls, sendFinalBookReadyEmail } from "@/lib/email";
+import { buildBookUnlockedEmailUrls, buildFinalReadyEmailPdfUrl, sendFinalBookReadyEmail } from "@/lib/email";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
 function safeErrorMessage(error: unknown) {
@@ -131,10 +131,11 @@ export async function maybeSendFinalBookReadyEmail(bookId: string): Promise<Fina
     });
 
     const urls = buildBookUnlockedEmailUrls(claimedBook.access_token);
+    const pdfUrl = buildFinalReadyEmailPdfUrl(claimedBook.id, claimedBook.access_token);
     const result = await sendFinalBookReadyEmail({
       to: recipient,
       bookUrl: urls.bookUrl,
-      pdfUrl: urls.pdfUrl,
+      pdfUrl,
       idempotencyKey: `final-book-ready/${claimedBook.id}`,
     });
 

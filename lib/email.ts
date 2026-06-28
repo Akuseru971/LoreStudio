@@ -6,6 +6,38 @@ function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
 
+function getFinalEmailAppUrl() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (appUrl) {
+    return appUrl;
+  }
+
+  if (process.env.VERCEL_URL) {
+    console.error("[FINAL_EMAIL_PDF_LINK_BUILT]", {
+      error: "NEXT_PUBLIC_APP_URL is missing; falling back to VERCEL_URL",
+    });
+    return `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "")}`;
+  }
+
+  console.error("[FINAL_EMAIL_PDF_LINK_BUILT]", {
+    error: "NEXT_PUBLIC_APP_URL is missing",
+  });
+  return "http://localhost:3000";
+}
+
+export function buildFinalReadyEmailPdfUrl(bookId: string, accessToken: string) {
+  const appUrl = getFinalEmailAppUrl();
+  const pdfUrl = `${appUrl}/api/pdf/${accessToken}`;
+
+  console.log("[FINAL_EMAIL_PDF_LINK_BUILT]", {
+    bookId,
+    pdfUrl,
+    appUrl: process.env.NEXT_PUBLIC_APP_URL || null,
+  });
+
+  return pdfUrl;
+}
+
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
