@@ -6,23 +6,29 @@ import {
   getBookByAccessToken,
   getBookById,
   markPageImageFailed,
+  mergeBookAssets,
   reloadAndVerifyPageImageClaim,
   saveBookAsset,
   stampMissingGeneratingTimestamp,
   updateGenerationProgress,
 } from "@/lib/bookStore";
-import { getImageForPage, isIllustrationReady, type BookImagesInput } from "@/lib/book-images";
+import { getImageForPage, isIllustrationReady, resolveImageDisplayUrl, type BookImagesInput } from "@/lib/book-images";
 import {
   getPageGenerationStatus,
   isImageFreshlyGenerating,
   verifyImageGenerationClaimOwnership,
 } from "@/lib/imageGenerationTimestamps";
 import { generateBookPageImage } from "@/lib/images";
+import { buildFinalImagePrompt } from "@/lib/prompts";
+import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE, normalizeImageQuality } from "@/lib/server/ai-config";
+import { openai } from "@/lib/server/openai";
 import { IMAGE_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
-import type { LoreBook, StoredBook } from "@/lib/types";
-import { normalizeLoreBook } from "@/lib/utils";
+import type { BookPage, LoreBook, StoredBook } from "@/lib/types";
+import { dataUrlFromBase64, normalizeLoreBook } from "@/lib/utils";
 
 export { FREE_IMAGE_PAGES } from "@/lib/image-config";
+
+const FREE_PREVIEW_PARALLEL_PAGES = [2, 3] as const;
 
 export type GenerateStoredFreeImageResult = {
   book: StoredBook | null;
@@ -36,6 +42,11 @@ export function getFreeImagePagesInput(storedBook: StoredBook): BookImagesInput 
     imageStatus: storedBook.image_status,
     pages: storedBook.free_book?.pages,
   };
+}
+
+export function isFreePage1Ready(storedBook: StoredBook) {
+  const input = getFreeImagePagesInput(storedBook);
+  return isIllustrationReady(getImageForPage(input, 1));
 }
 
 export function countReadyFreeImages(storedBook: StoredBook) {
@@ -52,23 +63,125 @@ export function areFreeIllustrationsReady(storedBook: StoredBook) {
   return getMissingFreeImagePages(storedBook).length === 0;
 }
 
+function isFreePageEligibleForGeneration(
+  storedBook: StoredBook,
+  pageNumber: number,
+  input: BookImagesInput,
+) {
+  const image = getImageForPage(input, pageNumber);
+  if (isIllustrationReady(image)) {
+    return false;
+  }
+
+  if (image?.status === "generating" && isImageFreshlyGenerating(storedBook, pageNumber, input)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function findNextMissingFreeImagePage(storedBook: StoredBook) {
   const input = getFreeImagePagesInput(storedBook);
+  const page1Ready = isFreePage1Ready(storedBook);
 
   for (const pageNumber of FREE_IMAGE_PAGES) {
-    const image = getImageForPage(input, pageNumber);
-    if (isIllustrationReady(image)) {
+    if (!page1Ready && pageNumber !== 1) {
       continue;
     }
 
-    if (image?.status === "generating" && isImageFreshlyGenerating(storedBook, pageNumber, input)) {
-      continue;
+    if (isFreePageEligibleForGeneration(storedBook, pageNumber, input)) {
+      return pageNumber;
     }
-
-    return pageNumber;
   }
 
   return null;
+}
+
+export function getFreePreviewGenerationTargets(storedBook: StoredBook) {
+  const input = getFreeImagePagesInput(storedBook);
+
+  if (!isFreePage1Ready(storedBook)) {
+    return isFreePageEligibleForGeneration(storedBook, 1, input) ? [1] : [];
+  }
+
+  return FREE_PREVIEW_PARALLEL_PAGES.filter((pageNumber) =>
+    isFreePageEligibleForGeneration(storedBook, pageNumber, input),
+  );
+}
+
+async function loadReferenceImageBuffer(imageUrl: string) {
+  if (imageUrl.startsWith("data:")) {
+    const base64 = imageUrl.split(",")[1];
+    if (!base64) {
+      throw new Error("Invalid reference image data URL.");
+    }
+
+    return Buffer.from(base64, "base64");
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error("Failed to fetch reference image.");
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function getFreePreviewPage1ReferenceUrl(storedBook: StoredBook) {
+  if (!isFreePage1Ready(storedBook)) {
+    return null;
+  }
+
+  const input = getFreeImagePagesInput(storedBook);
+  const page1Image = getImageForPage(input, 1);
+  return resolveImageDisplayUrl(page1Image);
+}
+
+async function generateFreePreviewPageImage(
+  book: LoreBook,
+  page: BookPage,
+  referenceImageUrl: string | null,
+) {
+  if (page.pageNumber === 1 || !referenceImageUrl) {
+    return generateBookPageImage(book, page, {
+      fallbackOnFailure: false,
+      maxAttempts: 2,
+    });
+  }
+
+  const prompt = buildFinalImagePrompt(book, page);
+  const referencePrompt = `Image 1 is the established character reference. Preserve the exact same character appearance, face, clothing palette, and visual style from Image 1.\n\n${prompt}`;
+
+  try {
+    const imageBuffer = await loadReferenceImageBuffer(referenceImageUrl);
+    const referenceFile = new File([imageBuffer], "page-1-reference.png", { type: "image/png" });
+    const response = await openai.images.edit({
+      model: IMAGE_MODEL,
+      image: referenceFile,
+      prompt: referencePrompt,
+      size: IMAGE_SIZE as "1024x1024" | "1024x1536" | "1536x1024",
+      quality: normalizeImageQuality(IMAGE_QUALITY),
+    });
+
+    const image = response.data?.[0];
+    if (image?.b64_json) {
+      return dataUrlFromBase64(image.b64_json, "image/png");
+    }
+
+    if (image?.url) {
+      return image.url;
+    }
+  } catch (error) {
+    console.warn("[FREE_PREVIEW_REFERENCE_IMAGE_FALLBACK]", {
+      pageNumber: page.pageNumber,
+      message: error instanceof Error ? error.message : error,
+    });
+  }
+
+  return generateBookPageImage(book, page, {
+    fallbackOnFailure: false,
+    maxAttempts: 2,
+  });
 }
 
 export async function generateAndStoreFreeImageForPage({
@@ -129,7 +242,23 @@ export async function generateAndStoreFreeImageForPage({
     }
   }
 
-  const normalizedBook = normalizeLoreBook(book);
+  if (pageNumber !== 1 && !isFreePage1Ready(latestBook)) {
+    return { book: latestBook, generated: false, claimLost: false };
+  }
+
+  let normalizedBook = normalizeLoreBook(book);
+  let referenceImageUrl: string | null = null;
+
+  if (pageNumber !== 1) {
+    const mergedBook = await mergeBookAssets(
+      latestBook.free_book || book,
+      latestBook.images,
+      latestBook.audio,
+    );
+    normalizedBook = normalizeLoreBook(mergedBook);
+    referenceImageUrl = await getFreePreviewPage1ReferenceUrl(latestBook);
+  }
+
   const page = normalizedBook.pages.find((item) => item.pageNumber === pageNumber);
   if (!page) {
     await markPageImageFailed(bookId, pageNumber, claimId);
@@ -150,13 +279,11 @@ export async function generateAndStoreFreeImageForPage({
       bookId,
       pageNumber,
       claimId,
+      usesPage1Reference: pageNumber !== 1 && Boolean(referenceImageUrl),
     });
 
     const imageUrl = await withTimeout(
-      generateBookPageImage(normalizedBook, page, {
-        fallbackOnFailure: false,
-        maxAttempts: 2,
-      }),
+      generateFreePreviewPageImage(normalizedBook, page, referenceImageUrl),
       IMAGE_GENERATION_TIMEOUT_MS,
       `FREE_IMAGE_PAGE_${pageNumber}`,
     );
@@ -180,6 +307,51 @@ export async function generateAndStoreFreeImageForPage({
     });
     return { book: latestBook, generated: false, claimLost: false };
   }
+}
+
+async function buildFreePreviewGenerationResult(
+  accessToken: string,
+  storedBook: StoredBook,
+  pageNumbers: number[],
+  generationResults: GenerateStoredFreeImageResult[],
+) {
+  const generated = generationResults.some((result) => result.generated);
+  const claimLost = generationResults.some((result) => result.claimLost);
+
+  if (claimLost) {
+    const refreshedBook = (await getBookByAccessToken(accessToken)) || storedBook;
+    return {
+      storedBook: refreshedBook,
+      pageNumber: pageNumbers[0] ?? null,
+      generated: false,
+      done: false,
+      retryable: true as const,
+      reason: "claim_lost_to_another_request" as const,
+      allFreeImagesReady: areFreeIllustrationsReady(refreshedBook),
+      readyFreeImageCount: countReadyFreeImages(refreshedBook),
+      missingFreePages: getMissingFreeImagePages(refreshedBook),
+    };
+  }
+
+  const refreshedBook = (await getBookByAccessToken(accessToken)) || storedBook;
+  const missingFreePages = getMissingFreeImagePages(refreshedBook);
+  const allFreeImagesReady = missingFreePages.length === 0;
+
+  if (allFreeImagesReady) {
+    await updateGenerationProgress(refreshedBook.id, "ready_free", { generationError: null });
+  } else {
+    await updateGenerationProgress(refreshedBook.id, "generating_images", { generationError: null });
+  }
+
+  return {
+    storedBook: refreshedBook,
+    pageNumber: pageNumbers.length === 1 ? pageNumbers[0] : null,
+    generated,
+    done: allFreeImagesReady || findNextMissingFreeImagePage(refreshedBook) === null,
+    allFreeImagesReady,
+    readyFreeImageCount: countReadyFreeImages(refreshedBook),
+    missingFreePages,
+  };
 }
 
 export async function generateNextFreeImage(accessToken: string) {
@@ -207,8 +379,8 @@ export async function generateNextFreeImage(accessToken: string) {
     };
   }
 
-  const pageNumber = findNextMissingFreeImagePage(storedBook);
-  if (!pageNumber) {
+  const targets = getFreePreviewGenerationTargets(storedBook);
+  if (targets.length === 0) {
     const refreshedBook = await getBookByAccessToken(accessToken);
     if (!refreshedBook) {
       throw new Error("Book not found.");
@@ -218,62 +390,43 @@ export async function generateNextFreeImage(accessToken: string) {
       storedBook: refreshedBook,
       pageNumber: null,
       generated: false,
-      done: true,
+      done: findNextMissingFreeImagePage(refreshedBook) === null,
       allFreeImagesReady: areFreeIllustrationsReady(refreshedBook),
       readyFreeImageCount: countReadyFreeImages(refreshedBook),
       missingFreePages: getMissingFreeImagePages(refreshedBook),
     };
   }
 
-  console.log("[FREE_IMAGE_GENERATION_START]", { accessToken, pageNumber, at: Date.now() });
+  if (targets.length === 1) {
+    const pageNumber = targets[0];
+    console.log("[FREE_IMAGE_GENERATION_START]", { accessToken, pageNumber, at: Date.now() });
 
-  const generationResult = await generateAndStoreFreeImageForPage({
-    accessToken,
-    bookId: storedBook.id,
-    book: sourceBook,
-    pageNumber,
-  });
-
-  if (generationResult.claimLost) {
-    const refreshedBook = (await getBookByAccessToken(accessToken)) || generationResult.book;
-    return {
-      storedBook: refreshedBook || storedBook,
+    const generationResult = await generateAndStoreFreeImageForPage({
+      accessToken,
+      bookId: storedBook.id,
+      book: sourceBook,
       pageNumber,
-      generated: false,
-      done: false,
-      retryable: true,
-      reason: "claim_lost_to_another_request" as const,
-      allFreeImagesReady: refreshedBook ? areFreeIllustrationsReady(refreshedBook) : false,
-      readyFreeImageCount: refreshedBook ? countReadyFreeImages(refreshedBook) : countReadyFreeImages(storedBook),
-      missingFreePages: refreshedBook ? getMissingFreeImagePages(refreshedBook) : getMissingFreeImagePages(storedBook),
-    };
+    });
+
+    console.log("[FREE_IMAGE_GENERATION_DONE]", { accessToken, pageNumber, at: Date.now() });
+    return buildFreePreviewGenerationResult(accessToken, storedBook, [pageNumber], [generationResult]);
   }
 
-  console.log("[FREE_IMAGE_GENERATION_DONE]", { accessToken, pageNumber, at: Date.now() });
+  console.log("[FREE_IMAGES_PARALLEL_START]", { pages: targets, at: Date.now() });
 
-  const refreshedBook = (await getBookByAccessToken(accessToken)) || generationResult.book;
-  if (!refreshedBook) {
-    throw new Error("Book not found after image generation.");
-  }
+  const generationResults = await Promise.all(
+    targets.map((pageNumber) =>
+      generateAndStoreFreeImageForPage({
+        accessToken,
+        bookId: storedBook.id,
+        book: sourceBook,
+        pageNumber,
+      }),
+    ),
+  );
 
-  const missingFreePages = getMissingFreeImagePages(refreshedBook);
-  const allFreeImagesReady = missingFreePages.length === 0;
-
-  if (allFreeImagesReady) {
-    await updateGenerationProgress(refreshedBook.id, "ready_free", { generationError: null });
-  } else {
-    await updateGenerationProgress(refreshedBook.id, "generating_images", { generationError: null });
-  }
-
-  return {
-    storedBook: refreshedBook,
-    pageNumber,
-    generated: generationResult.generated,
-    done: allFreeImagesReady || findNextMissingFreeImagePage(refreshedBook) === null,
-    allFreeImagesReady,
-    readyFreeImageCount: countReadyFreeImages(refreshedBook),
-    missingFreePages,
-  };
+  console.log("[FREE_IMAGES_PARALLEL_DONE]", { pages: targets, at: Date.now() });
+  return buildFreePreviewGenerationResult(accessToken, storedBook, targets, generationResults);
 }
 
 export async function generateFreeBookImages(accessToken: string, book: LoreBook): Promise<StoredBook> {
@@ -282,20 +435,32 @@ export async function generateFreeBookImages(accessToken: string, book: LoreBook
     throw new Error("Book not found.");
   }
 
-  console.log("[FREE_IMAGES_PARALLEL_START]", Date.now());
+  await generateAndStoreFreeImageForPage({
+    accessToken,
+    bookId: storedBook.id,
+    book,
+    pageNumber: 1,
+  });
+
+  const refreshedBook = await getBookByAccessToken(accessToken);
+  if (!refreshedBook?.free_book) {
+    throw new Error("Book not found after page 1 generation.");
+  }
+
+  console.log("[FREE_IMAGES_PARALLEL_START]", { pages: [...FREE_PREVIEW_PARALLEL_PAGES], at: Date.now() });
 
   await Promise.allSettled(
-    FREE_IMAGE_PAGES.map((pageNumber) =>
+    FREE_PREVIEW_PARALLEL_PAGES.map((pageNumber) =>
       generateAndStoreFreeImageForPage({
         accessToken,
-        bookId: storedBook.id,
-        book,
+        bookId: refreshedBook.id,
+        book: refreshedBook.free_book as LoreBook,
         pageNumber,
       }),
     ),
   );
 
-  console.log("[FREE_IMAGES_PARALLEL_DONE]", Date.now());
+  console.log("[FREE_IMAGES_PARALLEL_DONE]", { pages: [...FREE_PREVIEW_PARALLEL_PAGES], at: Date.now() });
 
   const finalBook = await getBookByAccessToken(accessToken);
   if (!finalBook) {

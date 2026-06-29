@@ -13,7 +13,7 @@ import {
 } from "@/lib/book-images";
 import { generateNextPremiumImage } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
-import { generateAndStoreFreeImageForPage } from "@/lib/freeImages";
+import { generateAndStoreFreeImageForPage, isFreePage1Ready } from "@/lib/freeImages";
 
 export async function retryMissingImages(accessToken: string) {
   const storedBook = await getBookByAccessToken(accessToken);
@@ -54,18 +54,54 @@ export async function retryMissingImages(accessToken: string) {
       }
     }
   } else {
-    for (const pageNumber of missingBefore) {
-      const image = getImageForPage(imagesInput, pageNumber);
-      if (isIllustrationReady(image)) {
-        continue;
-      }
+    const freeMissing = missingBefore.filter((pageNumber) => pageNumber <= FREE_IMAGE_PAGE_COUNT);
 
-      await generateAndStoreFreeImageForPage({
-        accessToken,
-        bookId: storedBook.id,
-        book: sourceBook,
-        pageNumber,
+    if (freeMissing.includes(1)) {
+      const image = getImageForPage(imagesInput, 1);
+      if (!isIllustrationReady(image)) {
+        await generateAndStoreFreeImageForPage({
+          accessToken,
+          bookId: storedBook.id,
+          book: sourceBook,
+          pageNumber: 1,
+        });
+      }
+    }
+
+    const refreshedBook = await getBookByAccessToken(accessToken);
+    if (!refreshedBook) {
+      throw new Error("Book not found.");
+    }
+
+    const refreshedSource = refreshedBook.free_book;
+    if (!refreshedSource) {
+      throw new Error("Book content is missing.");
+    }
+
+    const refreshedInput = {
+      images: refreshedBook.images,
+      imageStatus: refreshedBook.image_status,
+      pages: refreshedSource.pages,
+    };
+
+    if (isFreePage1Ready(refreshedBook)) {
+      const parallelTargets = [2, 3].filter((pageNumber) => {
+        const image = getImageForPage(refreshedInput, pageNumber);
+        return !isIllustrationReady(image);
       });
+
+      if (parallelTargets.length > 0) {
+        await Promise.allSettled(
+          parallelTargets.map((pageNumber) =>
+            generateAndStoreFreeImageForPage({
+              accessToken,
+              bookId: refreshedBook.id,
+              book: refreshedSource,
+              pageNumber,
+            }),
+          ),
+        );
+      }
     }
   }
 
