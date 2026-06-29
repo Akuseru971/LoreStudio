@@ -35,6 +35,7 @@ import {
   isGenerationStale,
 } from "@/lib/generation-progress";
 import { normalizeBook } from "@/lib/normalizeBook";
+import { safeTrackClient } from "@/lib/safe-analytics-client";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
 type AppStep =
@@ -311,6 +312,7 @@ export default function Home() {
               console.log("[GENERATION_REQUEST_FINISHED]", Date.now());
               setBook(finalBook);
               setGenerationStatus("ready");
+              safeTrackClient("book_created", { source: "form" });
               return;
             }
           }
@@ -336,6 +338,7 @@ export default function Home() {
         console.log("[GENERATION_REQUEST_FINISHED_PARTIAL]", Date.now());
         setBook(finalBook);
         setGenerationStatus("ready");
+        safeTrackClient("book_created", { source: "form" });
         return;
       }
     }
@@ -367,6 +370,7 @@ export default function Home() {
 
     generationStartedRef.current = true;
     console.log("[CREATE_LEGEND_CLICK]", Date.now());
+    safeTrackClient("book_creation_started", { source: "homepage" });
 
     generationRunRef.current += 1;
     const runId = generationRunRef.current;

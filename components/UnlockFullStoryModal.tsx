@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { safeTrackClient } from "@/lib/safe-analytics-client";
 import type { LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -45,12 +46,34 @@ export default function UnlockFullStoryModal({
       setEmail("");
       setError(null);
       setIsRedirecting(false);
+      safeTrackClient("unlock_carousel_started", { source: "unlock_modal" });
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || showEmailStep) {
+      return;
+    }
+
+    if (carouselIndex === 1) {
+      safeTrackClient("unlock_carousel_slide_viewed", { slide: 2 });
+    }
+
+    if (carouselIndex === 2) {
+      safeTrackClient("unlock_carousel_slide_viewed", { slide: 3 });
+    }
+  }, [carouselIndex, isOpen, showEmailStep]);
 
   const handleUnlock = useCallback(async () => {
     setIsRedirecting(true);
     setError(null);
+
+    const trimmedEmail = email.trim();
+    if (trimmedEmail) {
+      safeTrackClient("unlock_email_submitted", { source: "unlock_modal" });
+    }
+
+    safeTrackClient("checkout_started", { source: "unlock_modal" });
 
     try {
       const response = await fetch("/api/create-checkout-session", {
@@ -58,7 +81,7 @@ export default function UnlockFullStoryModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessToken,
-          email: email.trim() || undefined,
+          email: trimmedEmail || undefined,
         }),
       });
 
@@ -79,6 +102,7 @@ export default function UnlockFullStoryModal({
 
   const handleCarouselNext = () => {
     if (isLastSlide) {
+      safeTrackClient("unlock_carousel_completed", { source: "unlock_modal" });
       setShowEmailStep(true);
       return;
     }

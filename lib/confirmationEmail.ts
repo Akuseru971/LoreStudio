@@ -8,6 +8,7 @@ import {
 } from "@/lib/bookStore";
 import { buildBookUnlockedEmailUrls, sendPaymentConfirmationEmail } from "@/lib/email";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { safeTrackServer } from "@/lib/safe-analytics-server";
 import type { StoredBook } from "@/lib/types";
 
 function safeErrorMessage(error: unknown) {
@@ -202,6 +203,7 @@ export async function sendPaymentConfirmationEmailIfNeeded(
       bookId: claimedBook.id,
       recipient,
     });
+    safeTrackServer("payment_email_sent", { source: "payment_email" });
     return {
       sent: true,
       skipped: false,

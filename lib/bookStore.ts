@@ -13,6 +13,7 @@ import {
   resolveImageDisplayUrl,
 } from "@/lib/book-images";
 import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
+import { safeTrackServer } from "@/lib/safe-analytics-server";
 import type {
   ApprovedSynopsis,
   BookFormInput,
@@ -1392,6 +1393,7 @@ export async function uploadBookPdf(bookId: string, pdfBuffer: Buffer) {
     pdfStatus: savedBook.pdf_status,
     pdfStoragePath: savedBook.pdf_storage_path,
   });
+  safeTrackServer("pdf_generated", { source: "pdf_generation" });
   return pdfStoragePath;
 }
 

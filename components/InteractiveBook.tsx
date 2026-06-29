@@ -27,6 +27,7 @@ import { useIsMobile } from "@/lib/useIsMobile";
 import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio } from "@/lib/client/api";
 import { startPremiumGenerationLoop } from "@/lib/client/premium-generation";
 import { normalizeBook } from "@/lib/normalizeBook";
+import { safeTrackClient } from "@/lib/safe-analytics-client";
 import type { ImagePageStatus, LoreBook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -375,8 +376,13 @@ export default function InteractiveBook({
 
   const handleUnlockClick = useCallback(() => {
     stopNarration();
+    const currentPage = illustratedPages[activePageIndex];
+    safeTrackClient("unlock_clicked", {
+      source: "book_reader",
+      pageNumber: currentPage?.pageNumber ?? activePageIndex + 1,
+    });
     setShowUnlockModal(true);
-  }, [stopNarration]);
+  }, [activePageIndex, illustratedPages, stopNarration]);
 
   const goToSpread = useCallback(
     (pageIndex: number) => {

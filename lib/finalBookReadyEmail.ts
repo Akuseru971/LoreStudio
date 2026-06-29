@@ -11,6 +11,7 @@ import {
 import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
 import { buildBookUnlockedEmailUrls, buildFinalReadyEmailPdfUrl, sendFinalBookReadyEmail } from "@/lib/email";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { safeTrackServer } from "@/lib/safe-analytics-server";
 
 function safeErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -150,6 +151,7 @@ export async function maybeSendFinalBookReadyEmail(bookId: string): Promise<Fina
 
     await markPdfReadyEmailSent(claimedBook.id);
     console.log("[FINAL_READY_EMAIL_SENT]", { bookId, recipient });
+    safeTrackServer("final_ready_email_sent", { source: "final_email" });
     return { sent: true, reason: "sent" };
   } catch (error) {
     const message = safeErrorMessage(error);

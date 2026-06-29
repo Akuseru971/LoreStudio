@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { track } from "@vercel/analytics/server";
 import {
   getBookByAccessToken,
   getBookById,
@@ -142,6 +143,12 @@ export async function POST(request: Request) {
           bookId: storedBook.id,
         });
       }
+
+      void track(
+        "payment_confirmed",
+        { source: "stripe_webhook" },
+        { request },
+      ).catch(() => {});
 
       const refreshedBook = (await getBookById(storedBook.id)) || storedBook;
 

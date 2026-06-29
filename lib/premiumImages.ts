@@ -24,6 +24,7 @@ import {
 } from "@/lib/imageGenerationTimestamps";
 import { generateBookPageImage } from "@/lib/images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { safeTrackServer } from "@/lib/safe-analytics-server";
 import { IMAGE_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
 import type { LoreBook, StoredBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
@@ -282,6 +283,7 @@ async function markPremiumAssetsReadyIfComplete(storedBook: StoredBook) {
   }
 
   console.log("[GENERATE_NEXT_PREMIUM_IMAGE_ALL_READY]");
+  safeTrackServer("book_images_ready", { readyImagesCount: 8 });
   await updateGenerationProgress(storedBook.id, "ready_free", { generationError: null });
 
   if (hasPremiumAccess(storedBook.status) && storedBook.status !== "ready") {
