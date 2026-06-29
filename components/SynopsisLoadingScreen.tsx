@@ -14,11 +14,11 @@ type SynopsisLoadingScreenProps = {
   loadingMessage?: string;
 };
 
-const INITIAL_PROGRESS = 6;
-const EARLY_STAGE_CEILING = 58;
-const FIRST_VISION_CEILING = 88;
+const INITIAL_PROGRESS = 2;
+const EARLY_STAGE_CEILING = 48;
+const FIRST_VISION_CEILING = 87;
 const COMPLETE_CEILING = 100;
-const PROGRESS_TICK_MS = 120;
+const PROGRESS_TICK_MS = 150;
 
 function getStageCeiling(loadingMessage: string | undefined) {
   const message = loadingMessage?.trim() || GENERATION_PROGRESS_MESSAGES.writing;
@@ -42,10 +42,36 @@ function getProgressIncrement(current: number, ceiling: number) {
   }
 
   if (ceiling >= COMPLETE_CEILING) {
-    return Math.max(0.55, gap * 0.14);
+    return Math.max(0.4, gap * 0.12);
   }
 
-  return Math.max(0.1, Math.min(1.05, gap * 0.034));
+  const MIN_STEP = 0.014;
+
+  if (ceiling <= EARLY_STAGE_CEILING) {
+    if (current < 12) {
+      return Math.max(MIN_STEP * 0.65, Math.min(0.055, gap * 0.0035));
+    }
+
+    if (current < 28) {
+      return Math.max(MIN_STEP, Math.min(0.09, gap * 0.0065));
+    }
+
+    if (current < 40) {
+      return Math.max(MIN_STEP, Math.min(0.13, gap * 0.009));
+    }
+
+    return Math.max(MIN_STEP, Math.min(0.17, gap * 0.011));
+  }
+
+  if (current < 58) {
+    return Math.max(MIN_STEP, Math.min(0.11, gap * 0.0075));
+  }
+
+  if (current < 72) {
+    return Math.max(MIN_STEP, Math.min(0.14, gap * 0.0095));
+  }
+
+  return Math.max(MIN_STEP, Math.min(0.18, gap * 0.0115));
 }
 
 function getScrollDuration(synopsisText: string) {
