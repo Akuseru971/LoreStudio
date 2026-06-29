@@ -200,7 +200,26 @@ async function generateFreePreviewPageImage(
   }
 
   const prompt = buildFinalImagePrompt(book, page);
-  const referencePrompt = `Image 1 is the established character reference. Preserve the exact same character appearance, face, clothing palette, and visual style from Image 1.\n\n${prompt}`;
+  const referencePrompt = `Image 1 is the character appearance reference only.
+
+Preserve from Image 1:
+- the same character identity and face
+- the same hairstyle
+- the same skin tone
+- the same general outfit design
+- the same overall character design and visual style
+
+Do NOT copy from Image 1:
+- pose
+- posture
+- framing
+- camera angle
+- body position
+- composition
+
+Create a new illustrated story moment for this page. Keep the character recognizable, but show a different action, a different pose, different posture, and a different scene composition. Do not recreate the same image with minor changes.
+
+${prompt}`;
 
   try {
     const imageBuffer = await loadReferenceImageBuffer(referenceImageUrl);
