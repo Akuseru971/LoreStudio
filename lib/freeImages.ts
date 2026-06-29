@@ -13,6 +13,7 @@ import {
   updateGenerationProgress,
 } from "@/lib/bookStore";
 import { getImageForPage, isIllustrationReady, resolveImageDisplayUrl, type BookImagesInput } from "@/lib/book-images";
+import { getDirectImageUrl, getImageStoragePath } from "@/lib/book-image-utils";
 import {
   getPageGenerationStatus,
   isImageFreshlyGenerating,
@@ -35,6 +36,55 @@ export type GenerateStoredFreeImageResult = {
   generated: boolean;
   claimLost: boolean;
 };
+
+export type FreePreviewGenerationResult = {
+  storedBook: StoredBook;
+  pageNumber: number | null;
+  generated: boolean;
+  done: boolean;
+  allFreeImagesReady: boolean;
+  readyFreeImageCount: number;
+  missingFreePages: number[];
+  skipped?: boolean;
+  reason?: string;
+  retryable?: boolean;
+};
+
+function isFreePreviewPageAlreadyReady(storedBook: StoredBook, pageNumber: number) {
+  const input = getFreeImagePagesInput(storedBook);
+  const image = getImageForPage(input, pageNumber);
+  if (!isIllustrationReady(image)) {
+    return false;
+  }
+
+  return Boolean(getDirectImageUrl(image) || getImageStoragePath(image));
+}
+
+function buildFreePreviewSkipReadyResult(
+  storedBook: StoredBook,
+  pageNumber: number,
+): FreePreviewGenerationResult {
+  console.log("[FREE_IMAGE_SKIP_ALREADY_READY]", { pageNumber });
+
+  return {
+    storedBook,
+    pageNumber,
+    generated: false,
+    done: findNextMissingFreeImagePage(storedBook) === null,
+    allFreeImagesReady: areFreeIllustrationsReady(storedBook),
+    readyFreeImageCount: countReadyFreeImages(storedBook),
+    missingFreePages: getMissingFreeImagePages(storedBook),
+    skipped: true,
+    reason: "page_already_ready",
+  };
+}
+
+function logClaimLostSkipOpenAi(bookId: string, pageNumber: number) {
+  console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+    bookId,
+    pageNumber,
+  });
+}
 
 export function getFreeImagePagesInput(storedBook: StoredBook): BookImagesInput {
   return {
@@ -202,9 +252,20 @@ export async function generateAndStoreFreeImageForPage({
     return { book: null, generated: false, claimLost: false };
   }
 
+  const latestBeforeClaim = await getBookById(bookId);
+  if (latestBeforeClaim && isFreePreviewPageAlreadyReady(latestBeforeClaim, pageNumber)) {
+    console.log("[FREE_IMAGE_SKIP_ALREADY_READY]", { pageNumber });
+    return { book: latestBeforeClaim, generated: false, claimLost: false };
+  }
+
   const claim = await claimPageImageGeneration(bookId, pageNumber);
   if (!claim) {
     const refreshedBook = await getBookById(bookId);
+    if (refreshedBook && isFreePreviewPageAlreadyReady(refreshedBook, pageNumber)) {
+      console.log("[FREE_IMAGE_SKIP_ALREADY_READY]", { pageNumber });
+      return { book: refreshedBook, generated: false, claimLost: false };
+    }
+
     if (refreshedBook && isImageFreshlyGenerating(refreshedBook, pageNumber)) {
       const state = getPageGenerationStatus(refreshedBook, pageNumber);
       console.log("[IMAGE_GENERATION_SKIP_ALREADY_GENERATING]", {
@@ -215,6 +276,8 @@ export async function generateAndStoreFreeImageForPage({
         ageMs: state.ageMs,
       });
     }
+
+    logClaimLostSkipOpenAi(bookId, pageNumber);
     return {
       book: refreshedBook || (await getBookById(bookId)),
       generated: false,
@@ -226,11 +289,13 @@ export async function generateAndStoreFreeImageForPage({
   let latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || claim.book;
 
   if (!latestBook || !verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+    logClaimLostSkipOpenAi(bookId, pageNumber);
     return { book: latestBook, generated: false, claimLost: true };
   }
 
   const verifyState = getPageGenerationStatus(latestBook, pageNumber);
-  if (verifyState.isReady) {
+  if (verifyState.isReady || isFreePreviewPageAlreadyReady(latestBook, pageNumber)) {
+    console.log("[FREE_IMAGE_SKIP_ALREADY_READY]", { pageNumber });
     return { book: latestBook, generated: false, claimLost: false };
   }
 
@@ -238,6 +303,7 @@ export async function generateAndStoreFreeImageForPage({
     const stampedBook = await stampMissingGeneratingTimestamp(bookId, pageNumber);
     latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || stampedBook || latestBook;
     if (!latestBook || !verifyImageGenerationClaimOwnership(latestBook, pageNumber, claimId)) {
+      logClaimLostSkipOpenAi(bookId, pageNumber);
       return { book: latestBook, generated: false, claimLost: true };
     }
   }
@@ -271,7 +337,13 @@ export async function generateAndStoreFreeImageForPage({
 
   latestBook = (await reloadAndVerifyPageImageClaim(bookId, pageNumber, claimId)) || latestBook;
   if (!latestBook) {
+    logClaimLostSkipOpenAi(bookId, pageNumber);
     return { book: await getBookById(bookId), generated: false, claimLost: true };
+  }
+
+  if (isFreePreviewPageAlreadyReady(latestBook, pageNumber)) {
+    console.log("[FREE_IMAGE_SKIP_ALREADY_READY]", { pageNumber });
+    return { book: latestBook, generated: false, claimLost: false };
   }
 
   try {
@@ -314,7 +386,7 @@ async function buildFreePreviewGenerationResult(
   storedBook: StoredBook,
   pageNumber: number | null,
   generationResult: GenerateStoredFreeImageResult | null,
-) {
+): Promise<FreePreviewGenerationResult> {
   if (generationResult?.claimLost) {
     const refreshedBook = (await getBookByAccessToken(accessToken)) || storedBook;
     return {
@@ -322,8 +394,8 @@ async function buildFreePreviewGenerationResult(
       pageNumber,
       generated: false,
       done: false,
-      retryable: true as const,
-      reason: "claim_lost_to_another_request" as const,
+      retryable: true,
+      reason: "claim_lost_to_another_request",
       allFreeImagesReady: areFreeIllustrationsReady(refreshedBook),
       readyFreeImageCount: countReadyFreeImages(refreshedBook),
       missingFreePages: getMissingFreeImagePages(refreshedBook),
@@ -333,6 +405,7 @@ async function buildFreePreviewGenerationResult(
   const refreshedBook = (await getBookByAccessToken(accessToken)) || storedBook;
   const missingFreePages = getMissingFreeImagePages(refreshedBook);
   const allFreeImagesReady = missingFreePages.length === 0;
+  const readyFreeImageCount = countReadyFreeImages(refreshedBook);
 
   if (allFreeImagesReady) {
     await updateGenerationProgress(refreshedBook.id, "ready_free", { generationError: null });
@@ -346,7 +419,7 @@ async function buildFreePreviewGenerationResult(
     generated: Boolean(generationResult?.generated),
     done: allFreeImagesReady || findNextMissingFreeImagePage(refreshedBook) === null,
     allFreeImagesReady,
-    readyFreeImageCount: countReadyFreeImages(refreshedBook),
+    readyFreeImageCount,
     missingFreePages,
   };
 }
@@ -417,6 +490,10 @@ export async function generateNextFreeImage(accessToken: string, requestedPageNu
   const latestBook = (await getBookByAccessToken(accessToken)) || storedBook;
   const input = getFreeImagePagesInput(latestBook);
 
+  if (isFreePreviewPageAlreadyReady(latestBook, pageNumber)) {
+    return buildFreePreviewSkipReadyResult(latestBook, pageNumber);
+  }
+
   if (pageNumber !== 1 && !isFreePage1Ready(latestBook)) {
     return {
       storedBook: latestBook,
@@ -430,6 +507,10 @@ export async function generateNextFreeImage(accessToken: string, requestedPageNu
   }
 
   if (!isFreePageEligibleForGeneration(latestBook, pageNumber, input)) {
+    if (isFreePreviewPageAlreadyReady(latestBook, pageNumber)) {
+      return buildFreePreviewSkipReadyResult(latestBook, pageNumber);
+    }
+
     return buildFreePreviewGenerationResult(accessToken, latestBook, pageNumber, null);
   }
 

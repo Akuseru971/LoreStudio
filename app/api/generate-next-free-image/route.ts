@@ -34,6 +34,7 @@ export async function POST(request: Request) {
     const book = mergedBook ? normalizeBook(mergedBook) : null;
 
     return NextResponse.json({
+      ok: true,
       success: true,
       status: result.allFreeImagesReady ? "ready_free" : "generating_images",
       message: result.allFreeImagesReady ? "Free illustrations are ready." : "Generation still in progress",
@@ -41,12 +42,13 @@ export async function POST(request: Request) {
       pageNumber: result.pageNumber,
       generated: result.generated,
       done: result.done,
+      skipped: result.skipped ?? false,
+      reason: result.reason,
       allFreeImagesReady: result.allFreeImagesReady,
       readyFreeImageCount: result.readyFreeImageCount,
       freeImagesTotal: FREE_IMAGE_PAGE_COUNT,
       missingFreePages: result.missingFreePages,
-      retryable: "retryable" in result ? result.retryable : undefined,
-      reason: "reason" in result ? result.reason : undefined,
+      retryable: result.retryable,
       imageStatus: normalized.images,
       book,
     });

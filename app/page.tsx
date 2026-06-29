@@ -54,16 +54,32 @@ const MAX_SYNOPSIS_REGENERATIONS = 3;
 type FreePreviewImageResponse = {
   allFreeImagesReady?: boolean;
   missingFreePages?: number[];
+  readyFreeImageCount?: number;
+  pageNumber?: number | null;
+  skipped?: boolean;
+  reason?: string;
   retryable?: boolean;
   error?: string;
 };
+
+function shouldStopFreePreviewLoop(data: FreePreviewImageResponse | null | undefined) {
+  if (!data) {
+    return false;
+  }
+
+  return data.allFreeImagesReady || (data.readyFreeImageCount ?? 0) >= 3;
+}
 
 function isFreePreviewPageReady(data: FreePreviewImageResponse | null | undefined, pageNumber: number) {
   if (!data) {
     return false;
   }
 
-  if (data.allFreeImagesReady) {
+  if (shouldStopFreePreviewLoop(data)) {
+    return true;
+  }
+
+  if (data.skipped && data.reason === "page_already_ready" && data.pageNumber === pageNumber) {
     return true;
   }
 
@@ -112,6 +128,7 @@ export default function Home() {
   const generationStartedRef = useRef(false);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
   const freePreviewGenerationInFlightRef = useRef<Promise<void> | null>(null);
+  const freePreviewParallelStartedRunRef = useRef<number | null>(null);
   const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
@@ -191,7 +208,8 @@ export default function Home() {
       const { response, data } = await generateNextFreeImage(token, 1);
       const previewData = data as FreePreviewImageResponse;
 
-      if (previewData.allFreeImagesReady) {
+      if (shouldStopFreePreviewLoop(previewData)) {
+        console.log("[FREE_PREVIEW_LOOP_STOP_ALL_READY]");
         return;
       }
 
@@ -208,26 +226,32 @@ export default function Home() {
       await sleep(500);
     }
 
+    if (freePreviewParallelStartedRunRef.current === runId) {
+      while (generationRunRef.current === runId) {
+        const { response, data } = await fetchBookStatus(token);
+        if (response.ok && (Number(data.readyFreeImageCount ?? 0) >= 3 || data.freeIllustrationsReady)) {
+          console.log("[FREE_PREVIEW_LOOP_STOP_ALL_READY]");
+          return;
+        }
+
+        await sleep(GENERATION_POLL_MS);
+      }
+
+      return;
+    }
+
+    freePreviewParallelStartedRunRef.current = runId;
+
+    await Promise.allSettled([generateNextFreeImage(token, 2), generateNextFreeImage(token, 3)]);
+
     while (generationRunRef.current === runId) {
-      const [page2Result, page3Result] = await Promise.allSettled([
-        generateNextFreeImage(token, 2),
-        generateNextFreeImage(token, 3),
-      ]);
-
-      const page2Data =
-        page2Result.status === "fulfilled" ? (page2Result.value.data as FreePreviewImageResponse) : null;
-      const page3Data =
-        page3Result.status === "fulfilled" ? (page3Result.value.data as FreePreviewImageResponse) : null;
-
-      if (page2Data?.allFreeImagesReady || page3Data?.allFreeImagesReady) {
+      const { response, data } = await fetchBookStatus(token);
+      if (response.ok && (Number(data.readyFreeImageCount ?? 0) >= 3 || data.freeIllustrationsReady)) {
+        console.log("[FREE_PREVIEW_LOOP_STOP_ALL_READY]");
         return;
       }
 
-      if (isFreePreviewPageReady(page2Data, 2) && isFreePreviewPageReady(page3Data, 3)) {
-        return;
-      }
-
-      await sleep(500);
+      await sleep(GENERATION_POLL_MS);
     }
   }
 
@@ -409,6 +433,7 @@ export default function Home() {
 
     generationRunRef.current += 1;
     const runId = generationRunRef.current;
+    freePreviewParallelStartedRunRef.current = null;
 
     setBook(null);
     setAccessToken(null);
@@ -494,6 +519,7 @@ export default function Home() {
   function reset() {
     generationStartedRef.current = false;
     generationRunRef.current += 1;
+    freePreviewParallelStartedRunRef.current = null;
     synopsisRequestRef.current += 1;
     setBook(null);
     setAccessToken(null);
