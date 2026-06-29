@@ -11,18 +11,21 @@ export const maxDuration = 180;
 
 type GenerateNextFreeImageBody = {
   accessToken?: string;
+  pageNumber?: number;
 };
 
 export async function POST(request: Request) {
   const body = (await request.json()) as GenerateNextFreeImageBody;
   const accessToken = body.accessToken?.trim();
+  const pageNumber =
+    typeof body.pageNumber === "number" && Number.isInteger(body.pageNumber) ? body.pageNumber : undefined;
 
   if (!accessToken) {
     return NextResponse.json({ error: "Missing access token." }, { status: 400 });
   }
 
   try {
-    const result = await generateNextFreeImage(accessToken);
+    const result = await generateNextFreeImage(accessToken, pageNumber);
     const normalized = getNormalizedImagesForStoredBook(result.storedBook);
     const sourceBook = result.storedBook.free_book;
     const mergedBook = sourceBook

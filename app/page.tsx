@@ -22,7 +22,6 @@ import {
   isRitualLaunchVideoConfigured,
   RITUAL_LAUNCH_VIDEO_POSTER,
 } from "@/lib/video-config";
-import { FREE_IMAGE_PAGE_COUNT } from "@/lib/image-config";
 import { fetchBook, fetchBookStatus, generateNextFreeImage, retryMissingImages } from "@/lib/client/api";
 import {
   GENERATE_BOOK_FETCH_MS,
@@ -51,7 +50,25 @@ type AppStep =
 type GenerationStatus = "idle" | "generating" | "ready" | "failed";
 
 const MAX_SYNOPSIS_REGENERATIONS = 3;
-const FREE_IMAGE_WORKERS = FREE_IMAGE_PAGE_COUNT;
+
+type FreePreviewImageResponse = {
+  allFreeImagesReady?: boolean;
+  missingFreePages?: number[];
+  retryable?: boolean;
+  error?: string;
+};
+
+function isFreePreviewPageReady(data: FreePreviewImageResponse | null | undefined, pageNumber: number) {
+  if (!data) {
+    return false;
+  }
+
+  if (data.allFreeImagesReady) {
+    return true;
+  }
+
+  return !data.missingFreePages?.includes(pageNumber);
+}
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
@@ -94,7 +111,7 @@ export default function Home() {
   const generationRunRef = useRef(0);
   const generationStartedRef = useRef(false);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
-  const freeImageGenerationInFlightRef = useRef<Promise<unknown> | null>(null);
+  const freePreviewGenerationInFlightRef = useRef<Promise<void> | null>(null);
   const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
@@ -169,43 +186,63 @@ export default function Home() {
     }
   }, []);
 
-  async function requestNextFreeImage(token: string) {
-    while (freeImageGenerationInFlightRef.current) {
-      await freeImageGenerationInFlightRef.current;
-    }
-
-    const request = generateNextFreeImage(token);
-    freeImageGenerationInFlightRef.current = request;
-    try {
-      return await request;
-    } finally {
-      if (freeImageGenerationInFlightRef.current === request) {
-        freeImageGenerationInFlightRef.current = null;
-      }
-    }
-  }
-
-  async function generateFreeImagesWorker(token: string, runId: number) {
+  async function runFreePreviewImageGeneration(token: string, runId: number) {
     while (generationRunRef.current === runId) {
-      const { response, data } = await requestNextFreeImage(token);
+      const { response, data } = await generateNextFreeImage(token, 1);
+      const previewData = data as FreePreviewImageResponse;
 
-      if (!response.ok && !data.retryable) {
-        console.warn("[FREE_IMAGE_WORKER_ERROR]", data.error);
+      if (previewData.allFreeImagesReady) {
+        return;
+      }
+
+      if (!response.ok && !previewData.retryable) {
+        console.warn("[FREE_IMAGE_WORKER_ERROR]", previewData.error);
         await sleep(GENERATION_POLL_MS);
         continue;
       }
 
-      if (data.allFreeImagesReady || (data.done && !data.generated)) {
-        return;
-      }
-
-      if (data.retryable) {
-        await sleep(500);
-        continue;
+      if (isFreePreviewPageReady(previewData, 1)) {
+        break;
       }
 
       await sleep(500);
     }
+
+    while (generationRunRef.current === runId) {
+      const [page2Result, page3Result] = await Promise.allSettled([
+        generateNextFreeImage(token, 2),
+        generateNextFreeImage(token, 3),
+      ]);
+
+      const page2Data =
+        page2Result.status === "fulfilled" ? (page2Result.value.data as FreePreviewImageResponse) : null;
+      const page3Data =
+        page3Result.status === "fulfilled" ? (page3Result.value.data as FreePreviewImageResponse) : null;
+
+      if (page2Data?.allFreeImagesReady || page3Data?.allFreeImagesReady) {
+        return;
+      }
+
+      if (isFreePreviewPageReady(page2Data, 2) && isFreePreviewPageReady(page3Data, 3)) {
+        return;
+      }
+
+      await sleep(500);
+    }
+  }
+
+  function kickFreePreviewImageGeneration(token: string, runId: number) {
+    if (freePreviewGenerationInFlightRef.current) {
+      return;
+    }
+
+    const task = runFreePreviewImageGeneration(token, runId).finally(() => {
+      if (freePreviewGenerationInFlightRef.current === task) {
+        freePreviewGenerationInFlightRef.current = null;
+      }
+    });
+
+    freePreviewGenerationInFlightRef.current = task;
   }
 
   async function fetchJsonWithTimeout<T>(url: string, init: RequestInit, timeoutMs: number) {
@@ -274,9 +311,7 @@ export default function Home() {
     }
 
     const kickImageWorkers = () => {
-      void Promise.allSettled(
-        Array.from({ length: FREE_IMAGE_WORKERS }, () => generateFreeImagesWorker(accessToken, runId)),
-      );
+      kickFreePreviewImageGeneration(accessToken, runId);
     };
 
     kickImageWorkers();
