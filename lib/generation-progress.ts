@@ -16,6 +16,7 @@ export const GENERATE_BOOK_FETCH_MS = 150 * 1000;
 export const GENERATION_PROGRESS_MESSAGES = {
   writing: "Writing your illustrated chronicle...",
   illustrations: "Preparing the first illustrations...",
+  firstVisionReady: "Your first vision is ready.\nFinalizing your preview...",
   longWait90: "Your chronicle is still being written. Some legends take a little longer.",
   longWait180: "The first illustrations are still being prepared. You can keep this page open.",
   almostReady: "Your book is almost ready.",
@@ -44,6 +45,10 @@ export function getClientProgressMessage({
 }) {
   if (readyFreeImageCount >= freeImagesTotal && hasText) {
     return GENERATION_PROGRESS_MESSAGES.almostReady;
+  }
+
+  if (hasText && readyFreeImageCount >= 1 && readyFreeImageCount < freeImagesTotal) {
+    return GENERATION_PROGRESS_MESSAGES.firstVisionReady;
   }
 
   if (elapsedMs >= 180_000) {

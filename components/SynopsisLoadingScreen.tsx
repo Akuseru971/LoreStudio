@@ -53,7 +53,7 @@ export default function SynopsisLoadingScreen({ synopsis, formInput, loadingMess
 
         <div className="loading-indicator shrink-0" role="status" aria-live="polite">
           <div className="loading-rune" aria-hidden="true" />
-          <span>{loadingMessage || "Writing your illustrated chronicle..."}</span>
+          <span className="whitespace-pre-line">{loadingMessage || "Writing your illustrated chronicle..."}</span>
         </div>
 
         <div className="synopsis-scroll-container mx-auto w-full max-w-[680px]">
