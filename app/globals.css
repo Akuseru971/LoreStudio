@@ -818,9 +818,10 @@ button {
 
 .loading-indicator {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 12px;
   margin-top: 12px;
   margin-bottom: 14px;
   color: rgba(255, 255, 255, 0.78);
@@ -829,15 +830,26 @@ button {
   text-transform: uppercase;
 }
 
-.loading-rune {
-  width: 34px;
-  height: 34px;
+.loading-progress {
+  width: min(280px, 72vw);
+  height: 5px;
   flex-shrink: 0;
-  border: 1px solid rgba(216, 184, 112, 0.45);
-  border-top-color: rgba(216, 184, 112, 1);
+  overflow: hidden;
   border-radius: 999px;
-  animation: runeSpin 1.2s linear infinite;
-  box-shadow: 0 0 18px rgba(82, 168, 255, 0.25);
+  border: 1px solid rgba(216, 184, 112, 0.28);
+  background: rgba(8, 10, 16, 0.72);
+  box-shadow:
+    inset 0 0 10px rgba(0, 0, 0, 0.35),
+    0 0 16px rgba(82, 168, 255, 0.14);
+}
+
+.loading-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(98, 156, 228, 0.92) 0%, rgba(216, 184, 112, 0.96) 72%, rgba(247, 235, 206, 0.98) 100%);
+  box-shadow: 0 0 14px rgba(217, 189, 120, 0.38);
+  transition: width 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
 }
 
 @keyframes synopsisScrollUp {
@@ -860,16 +872,13 @@ button {
   }
 }
 
-@keyframes runeSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .synopsis-scroll-text,
-  .loading-rune {
+  .synopsis-scroll-text {
     animation: none;
+  }
+
+  .loading-progress-fill {
+    transition: none;
   }
 
   .synopsis-scroll-text {

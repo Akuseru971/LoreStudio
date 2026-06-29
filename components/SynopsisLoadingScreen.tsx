@@ -4,7 +4,8 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { GENERATION_PROGRESS_MESSAGES } from "@/lib/generation-progress";
 import type { ApprovedSynopsis, BookFormInput } from "@/lib/types";
 
 type SynopsisLoadingScreenProps = {
@@ -13,6 +14,40 @@ type SynopsisLoadingScreenProps = {
   loadingMessage?: string;
 };
 
+const INITIAL_PROGRESS = 6;
+const EARLY_STAGE_CEILING = 58;
+const FIRST_VISION_CEILING = 88;
+const COMPLETE_CEILING = 100;
+const PROGRESS_TICK_MS = 120;
+
+function getStageCeiling(loadingMessage: string | undefined) {
+  const message = loadingMessage?.trim() || GENERATION_PROGRESS_MESSAGES.writing;
+
+  if (message === GENERATION_PROGRESS_MESSAGES.almostReady) {
+    return COMPLETE_CEILING;
+  }
+
+  if (message === GENERATION_PROGRESS_MESSAGES.firstVisionReady) {
+    return FIRST_VISION_CEILING;
+  }
+
+  return EARLY_STAGE_CEILING;
+}
+
+function getProgressIncrement(current: number, ceiling: number) {
+  const gap = ceiling - current;
+
+  if (gap <= 0) {
+    return 0;
+  }
+
+  if (ceiling >= COMPLETE_CEILING) {
+    return Math.max(0.55, gap * 0.14);
+  }
+
+  return Math.max(0.1, Math.min(1.05, gap * 0.034));
+}
+
 function getScrollDuration(synopsisText: string) {
   const synopsisLength = synopsisText.length || 0;
   const baseScrollDuration = Math.min(28, Math.max(16, synopsisLength / 35));
@@ -20,6 +55,28 @@ function getScrollDuration(synopsisText: string) {
 }
 
 export default function SynopsisLoadingScreen({ synopsis, formInput, loadingMessage }: SynopsisLoadingScreenProps) {
+  const [progress, setProgress] = useState(INITIAL_PROGRESS);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setProgress((current) => {
+        const ceiling = getStageCeiling(loadingMessage);
+        if (current >= ceiling) {
+          return current;
+        }
+
+        const next = current + getProgressIncrement(current, ceiling);
+        return Math.min(ceiling, next);
+      });
+    }, PROGRESS_TICK_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadingMessage]);
+
+  const progressPercent = Math.round(progress);
+
   const characterName = formInput?.name?.trim() || "Your legend";
   const legendaryTitle = synopsis?.legendaryTitle?.trim() || "The chronicle is being written";
   const synopsisText = synopsis?.synopsis?.trim() || "Your chronicle is being written.";
@@ -52,7 +109,16 @@ export default function SynopsisLoadingScreen({ synopsis, formInput, loadingMess
         </header>
 
         <div className="loading-indicator shrink-0" role="status" aria-live="polite">
-          <div className="loading-rune" aria-hidden="true" />
+          <div
+            className="loading-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
+            aria-label="Preview generation progress"
+          >
+            <div className="loading-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
           <span className="whitespace-pre-line">{loadingMessage || "Writing your illustrated chronicle..."}</span>
         </div>
 
