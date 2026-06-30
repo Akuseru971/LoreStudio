@@ -243,7 +243,16 @@ export default function UnlockFullStoryModal({
                             isLastSlide ? "normal-case" : "uppercase",
                           )}
                         >
-                          {isLastSlide ? "Unlock my full legend — €3.99" : "Next"}
+                          {isLastSlide ? (
+                            <span className="flex flex-col items-center gap-1.5">
+                              <span className="tracking-[0.08em]">Unlock my full legend</span>
+                              <span className="font-cover-title text-[1.35rem] leading-none tracking-[0.05em] text-[#2a1c0b]/88">
+                                €3.99
+                              </span>
+                            </span>
+                          ) : (
+                            "Next"
+                          )}
                         </button>
                         {isLastSlide ? (
                           <p className="mt-3 text-center text-[0.68rem] text-[#8f9aac]">
