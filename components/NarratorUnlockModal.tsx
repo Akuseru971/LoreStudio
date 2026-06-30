@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import SampleProductPreview from "@/components/SampleProductPreview";
 
 type NarratorUnlockModalProps = {
   accessToken: string;
@@ -70,7 +71,7 @@ export default function NarratorUnlockModal({ accessToken, isOpen, onClose }: Na
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
             transition={{ duration: 0.32, ease: "easeOut" }}
           >
-            <div className="relative overflow-hidden rounded-[1.75rem] p-6 sm:p-7">
+            <div className="relative max-h-[min(90dvh,720px)] overflow-y-auto rounded-[1.75rem] p-6 sm:p-7">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(217,189,120,0.14),transparent_55%)]" />
               <div className="relative">
                 <p className="font-title text-[0.62rem] uppercase tracking-[0.34em] text-[#d9bd78]/85">
@@ -83,6 +84,12 @@ export default function NarratorUnlockModal({ accessToken, isOpen, onClose }: Na
                   Unlock the full book to hear every page narrated and download the complete MP3 version of your
                   legend.
                 </p>
+
+                <SampleProductPreview
+                  title="Preview the narrated experience"
+                  subtitle="Listen to a sample chapter and open a sample PDF before unlocking your full legend."
+                  disabled={isRedirecting}
+                />
 
                 <label className="mt-5 block">
                   <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#9baabd]">Email for delivery</span>
