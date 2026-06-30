@@ -238,10 +238,18 @@ export default function UnlockFullStoryModal({
                         <button
                           type="button"
                           onClick={handleCarouselNext}
-                          className="gold-button w-full rounded-2xl px-5 py-3.5 text-xs font-bold uppercase tracking-[0.22em]"
+                          className={cn(
+                            "gold-button w-full rounded-2xl px-5 py-3.5 text-xs font-bold tracking-[0.22em]",
+                            isLastSlide ? "normal-case" : "uppercase",
+                          )}
                         >
-                          {isLastSlide ? "Continue" : "Next"}
+                          {isLastSlide ? "Unlock my full legend — €3.99" : "Next"}
                         </button>
+                        {isLastSlide ? (
+                          <p className="mt-3 text-center text-[0.68rem] text-[#8f9aac]">
+                            Secure payment by Stripe · Delivered by email in 5–15 min
+                          </p>
+                        ) : null}
                       </div>
                     </motion.div>
                   )}
