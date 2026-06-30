@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import SamplePdfMobileViewer from "@/components/SamplePdfMobileViewer";
 
 export const MP3_SAMPLE_URL =
   "https://Video-Invocation.b-cdn.net/ElevenLabs_2026-06-30T10_46_58_Wolf_ivc_sp100_s50_sb75_v3.mp3";
@@ -87,11 +88,7 @@ export default function SampleProductPreview({ title, subtitle, disabled = false
                 Close
               </button>
             </div>
-            <iframe
-              title="Sample illustrated PDF preview"
-              src={PDF_SAMPLE_URL}
-              className="min-h-0 flex-1 rounded-2xl border border-[#d9bd78]/18 bg-[#0a0c12]"
-            />
+            <SamplePdfMobileViewer url={PDF_SAMPLE_URL} />
           </motion.div>
         ) : null}
       </AnimatePresence>
