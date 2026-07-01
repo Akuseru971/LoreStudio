@@ -1951,6 +1951,28 @@ button {
     padding-inline: 1rem;
   }
 
+  .legend-reveal-content--poster > p.font-title {
+    order: 1;
+  }
+
+  .legend-reveal-identity {
+    order: 2;
+  }
+
+  .legend-reveal-toolbar {
+    order: 3;
+    margin-top: 0.35rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .legend-reveal-frame--poster {
+    order: 4;
+  }
+
+  .legend-reveal-followup--poster {
+    order: 5;
+  }
+
   .legend-reveal-name {
     font-size: clamp(2rem, 9vw, 2.6rem);
   }
