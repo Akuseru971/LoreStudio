@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import SampleProductPreview from "@/components/SampleProductPreview";
 import { safeTrackClient } from "@/lib/safe-analytics-client";
@@ -38,6 +38,7 @@ export default function UnlockFullStoryModal({
   const [email, setEmail] = useState("");
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const finalSlideTrackedRef = useRef(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -45,6 +46,7 @@ export default function UnlockFullStoryModal({
       setEmail("");
       setError(null);
       setIsRedirecting(false);
+      finalSlideTrackedRef.current = false;
       safeTrackClient("unlock_carousel_started", { source: "unlock_modal" });
     }
   }, [isOpen]);
@@ -58,8 +60,11 @@ export default function UnlockFullStoryModal({
       safeTrackClient("unlock_carousel_slide_viewed", { slide: 2 });
     }
 
-    if (carouselIndex === 2) {
+    if (carouselIndex === 2 && !finalSlideTrackedRef.current) {
+      finalSlideTrackedRef.current = true;
       safeTrackClient("unlock_carousel_slide_viewed", { slide: 3 });
+      safeTrackClient("unlock_final_slide_viewed", { source: "unlock_modal" });
+      safeTrackClient("unlock_carousel_completed", { source: "unlock_modal" });
     }
   }, [carouselIndex, isOpen]);
 
@@ -104,7 +109,6 @@ export default function UnlockFullStoryModal({
   };
 
   const handleFinalCheckout = () => {
-    safeTrackClient("unlock_carousel_completed", { source: "unlock_modal" });
     void handleUnlock();
   };
 
