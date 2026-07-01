@@ -1840,6 +1840,136 @@ button {
   color: rgba(154, 186, 220, 0.72);
 }
 
+.legend-reveal-content--poster {
+  padding-top: max(1.1rem, env(safe-area-inset-top));
+}
+
+.legend-reveal-toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.legend-reveal-back-btn {
+  min-height: 44px;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(201, 211, 223, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.legend-reveal-back-btn:hover {
+  border-color: rgba(168, 144, 104, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8dcc0;
+}
+
+.legend-reveal-frame--poster {
+  margin-top: 1rem;
+}
+
+.legend-reveal-unlock-overlay {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  padding: 2.5rem 1rem 1.1rem;
+  background: linear-gradient(
+    to top,
+    rgba(2, 3, 10, 0.78) 0%,
+    rgba(2, 3, 10, 0.42) 48%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.legend-reveal-unlock-btn {
+  pointer-events: auto;
+  min-height: 44px;
+  width: min(100%, 16.5rem);
+  border-radius: 999px;
+  padding: 0.8rem 1.35rem;
+  border-color: rgba(250, 222, 150, 0.42);
+  background:
+    linear-gradient(135deg, rgba(218, 184, 101, 0.78), rgba(129, 91, 39, 0.82)),
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.28), transparent 58%);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.38),
+    0 8px 24px rgba(185, 134, 52, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: none;
+  color: rgba(18, 13, 7, 0.94);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.legend-reveal-unlock-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(250, 222, 150, 0.58);
+  background:
+    linear-gradient(135deg, rgba(218, 184, 101, 0.9), rgba(129, 91, 39, 0.92)),
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.38), transparent 58%);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.42),
+    0 10px 28px rgba(185, 134, 52, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.legend-reveal-followup--poster {
+  margin-top: 1rem;
+  max-width: 22rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 639px) {
+  .legend-reveal-overlay--embedded {
+    min-height: min(70vh, 40rem);
+  }
+
+  .legend-reveal-content--poster {
+    padding-inline: 1rem;
+  }
+
+  .legend-reveal-name {
+    font-size: clamp(2rem, 9vw, 2.6rem);
+  }
+
+  .legend-reveal-image--poster {
+    max-height: min(58vh, 34rem);
+  }
+
+  .legend-reveal-unlock-overlay {
+    padding: 2rem 0.85rem 0.95rem;
+  }
+
+  .legend-reveal-unlock-btn {
+    width: min(100%, 15rem);
+    font-size: 0.64rem;
+    letter-spacing: 0.18em;
+  }
+}
+
 /* ── Ritual launch video ── */
 
 /* ── Ritual launch video (fullscreen) ── */
