@@ -142,9 +142,16 @@ export default function UnlockFullStoryModal({
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
             transition={{ duration: 0.32, ease: "easeOut" }}
           >
-            <div className="relative max-h-[min(90dvh,720px)] overflow-y-auto rounded-[1.75rem] p-6 sm:p-7">
+            <div
+              className={cn(
+                "relative rounded-[1.75rem] p-6 sm:p-7",
+                isLastSlide
+                  ? "unlock-carousel-final-shell max-sm:flex max-sm:max-h-[min(88dvh,calc(100dvh-1.5rem))] max-sm:flex-col max-sm:overflow-hidden max-sm:p-5"
+                  : "max-h-[min(90dvh,720px)] overflow-y-auto",
+              )}
+            >
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(217,189,120,0.14),transparent_55%)]" />
-              <div className="relative">
+              <div className={cn("relative", isLastSlide && "max-sm:flex max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col")}>
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={`unlock-carousel-${carouselIndex}`}
@@ -152,61 +159,83 @@ export default function UnlockFullStoryModal({
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
                     transition={{ duration: 0.28, ease: "easeOut" }}
+                    className={cn(isLastSlide && "unlock-carousel-final-slide max-sm:flex max-sm:min-h-0 max-sm:flex-1 max-sm:flex-col")}
                   >
-                    <p className="font-title text-[0.62rem] uppercase tracking-[0.34em] text-[#d9bd78]/85">
-                      {carouselIndex + 1} / {CAROUSEL_SLIDES.length}
-                    </p>
-                    <h2 id="unlock-carousel-title" className="font-cover-title mt-3 text-2xl leading-tight text-[#f7ebce]">
-                      {slide.title}
-                    </h2>
-                    <p id="unlock-carousel-description" className="mt-4 text-sm leading-7 text-[#b8c2d0]">
-                      {slide.text}
-                    </p>
+                    <div className={cn(isLastSlide && "unlock-carousel-final-slide-body max-sm:min-h-0 max-sm:flex-1 max-sm:overflow-y-auto")}>
+                      <p className="font-title text-[0.62rem] uppercase tracking-[0.34em] text-[#d9bd78]/85">
+                        {carouselIndex + 1} / {CAROUSEL_SLIDES.length}
+                      </p>
+                      <h2
+                        id="unlock-carousel-title"
+                        className={cn(
+                          "font-cover-title mt-3 text-2xl leading-tight text-[#f7ebce]",
+                          isLastSlide && "max-sm:mt-2 max-sm:text-xl",
+                        )}
+                      >
+                        {slide.title}
+                      </h2>
+                      <p
+                        id="unlock-carousel-description"
+                        className={cn(
+                          "mt-4 text-sm leading-7 text-[#b8c2d0]",
+                          isLastSlide && "max-sm:mt-2 max-sm:text-[0.8rem] max-sm:leading-6",
+                        )}
+                      >
+                        {slide.text}
+                      </p>
 
-                    {isLastSlide ? (
-                      <>
-                        <label className="mt-5 block">
-                          <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#9baabd]">
-                            Email for delivery
-                          </span>
-                          <input
-                            type="email"
-                            value={email}
-                            onChange={(event) => setEmail(event.target.value)}
-                            placeholder="you@example.com"
-                            autoComplete="email"
-                            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-[#f7ebce] outline-none transition focus:border-[#d9bd78]/40"
+                      {isLastSlide ? (
+                        <>
+                          <label className="mt-5 block max-sm:mt-3">
+                            <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-[#9baabd] max-sm:mb-1.5 max-sm:text-[0.68rem]">
+                              Email for delivery
+                            </span>
+                            <input
+                              type="email"
+                              value={email}
+                              onChange={(event) => setEmail(event.target.value)}
+                              placeholder="you@example.com"
+                              autoComplete="email"
+                              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-[#f7ebce] outline-none transition focus:border-[#d9bd78]/40 max-sm:px-3.5 max-sm:py-2.5"
+                            />
+                          </label>
+
+                          <div className="unlock-carousel-final-samples max-sm:mt-3">
+                            <SampleProductPreview
+                              title="Preview what you'll receive"
+                              subtitle="Listen to a sample chapter and open a sample PDF before unlocking your full legend."
+                              disabled={isRedirecting}
+                            />
+                          </div>
+
+                          {error ? (
+                            <p className="mt-4 rounded-xl border border-red-400/25 bg-red-950/30 px-4 py-3 text-sm text-red-200 max-sm:mt-3 max-sm:px-3 max-sm:py-2.5 max-sm:text-xs">
+                              {error}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      <div className={cn("mt-6 flex items-center justify-center gap-2", isLastSlide && "max-sm:mt-4")}>
+                        {CAROUSEL_SLIDES.map((_, dotIndex) => (
+                          <span
+                            key={dotIndex}
+                            aria-hidden="true"
+                            className={cn(
+                              "h-2 rounded-full transition-all",
+                              dotIndex === carouselIndex ? "w-6 bg-[#d9bd78]" : "w-2 bg-[#d9bd78]/30",
+                            )}
                           />
-                        </label>
-
-                        <SampleProductPreview
-                          title="Preview what you'll receive"
-                          subtitle="Listen to a sample chapter and open a sample PDF before unlocking your full legend."
-                          disabled={isRedirecting}
-                        />
-
-                        {error ? (
-                          <p className="mt-4 rounded-xl border border-red-400/25 bg-red-950/30 px-4 py-3 text-sm text-red-200">
-                            {error}
-                          </p>
-                        ) : null}
-                      </>
-                    ) : null}
-
-                    <div className="mt-6 flex items-center justify-center gap-2">
-                      {CAROUSEL_SLIDES.map((_, dotIndex) => (
-                        <span
-                          key={dotIndex}
-                          aria-hidden="true"
-                          className={cn(
-                            "h-2 rounded-full transition-all",
-                            dotIndex === carouselIndex ? "w-6 bg-[#d9bd78]" : "w-2 bg-[#d9bd78]/30",
-                          )}
-                        />
-                      ))}
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="mt-6">
+                    <div
+                      className={cn(
+                        "mt-6",
+                        isLastSlide && "unlock-carousel-final-slide-cta max-sm:mt-0",
+                      )}
+                    >
                       {isLastSlide ? (
                         <>
                           <button
@@ -226,14 +255,14 @@ export default function UnlockFullStoryModal({
                               </span>
                             )}
                           </button>
-                          <p className="mt-3 text-center text-[0.68rem] text-[#8f9aac]">
+                          <p className="mt-3 text-center text-[0.68rem] text-[#8f9aac] max-sm:mt-2">
                             Secure payment by Stripe · Delivered by email in 5–15 min
                           </p>
                           <button
                             type="button"
                             onClick={onClose}
                             disabled={isRedirecting}
-                            className="mt-3 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#9baabd] transition hover:border-[#d9bd78]/30 hover:text-[#e8dcc0] disabled:opacity-60"
+                            className="mt-3 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#9baabd] transition hover:border-[#d9bd78]/30 hover:text-[#e8dcc0] disabled:opacity-60 max-sm:mt-2 max-sm:py-2.5"
                           >
                             Not now
                           </button>

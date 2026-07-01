@@ -1992,6 +1992,52 @@ button {
   }
 }
 
+/* ── Unlock carousel final slide (mobile) ── */
+
+@media (max-width: 639px) {
+  .unlock-carousel-final-slide-cta {
+    flex-shrink: 0;
+    padding-top: 0.75rem;
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(180deg, rgba(10, 12, 18, 0.72) 0%, rgba(10, 12, 18, 0.98) 28%);
+  }
+
+  .unlock-carousel-final-samples > section {
+    margin-top: 0;
+    padding: 0.7rem 0.8rem;
+  }
+
+  .unlock-carousel-final-samples h3 {
+    font-size: 0.92rem;
+  }
+
+  .unlock-carousel-final-samples > section > p {
+    margin-top: 0.2rem;
+    font-size: 0.68rem;
+    line-height: 1.45;
+  }
+
+  .unlock-carousel-final-samples > section > div {
+    margin-top: 0.55rem;
+  }
+
+  .unlock-carousel-final-samples > section > div > * + * {
+    margin-top: 0.5rem;
+  }
+
+  .unlock-carousel-final-samples audio {
+    height: 2rem;
+    margin-top: 0.3rem;
+  }
+
+  .unlock-carousel-final-samples a {
+    margin-top: 0.3rem;
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+  }
+}
+
 /* ── Ritual launch video ── */
 
 /* ── Ritual launch video (fullscreen) ── */
