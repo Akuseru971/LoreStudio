@@ -12,6 +12,7 @@ export const maxDuration = 180;
 type GenerateNextFreeImageBody = {
   accessToken?: string;
   pageNumber?: number;
+  previewCover?: boolean;
 };
 
 export async function POST(request: Request) {
@@ -19,13 +20,17 @@ export async function POST(request: Request) {
   const accessToken = body.accessToken?.trim();
   const pageNumber =
     typeof body.pageNumber === "number" && Number.isInteger(body.pageNumber) ? body.pageNumber : undefined;
+  const previewCover = body.previewCover === true;
 
   if (!accessToken) {
     return NextResponse.json({ error: "Missing access token." }, { status: 400 });
   }
 
   try {
-    const result = await generateNextFreeImage(accessToken, pageNumber);
+    const result = await generateNextFreeImage(
+      accessToken,
+      previewCover ? { previewCover: true } : pageNumber !== undefined ? { pageNumber } : undefined,
+    );
     const normalized = getNormalizedImagesForStoredBook(result.storedBook);
     const sourceBook = result.storedBook.free_book;
     const mergedBook = sourceBook
@@ -40,6 +45,7 @@ export async function POST(request: Request) {
       message: result.allFreeImagesReady ? "Free illustrations are ready." : "Generation still in progress",
       accessToken,
       pageNumber: result.pageNumber,
+      previewCover: result.previewCover ?? false,
       generated: result.generated,
       done: result.done,
       skipped: result.skipped ?? false,

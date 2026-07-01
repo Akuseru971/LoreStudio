@@ -1,8 +1,9 @@
 import "server-only";
 
+import { FREE_PREVIEW_POSTER_IMAGE_KEY } from "@/lib/image-config";
 import { getImageForPage, isIllustrationReady, type BookImagesInput } from "@/lib/book-images";
 import { STALE_IMAGE_GENERATING_MS } from "@/lib/server/generation-timeouts";
-import type { StoredBook } from "@/lib/types";
+import type { BookPageImage, StoredBook } from "@/lib/types";
 
 export const IMAGE_GENERATION_STALE_AFTER_MS = STALE_IMAGE_GENERATING_MS;
 
@@ -157,6 +158,95 @@ export function isImageFreshlyGenerating(
   staleAfterMs = IMAGE_GENERATION_STALE_AFTER_MS,
 ) {
   const state = getPageGenerationStatus(storedBook, pageNumber, input);
+  if (state.isReady || state.status !== "generating") {
+    return false;
+  }
+
+  if (!state.timestamp || state.ageMs === null) {
+    return true;
+  }
+
+  return state.ageMs < staleAfterMs;
+}
+
+function readPreviewCoverImage(storedBook: StoredBook): BookPageImage | null {
+  const raw = storedBook.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  if (!raw) {
+    return null;
+  }
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    return {
+      status: "ready",
+      url: trimmed,
+      storagePath: null,
+      generatedAt: null,
+    } as BookPageImage;
+  }
+
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    return raw as BookPageImage;
+  }
+
+  return null;
+}
+
+export function getPreviewCoverGenerationStatus(storedBook: StoredBook) {
+  const image = readPreviewCoverImage(storedBook);
+  const status = image?.status ?? storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? "not_started";
+  const timestamp = readTimestampFromRecord(image as Record<string, unknown> | null | undefined);
+  const ageMs = timestamp ? Date.now() - new Date(timestamp).getTime() : null;
+
+  return {
+    status,
+    startedAt: image?.startedAt ?? null,
+    updatedAt: image?.updatedAt ?? null,
+    generationStartedAt: image?.generationStartedAt ?? null,
+    timestamp,
+    ageMs: ageMs !== null && !Number.isNaN(ageMs) ? ageMs : null,
+    isReady: isIllustrationReady(image),
+  };
+}
+
+export function getPreviewCoverClaimId(storedBook: StoredBook) {
+  const image = readPreviewCoverImage(storedBook);
+  return typeof image?.generationClaimId === "string" && image.generationClaimId.trim()
+    ? image.generationClaimId.trim()
+    : null;
+}
+
+export function verifyPreviewCoverClaimOwnership(storedBook: StoredBook, claimId: string) {
+  const state = getPreviewCoverGenerationStatus(storedBook);
+  const currentClaimId = getPreviewCoverClaimId(storedBook);
+  return state.status === "generating" && currentClaimId === claimId;
+}
+
+export function isPreviewCoverGeneratingStale(
+  storedBook: StoredBook,
+  staleAfterMs = IMAGE_GENERATION_STALE_AFTER_MS,
+) {
+  const state = getPreviewCoverGenerationStatus(storedBook);
+  if (state.isReady || state.status !== "generating") {
+    return false;
+  }
+
+  if (!state.timestamp || state.ageMs === null) {
+    return false;
+  }
+
+  return state.ageMs >= staleAfterMs;
+}
+
+export function isPreviewCoverFreshlyGenerating(
+  storedBook: StoredBook,
+  staleAfterMs = IMAGE_GENERATION_STALE_AFTER_MS,
+) {
+  const state = getPreviewCoverGenerationStatus(storedBook);
   if (state.isReady || state.status !== "generating") {
     return false;
   }

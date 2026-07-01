@@ -1,13 +1,13 @@
-/** Pages that receive generated images before payment. */
+/** Pages that receive generated images before payment (2 story pages + preview cover). */
 export const FREE_IMAGE_PAGE_COUNT = 3;
 
 export const FREE_PREVIEW_STORY_IMAGE_PAGES = [1, 2] as const;
-export const FREE_PREVIEW_POSTER_PAGE_NUMBER = 3;
 export const FREE_PREVIEW_POSTER_IMAGE_KEY = "preview_poster";
 export const FREE_PREVIEW_POSTER_STEP_INDEX = 2;
 export const FREE_PREVIEW_EXPERIENCE_STEP_COUNT = 3;
 
-export const FREE_IMAGE_PAGES = [1, 2, FREE_PREVIEW_POSTER_PAGE_NUMBER] as const;
+/** Story pages generated during the free preview. Preview cover uses FREE_PREVIEW_POSTER_IMAGE_KEY. */
+export const FREE_IMAGE_PAGES = [...FREE_PREVIEW_STORY_IMAGE_PAGES] as const;
 
 /** First page number that receives premium-only image generation. */
 export const PREMIUM_IMAGE_START_PAGE = 4;
@@ -33,6 +33,6 @@ export function isPremiumImageLockedBeforePayment(pageNumber: number) {
   return isPremiumImagePage(pageNumber) && !isSealedFreeImagePage(pageNumber);
 }
 
-export function isFreePreviewPosterPage(pageNumber: number) {
-  return pageNumber === FREE_PREVIEW_POSTER_PAGE_NUMBER;
+export function isPreviewCoverImageKey(key: string) {
+  return key === FREE_PREVIEW_POSTER_IMAGE_KEY;
 }

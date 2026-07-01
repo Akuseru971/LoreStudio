@@ -59,14 +59,23 @@ export async function fetchBook(accessToken: string) {
   return { response, data };
 }
 
-export async function generateNextFreeImage(accessToken: string, pageNumber?: number) {
+export async function generateNextFreeImage(
+  accessToken: string,
+  options?: number | { pageNumber?: number; previewCover?: boolean },
+) {
+  const body =
+    typeof options === "number"
+      ? { accessToken, pageNumber: options }
+      : {
+          accessToken,
+          ...(options?.pageNumber !== undefined ? { pageNumber: options.pageNumber } : {}),
+          ...(options?.previewCover ? { previewCover: true } : {}),
+        };
+
   const response = await fetch("/api/generate-next-free-image", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      accessToken,
-      ...(pageNumber !== undefined ? { pageNumber } : {}),
-    }),
+    body: JSON.stringify(body),
   });
   const data = await response.json();
   return { response, data };

@@ -242,7 +242,10 @@ export default function Home() {
 
     freePreviewParallelStartedRunRef.current = runId;
 
-    await Promise.allSettled([generateNextFreeImage(token, 2), generateNextFreeImage(token, 3)]);
+    await Promise.allSettled([
+      generateNextFreeImage(token, { pageNumber: 2 }),
+      generateNextFreeImage(token, { previewCover: true }),
+    ]);
 
     while (generationRunRef.current === runId) {
       const { response, data } = await fetchBookStatus(token);

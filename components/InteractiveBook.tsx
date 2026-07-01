@@ -21,7 +21,6 @@ import {
   FREE_PREVIEW_POSTER_IMAGE_KEY,
   FREE_PREVIEW_POSTER_STEP_INDEX,
   FREE_PREVIEW_STORY_IMAGE_PAGES,
-  isFreePreviewPosterPage,
   isPremiumImageLockedBeforePayment,
   isPremiumImagePage,
   PREMIUM_IMAGE_PAGE_NUMBERS,
@@ -250,7 +249,7 @@ export default function InteractiveBook({
         return;
       }
 
-      if (!isPremium && (pageNumber > FREE_PREVIEW_STORY_IMAGE_PAGES.length || isFreePreviewPosterPage(pageNumber))) {
+      if (!isPremium && pageNumber > FREE_PREVIEW_STORY_IMAGE_PAGES.length) {
         return;
       }
 

@@ -5,7 +5,6 @@ import { generateAccessToken } from "@/lib/accessToken";
 import { createSignedAssetUrl, persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
 import {
   FREE_PREVIEW_POSTER_IMAGE_KEY,
-  FREE_PREVIEW_POSTER_PAGE_NUMBER,
 } from "@/lib/image-config";
 import {
   getImageForPage,
@@ -38,9 +37,14 @@ import {
   getImageGenerationTimestamp,
   getImageGenerationClaimId,
   getPageGenerationStatus,
+  getPreviewCoverClaimId,
+  getPreviewCoverGenerationStatus,
   isImageFreshlyGenerating,
   isImageGeneratingStale,
+  isPreviewCoverFreshlyGenerating,
+  isPreviewCoverGeneratingStale,
   verifyImageGenerationClaimOwnership,
+  verifyPreviewCoverClaimOwnership,
 } from "@/lib/imageGenerationTimestamps";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { resolveApprovedSynopsis } from "@/lib/synopsisValidation";
@@ -334,7 +338,6 @@ export async function savePreviewPosterAsset(
   options: { claimId?: string } = {},
 ) {
   const supabase = requireSupabase();
-  const pageNumber = FREE_PREVIEW_POSTER_PAGE_NUMBER;
   const posterKey = FREE_PREVIEW_POSTER_IMAGE_KEY;
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -343,24 +346,24 @@ export async function savePreviewPosterAsset(
       throw new Error("Book not found.");
     }
 
-    console.log("[IMAGE_SAVE_START]", { bookId: storedBook.id, pageNumber, assetType: "preview_poster", attempt });
+    console.log("[IMAGE_SAVE_START]", { bookId: storedBook.id, assetType: "preview_poster", attempt });
+
+    if (options.claimId) {
+      if (!verifyPreviewCoverClaimOwnership(storedBook, options.claimId)) {
+        console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+          bookId: storedBook.id,
+          assetKey: posterKey,
+          claimId: options.claimId,
+          currentClaimId: getPreviewCoverClaimId(storedBook),
+        });
+        return storedBook;
+      }
+    }
 
     const storagePath = await persistAssetMap(storedBook.id, { [posterKey]: assetRef }, "image");
     const persistedRef = storagePath[posterKey];
     if (!persistedRef) {
       throw new Error("Unable to persist preview poster asset.");
-    }
-
-    if (options.claimId) {
-      if (!verifyImageGenerationClaimOwnership(storedBook, pageNumber, options.claimId)) {
-        console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
-          bookId: storedBook.id,
-          pageNumber,
-          claimId: options.claimId,
-          currentClaimId: getImageGenerationClaimId(storedBook, pageNumber),
-        });
-        return storedBook;
-      }
     }
 
     const signedUrl = await createSignedAssetUrl(persistedRef, 3600);
@@ -369,17 +372,18 @@ export async function savePreviewPosterAsset(
       ...normalized.images,
       [posterKey]: {
         ...normalized.images[posterKey],
-        pageNumber,
         status: "ready" as ImagePageStatus,
         url: signedUrl,
         storagePath: persistedRef,
         generatedAt: new Date().toISOString(),
+        startedAt: null,
+        updatedAt: new Date().toISOString(),
+        generationStartedAt: null,
         generationClaimId: null,
       },
     };
     const nextImageStatus = {
       ...normalized.imageStatus,
-      [String(pageNumber)]: "ready" as ImagePageStatus,
       [posterKey]: "ready" as ImagePageStatus,
     };
 
@@ -396,8 +400,7 @@ export async function savePreviewPosterAsset(
     if (!error && data) {
       console.log("[IMAGE_BOOK_UPDATE_DONE]", {
         bookId: storedBook.id,
-        pageNumber,
-        posterKey,
+        assetKey: posterKey,
         url: signedUrl,
         storagePath: persistedRef,
       });
@@ -410,6 +413,69 @@ export async function savePreviewPosterAsset(
   }
 
   throw new Error("Unable to save preview poster asset.");
+}
+
+export async function cleanupInvalidStoryPage3ClaimState(bookId: string) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    return null;
+  }
+
+  const key = "3";
+  const pageState = getPageGenerationStatus(storedBook, 3);
+  if (pageState.isReady || pageState.status !== "not_started") {
+    return storedBook;
+  }
+
+  const raw = storedBook.images[key];
+  const hasInvalidClaimFields =
+    Boolean(pageState.startedAt) ||
+    Boolean(pageState.generationStartedAt) ||
+    Boolean(getImageGenerationClaimId(storedBook, 3)) ||
+    (typeof raw === "object" &&
+      raw !== null &&
+      !Array.isArray(raw) &&
+      Boolean((raw as BookPageImage).generationClaimId));
+
+  if (!hasInvalidClaimFields) {
+    return storedBook;
+  }
+
+  console.log("[FREE_PREVIEW_CLEAN_INVALID_PAGE_3_CLAIM]", { bookId });
+
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = mergeUpdatedImage(normalized.images, 3, {
+    pageNumber: 3,
+    status: "not_started",
+    url: null,
+    storagePath: null,
+    generatedAt: null,
+    startedAt: null,
+    updatedAt: null,
+    generationStartedAt: null,
+    generationClaimId: null,
+  });
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [key]: "not_started" as ImagePageStatus,
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : storedBook;
 }
 
 export async function getBookById(bookId: string) {
@@ -1075,6 +1141,322 @@ export async function claimPageImageGeneration(
   });
 
   return { book: latestBook, claimId };
+}
+
+export async function claimPreviewCoverGeneration(
+  bookId: string,
+): Promise<PageImageGenerationClaim | null> {
+  const claimId = crypto.randomUUID();
+  const posterKey = FREE_PREVIEW_POSTER_IMAGE_KEY;
+
+  console.log("[IMAGE_GENERATION_CLAIM_CREATED]", {
+    bookId,
+    assetKey: posterKey,
+    claimId,
+  });
+
+  console.log("[IMAGE_GENERATION_CLAIM_START]", {
+    bookId,
+    assetKey: posterKey,
+    claimId,
+  });
+
+  const supabase = requireSupabase();
+  let storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    return null;
+  }
+
+  await cleanupInvalidStoryPage3ClaimState(bookId);
+  storedBook = (await getBookById(bookId)) || storedBook;
+
+  let coverState = getPreviewCoverGenerationStatus(storedBook);
+  if (coverState.isReady) {
+    return null;
+  }
+
+  if (coverState.status === "generating") {
+    if (isPreviewCoverGeneratingStale(storedBook)) {
+      const resetBook = await resetStalePreviewCoverGeneration(bookId);
+      storedBook = resetBook || storedBook;
+      coverState = getPreviewCoverGenerationStatus(storedBook);
+    } else if (isPreviewCoverFreshlyGenerating(storedBook)) {
+      if (getPreviewCoverClaimId(storedBook)) {
+        return null;
+      }
+
+      console.log("[IMAGE_GENERATION_CLAIM_RECLAIM_MISSING_ID]", {
+        bookId,
+        assetKey: posterKey,
+      });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = {
+    ...normalized.images,
+    [posterKey]: {
+      ...normalized.images[posterKey],
+      status: "generating" as ImagePageStatus,
+      url: null,
+      storagePath: null,
+      generatedAt: null,
+      startedAt: now,
+      updatedAt: now,
+      generationStartedAt: now,
+      generationClaimId: claimId,
+    },
+  };
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [posterKey]: "generating" as ImagePageStatus,
+  };
+
+  console.log("[IMAGE_GENERATION_CLAIM_WRITTEN]", {
+    bookId,
+    assetKey: posterKey,
+    claimId,
+    startedAt: now,
+    updatedAt: now,
+  });
+
+  const previousStatus = storedBook.image_status[posterKey] ?? coverState.status;
+  const isReclaimMissingClaim =
+    previousStatus === "generating" && !getPreviewCoverClaimId(storedBook);
+
+  let updateQuery = supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
+    .eq("id", bookId);
+
+  if (previousStatus === "not_started" || previousStatus === "failed" || previousStatus === undefined) {
+    updateQuery = updateQuery.or(
+      `image_status->>${posterKey}.is.null,image_status->>${posterKey}.eq.not_started,image_status->>${posterKey}.eq.failed`,
+    );
+  } else if (isReclaimMissingClaim) {
+    updateQuery = updateQuery.eq(`image_status->>${posterKey}`, "generating");
+  } else if (previousStatus === "generating") {
+    return null;
+  }
+
+  const { data, error } = await updateQuery.select("*").maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+      bookId,
+      assetKey: posterKey,
+      claimId,
+      currentClaimId: null,
+      reason: "conditional_update_missed",
+    });
+    return null;
+  }
+
+  const latestBook = mapRow(data);
+  if (!latestBook) {
+    return null;
+  }
+
+  if (!verifyPreviewCoverClaimOwnership(latestBook, claimId)) {
+    console.error("[IMAGE_GENERATION_CLAIM_VERIFY_FAILED]", {
+      bookId,
+      assetKey: posterKey,
+      claimId,
+      currentClaimId: getPreviewCoverClaimId(latestBook),
+    });
+    return null;
+  }
+
+  console.log("[IMAGE_GENERATION_CLAIM_OWNERSHIP_CONFIRMED]", {
+    bookId,
+    assetKey: posterKey,
+    claimId,
+  });
+
+  return { book: latestBook, claimId };
+}
+
+export async function reloadAndVerifyPreviewCoverClaim(bookId: string, claimId: string) {
+  const latestBook = await getBookById(bookId);
+  if (!latestBook) {
+    return null;
+  }
+
+  if (!verifyPreviewCoverClaimOwnership(latestBook, claimId)) {
+    console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+      bookId,
+      assetKey: FREE_PREVIEW_POSTER_IMAGE_KEY,
+      claimId,
+      currentClaimId: getPreviewCoverClaimId(latestBook),
+    });
+    return null;
+  }
+
+  return latestBook;
+}
+
+export async function resetStalePreviewCoverGeneration(bookId: string) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    return null;
+  }
+
+  const posterKey = FREE_PREVIEW_POSTER_IMAGE_KEY;
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = {
+    ...normalized.images,
+    [posterKey]: {
+      ...normalized.images[posterKey],
+      status: "not_started" as ImagePageStatus,
+      url: null,
+      storagePath: null,
+      generatedAt: null,
+      startedAt: null,
+      updatedAt: new Date().toISOString(),
+      generationStartedAt: null,
+      generationClaimId: null,
+    },
+  };
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [posterKey]: "not_started" as ImagePageStatus,
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markPreviewCoverFailed(bookId: string, claimId?: string) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    throw new Error("Book not found.");
+  }
+
+  if (claimId && !verifyPreviewCoverClaimOwnership(storedBook, claimId)) {
+    console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+      bookId,
+      assetKey: FREE_PREVIEW_POSTER_IMAGE_KEY,
+      claimId,
+      currentClaimId: getPreviewCoverClaimId(storedBook),
+    });
+    return storedBook;
+  }
+
+  const posterKey = FREE_PREVIEW_POSTER_IMAGE_KEY;
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = {
+    ...normalized.images,
+    [posterKey]: {
+      ...normalized.images[posterKey],
+      status: "failed" as ImagePageStatus,
+      url: null,
+      storagePath: null,
+      generatedAt: null,
+      startedAt: null,
+      updatedAt: new Date().toISOString(),
+      generationStartedAt: null,
+      generationClaimId: null,
+    },
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: {
+        ...storedBook.image_status,
+        [posterKey]: "failed",
+      },
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to mark preview cover as failed.");
+  }
+
+  return mapRow(data);
+}
+
+export async function stampMissingPreviewCoverTimestamp(bookId: string) {
+  const supabase = requireSupabase();
+  const storedBook = await getBookById(bookId);
+  if (!storedBook) {
+    return null;
+  }
+
+  const posterKey = FREE_PREVIEW_POSTER_IMAGE_KEY;
+  const status = storedBook.image_status[posterKey];
+  if (status !== "generating") {
+    return storedBook;
+  }
+
+  const coverState = getPreviewCoverGenerationStatus(storedBook);
+  if (coverState.timestamp) {
+    return storedBook;
+  }
+
+  const now = new Date().toISOString();
+  const normalized = normalizeStoredBookImages(storedBook);
+  const existingImage = normalized.images[posterKey];
+  const updatedImages = {
+    ...normalized.images,
+    [posterKey]: {
+      ...existingImage,
+      status: "generating" as ImagePageStatus,
+      url: null,
+      storagePath: null,
+      generatedAt: null,
+      startedAt: now,
+      updatedAt: now,
+      generationStartedAt: now,
+      generationClaimId: existingImage?.generationClaimId ?? null,
+    },
+  };
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [posterKey]: "generating" as ImagePageStatus,
+  };
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
 }
 
 export async function reloadAndVerifyPageImageClaim(
