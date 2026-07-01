@@ -1,5 +1,6 @@
 import "server-only";
 
+import { findImmersionOffendingPhrases } from "@/lib/immersive-text";
 import { openai } from "@/lib/server/openai";
 import { BOOK_TEXT_MODEL } from "@/lib/server/ai-config";
 import type { BookFormInput, BookPage, LoreBook } from "@/lib/types";
@@ -9,9 +10,6 @@ export const PAGE_5_CLIFFHANGER_ERROR = "Page 5 must end with a cliffhanger.";
 function getBookTextModel() {
   return BOOK_TEXT_MODEL;
 }
-
-const IMMERSION_BANNED_PATTERN =
-  /\b(page\s*\d+|previous page|next page|this page|chapter|unlock|payment|reader|generated|prompt|ai)\b/i;
 
 const RESOLVED_CONCLUSION_PATTERNS = [
   /\b(in the end|and so it was|from that day forward|years later|at last|found peace|made peace|learned to live|understood at last|accepted (?:their|his|her) fate)\b/i,
@@ -66,7 +64,17 @@ export function validatePage5Cliffhanger(pageFive?: { text?: string; title?: str
   const lastSentence = getLastSentence(text);
   const errors: string[] = [];
 
-  if (IMMERSION_BANNED_PATTERN.test(lastSentence) || IMMERSION_BANNED_PATTERN.test(text)) {
+  const immersionPhrases = [
+    ...findImmersionOffendingPhrases(text),
+    ...findImmersionOffendingPhrases(lastSentence),
+  ];
+  if (immersionPhrases.length > 0) {
+    console.error("[IMMERSION_VALIDATION_FAILED]", {
+      pageNumber: 5,
+      field: "text",
+      offendingPhrases: Array.from(new Set(immersionPhrases)),
+      textPreview: text.slice(0, 500),
+    });
     errors.push("Page 5 contains immersion-breaking meta text.");
     return errors;
   }
