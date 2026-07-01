@@ -299,6 +299,14 @@ export async function saveBookAsset(
       ...normalized.imageStatus,
       [String(pageNumber)]: "ready" as ImagePageStatus,
     };
+    const previewCoverImage = storedBook.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+    const previewCoverStatus = storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY];
+    if (previewCoverImage && typeof previewCoverImage === "object" && !Array.isArray(previewCoverImage)) {
+      updatedImages[FREE_PREVIEW_POSTER_IMAGE_KEY] = previewCoverImage as BookPageImage;
+    }
+    if (previewCoverStatus) {
+      nextImageStatus[FREE_PREVIEW_POSTER_IMAGE_KEY] = previewCoverStatus;
+    }
 
     const { data, error } = await supabase
       .from(BOOKS_TABLE)

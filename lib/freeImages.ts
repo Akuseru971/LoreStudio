@@ -75,7 +75,43 @@ function getPreviewPosterImage(storedBook: StoredBook): BookPageImage | null {
 }
 
 export function isPreviewPosterReady(storedBook: StoredBook) {
-  return isIllustrationReady(getPreviewPosterImage(storedBook));
+  return getFreePreviewReadiness(storedBook).previewCoverReady;
+}
+
+export type FreePreviewReadiness = {
+  page1Ready: boolean;
+  page2Ready: boolean;
+  previewCoverReady: boolean;
+  readyPreviewAssetsCount: number;
+  freePreviewReady: boolean;
+};
+
+function isStoryPreviewImageReady(storedBook: StoredBook, pageNumber: number) {
+  const input = getFreeImagePagesInput(storedBook);
+  const image = getImageForPage(input, pageNumber);
+  if (!isIllustrationReady(image)) {
+    return false;
+  }
+
+  return Boolean(getDirectImageUrl(image) || getImageStoragePath(image));
+}
+
+export function getFreePreviewReadiness(storedBook: StoredBook): FreePreviewReadiness {
+  const page1Ready = isStoryPreviewImageReady(storedBook, 1);
+  const page2Ready = isStoryPreviewImageReady(storedBook, 2);
+  const previewCoverImage = getPreviewPosterImage(storedBook);
+  const previewCoverReady =
+    isIllustrationReady(previewCoverImage) &&
+    Boolean(getDirectImageUrl(previewCoverImage) || getImageStoragePath(previewCoverImage));
+  const readyPreviewAssetsCount = [page1Ready, page2Ready, previewCoverReady].filter(Boolean).length;
+
+  return {
+    page1Ready,
+    page2Ready,
+    previewCoverReady,
+    readyPreviewAssetsCount,
+    freePreviewReady: page1Ready && page2Ready && previewCoverReady,
+  };
 }
 
 export type GenerateStoredFreeImageResult = {
@@ -168,7 +204,7 @@ export function getMissingFreeImagePages(storedBook: StoredBook) {
 }
 
 export function areFreeIllustrationsReady(storedBook: StoredBook) {
-  return getMissingFreeImagePages(storedBook).length === 0 && isPreviewPosterReady(storedBook);
+  return getFreePreviewReadiness(storedBook).freePreviewReady;
 }
 
 function isFreePageEligibleForGeneration(

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, mergeBookAssets } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
-import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
+import { getNormalizedImagesForStoredBook, resolvePreviewCoverImageForClient } from "@/lib/book-images";
 import { normalizeBook } from "@/lib/normalizeBook";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     const isPremium = hasPremiumAccess(storedBook.status);
     const sourceBook = isPremium ? storedBook.full_book || storedBook.free_book : storedBook.free_book;
     const normalized = getNormalizedImagesForStoredBook(storedBook);
+    const clientImages = await resolvePreviewCoverImageForClient(normalized.images);
     const mergedBook = sourceBook
       ? await mergeBookAssets(sourceBook, normalized.normalizedImages, storedBook.audio)
       : null;
@@ -35,8 +36,8 @@ export async function GET(request: Request) {
       accessToken: storedBook.access_token,
       email: storedBook.email,
       book,
-      imageStatus: normalized.images,
-      images: normalized.images,
+      imageStatus: clientImages,
+      images: clientImages,
       isPremium,
       canDownloadPdf: isPremium && normalized.allIllustrationsReady,
       canDownloadMp3: isPremium,

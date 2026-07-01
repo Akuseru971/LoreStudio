@@ -53,6 +53,11 @@ const MAX_SYNOPSIS_REGENERATIONS = 3;
 
 type FreePreviewImageResponse = {
   allFreeImagesReady?: boolean;
+  freeIllustrationsReady?: boolean;
+  freePreviewReady?: boolean;
+  previewReady?: boolean;
+  previewCoverReady?: boolean;
+  readyPreviewAssetsCount?: number;
   missingFreePages?: number[];
   readyFreeImageCount?: number;
   pageNumber?: number | null;
@@ -62,12 +67,26 @@ type FreePreviewImageResponse = {
   error?: string;
 };
 
+type BookStatusResponse = {
+  generationStatus?: string;
+  generationError?: string;
+  generationUpdatedAt?: string;
+  progressMessage?: string;
+  status?: string;
+  freeIllustrationsReady?: boolean;
+  freePreviewReady?: boolean;
+  previewReady?: boolean;
+  previewCoverReady?: boolean;
+  readyPreviewAssetsCount?: number;
+  readyFreeImageCount?: number;
+};
+
 function shouldStopFreePreviewLoop(data: FreePreviewImageResponse | null | undefined) {
   if (!data) {
     return false;
   }
 
-  return data.allFreeImagesReady || (data.readyFreeImageCount ?? 0) >= 3;
+  return Boolean(data.allFreeImagesReady || data.freePreviewReady || data.freeIllustrationsReady || (data.readyPreviewAssetsCount ?? data.readyFreeImageCount ?? 0) >= 3);
 }
 
 function isFreePreviewPageReady(data: FreePreviewImageResponse | null | undefined, pageNumber: number) {
@@ -229,7 +248,7 @@ export default function Home() {
     if (freePreviewParallelStartedRunRef.current === runId) {
       while (generationRunRef.current === runId) {
         const { response, data } = await fetchBookStatus(token);
-        if (response.ok && (Number(data.readyFreeImageCount ?? 0) >= 3 || data.freeIllustrationsReady)) {
+        if (response.ok && (data.freePreviewReady || data.freeIllustrationsReady || data.allFreeImagesReady || (data.readyPreviewAssetsCount ?? data.readyFreeImageCount ?? 0) >= 3)) {
           console.log("[FREE_PREVIEW_LOOP_STOP_ALL_READY]");
           return;
         }
@@ -249,7 +268,7 @@ export default function Home() {
 
     while (generationRunRef.current === runId) {
       const { response, data } = await fetchBookStatus(token);
-      if (response.ok && (Number(data.readyFreeImageCount ?? 0) >= 3 || data.freeIllustrationsReady)) {
+      if (response.ok && (data.freePreviewReady || data.freeIllustrationsReady || data.allFreeImagesReady || (data.readyPreviewAssetsCount ?? data.readyFreeImageCount ?? 0) >= 3)) {
         console.log("[FREE_PREVIEW_LOOP_STOP_ALL_READY]");
         return;
       }
@@ -348,25 +367,27 @@ export default function Home() {
       const { response: statusResponse, data: statusData } = await fetchBookStatus(accessToken);
 
       if (statusResponse.ok) {
-        const readyFreeCount = Number(statusData.readyFreeImageCount ?? 0);
-        const hasText = statusData.generationStatus !== "generating_text";
+        const status = statusData as BookStatusResponse;
+        const readyPreviewAssetsCount = Number(status.readyPreviewAssetsCount ?? status.readyFreeImageCount ?? 0);
+        const hasText = status.generationStatus !== "generating_text";
+        const freePreviewReady = Boolean(status.freePreviewReady || status.previewReady || status.freeIllustrationsReady);
 
         setGenerationProgressMessage(
-          (statusData.progressMessage as string | undefined) ||
+          (status.progressMessage as string | undefined) ||
             getClientProgressMessage({
               elapsedMs,
               hasText,
-              readyFreeImageCount: readyFreeCount,
+              readyFreeImageCount: readyPreviewAssetsCount,
             }),
         );
 
-        if (statusData.status === "failed" || statusData.generationStatus === "failed") {
+        if (status.status === "failed" || status.generationStatus === "failed") {
           throw new Error(
-            (statusData.generationError as string | undefined) || "The archives refused to open. Try again.",
+            (status.generationError as string | undefined) || "The archives refused to open. Try again.",
           );
         }
 
-        if (statusData.freeIllustrationsReady) {
+        if (freePreviewReady) {
           const { response: bookResponse, data: bookData } = await fetchBook(accessToken);
           if (bookResponse.ok && bookData.book) {
             const finalBook = normalizeBook(bookData.book);
@@ -380,12 +401,12 @@ export default function Home() {
           }
         }
 
-        const updatedAt = statusData.generationUpdatedAt as string | undefined;
-        if (isGenerationPreparing(statusData.generationStatus as string) && isGenerationStale(updatedAt, STALE_GENERATION_MS)) {
+        const updatedAt = status.generationUpdatedAt;
+        if (isGenerationPreparing(status.generationStatus as string) && isGenerationStale(updatedAt, STALE_GENERATION_MS)) {
           void retryMissingImages(accessToken);
         }
 
-        if (!statusData.freeIllustrationsReady) {
+        if (!freePreviewReady) {
           kickImageWorkers();
         }
       }

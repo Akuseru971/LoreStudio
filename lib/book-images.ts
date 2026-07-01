@@ -43,6 +43,48 @@ export async function resolveImageDisplayUrl(image: NormalizedPageImage | null):
   return createSignedAssetUrl(storagePath, 3600);
 }
 
+export async function resolvePreviewCoverImageForClient(
+  images: Record<string, { status?: string; url?: string | null; storagePath?: string | null }>,
+) {
+  const previewCover = images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  if (!previewCover) {
+    return images;
+  }
+
+  const directUrl = getDirectImageUrl(previewCover);
+  if (directUrl) {
+    return {
+      ...images,
+      [FREE_PREVIEW_POSTER_IMAGE_KEY]: {
+        ...previewCover,
+        url: directUrl,
+      },
+      previewCover: {
+        ...previewCover,
+        url: directUrl,
+      },
+    };
+  }
+
+  const storagePath = getImageStoragePath(previewCover);
+  if (!storagePath) {
+    return images;
+  }
+
+  const signedUrl = await createSignedAssetUrl(storagePath, 3600);
+  const resolvedPreviewCover = {
+    ...previewCover,
+    url: signedUrl,
+    storagePath,
+  };
+
+  return {
+    ...images,
+    [FREE_PREVIEW_POSTER_IMAGE_KEY]: resolvedPreviewCover,
+    previewCover: resolvedPreviewCover,
+  };
+}
+
 export function getNormalizedImagesForStoredBook(storedBook: StoredBook) {
   const normalizedRecord = normalizeStoredBookImages(storedBook);
   const sourceBook = storedBook.full_book || storedBook.free_book;
