@@ -26,7 +26,7 @@ import {
   PREMIUM_IMAGE_PAGE_NUMBERS,
 } from "@/lib/image-config";
 import { dispatchNarrationEnd, dispatchNarrationStart } from "@/lib/narration-events";
-import { getDirectImageUrl, logBookImageRender } from "@/lib/book-image-utils";
+import { getDirectImageUrl, getImageStoragePath, logBookImageRender } from "@/lib/book-image-utils";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { fetchBook, generateImage, generateNarratorTeaser, generatePageAudio } from "@/lib/client/api";
 import { startPremiumGenerationLoop } from "@/lib/client/premium-generation";
@@ -292,8 +292,9 @@ export default function InteractiveBook({
     const { response, data } = await fetchBook(accessToken);
     const bookData = data as {
       book?: LoreBook | null;
-      images?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
-      imageStatus?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null }>;
+      images?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null; signedUrl?: string | null }>;
+      imageStatus?: Record<string, { status: ImagePageStatus; url?: string | null; storagePath?: string | null; signedUrl?: string | null }>;
+      previewCover?: { status?: ImagePageStatus; url?: string | null; storagePath?: string | null; signedUrl?: string | null } | null;
       allIllustrationsReady?: boolean;
     };
 
@@ -323,8 +324,16 @@ export default function InteractiveBook({
     setImageCache((current) => ({ ...current, ...nextCache }));
 
     if (!isPremium) {
-      const posterState = imageMap[FREE_PREVIEW_POSTER_IMAGE_KEY];
+      const posterState =
+        bookData.previewCover ?? imageMap[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? imageMap.previewCover;
       const posterUrl = getDirectImageUrl(posterState);
+
+      console.log("[READER_PREVIEW_COVER_RECEIVED]", {
+        hasUrl: Boolean(posterUrl),
+        hasStoragePath: Boolean(getImageStoragePath(posterState)),
+        status: posterState?.status ?? null,
+      });
+
       setPosterRevealImageUrl(posterUrl);
       setLoadingPosterReveal(posterState?.status === "generating" && !posterUrl);
     }

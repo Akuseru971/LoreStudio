@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, mergeBookAssets } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { FREE_PREVIEW_POSTER_IMAGE_KEY } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, resolvePreviewCoverImageForClient } from "@/lib/book-images";
 import { normalizeBook } from "@/lib/normalizeBook";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
@@ -26,6 +27,15 @@ export async function GET(request: Request) {
     const sourceBook = isPremium ? storedBook.full_book || storedBook.free_book : storedBook.free_book;
     const normalized = getNormalizedImagesForStoredBook(storedBook);
     const clientImages = await resolvePreviewCoverImageForClient(normalized.images);
+    const previewCover = clientImages.previewCover ?? clientImages[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? null;
+
+    console.log("[BOOK_API_PREVIEW_COVER_RETURNED]", {
+      hasPreviewCover: Boolean(previewCover),
+      status: previewCover?.status ?? null,
+      hasUrl: Boolean(previewCover?.url || (previewCover as { signedUrl?: string | null } | null)?.signedUrl),
+      hasStoragePath: Boolean(previewCover?.storagePath),
+    });
+
     const mergedBook = sourceBook
       ? await mergeBookAssets(sourceBook, normalized.normalizedImages, storedBook.audio)
       : null;
@@ -38,6 +48,7 @@ export async function GET(request: Request) {
       book,
       imageStatus: clientImages,
       images: clientImages,
+      previewCover,
       isPremium,
       canDownloadPdf: isPremium && normalized.allIllustrationsReady,
       canDownloadMp3: isPremium,

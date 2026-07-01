@@ -44,25 +44,23 @@ export async function resolveImageDisplayUrl(image: NormalizedPageImage | null):
 }
 
 export async function resolvePreviewCoverImageForClient(
-  images: Record<string, { status?: string; url?: string | null; storagePath?: string | null }>,
+  images: Record<string, { status?: string; url?: string | null; storagePath?: string | null; generatedAt?: string | null }>,
 ) {
-  const previewCover = images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  const previewCover = images[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? images.previewCover;
   if (!previewCover) {
     return images;
   }
 
   const directUrl = getDirectImageUrl(previewCover);
   if (directUrl) {
+    const resolvedPreviewCover = {
+      ...previewCover,
+      url: directUrl,
+    };
     return {
       ...images,
-      [FREE_PREVIEW_POSTER_IMAGE_KEY]: {
-        ...previewCover,
-        url: directUrl,
-      },
-      previewCover: {
-        ...previewCover,
-        url: directUrl,
-      },
+      [FREE_PREVIEW_POSTER_IMAGE_KEY]: resolvedPreviewCover,
+      previewCover: resolvedPreviewCover,
     };
   }
 
@@ -75,6 +73,7 @@ export async function resolvePreviewCoverImageForClient(
   const resolvedPreviewCover = {
     ...previewCover,
     url: signedUrl,
+    signedUrl,
     storagePath,
   };
 
@@ -83,6 +82,34 @@ export async function resolvePreviewCoverImageForClient(
     [FREE_PREVIEW_POSTER_IMAGE_KEY]: resolvedPreviewCover,
     previewCover: resolvedPreviewCover,
   };
+}
+
+function readStoredPreviewPosterImage(storedBook: StoredBook) {
+  const raw = storedBook.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  if (!raw) {
+    return null;
+  }
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const storagePath = getImageStoragePath(trimmed);
+    return {
+      status: storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? "ready",
+      url: storagePath ? null : trimmed,
+      storagePath,
+      generatedAt: null,
+    };
+  }
+
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    return raw as { status?: string; url?: string | null; storagePath?: string | null; generatedAt?: string | null };
+  }
+
+  return null;
 }
 
 export function getNormalizedImagesForStoredBook(storedBook: StoredBook) {
@@ -96,18 +123,14 @@ export function getNormalizedImagesForStoredBook(storedBook: StoredBook) {
   };
 
   const images = normalizeBookImages(input);
-  const posterImage = normalizedRecord.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  const posterImage = readStoredPreviewPosterImage(storedBook);
   if (posterImage) {
+    const posterStatus = posterImage.status ?? storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? "not_started";
+    const posterReady = Boolean(getDirectImageUrl(posterImage) || getImageStoragePath(posterImage));
     images[FREE_PREVIEW_POSTER_IMAGE_KEY] = {
-      status: isIllustrationReady(posterImage) ? "ready" : posterImage.status || "not_started",
+      status: posterReady ? "ready" : (posterStatus as ImagePageStatus),
       url: getDirectImageUrl(posterImage),
       storagePath: getImageStoragePath(posterImage),
-    };
-  } else if (storedBook.image_status?.[FREE_PREVIEW_POSTER_IMAGE_KEY]) {
-    images[FREE_PREVIEW_POSTER_IMAGE_KEY] = {
-      status: storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY],
-      url: null,
-      storagePath: null,
     };
   }
 
