@@ -96,13 +96,24 @@ function isStoryPreviewImageReady(storedBook: StoredBook, pageNumber: number) {
   return Boolean(getDirectImageUrl(image) || getImageStoragePath(image));
 }
 
+function hasUsablePreviewCoverAsset(image: BookPageImage | null) {
+  if (!image) {
+    return false;
+  }
+
+  const storagePath = getImageStoragePath(image);
+  if (storagePath?.includes("page-NaN")) {
+    return false;
+  }
+
+  return Boolean(getDirectImageUrl(image) || storagePath);
+}
+
 export function getFreePreviewReadiness(storedBook: StoredBook): FreePreviewReadiness {
   const page1Ready = isStoryPreviewImageReady(storedBook, 1);
   const page2Ready = isStoryPreviewImageReady(storedBook, 2);
   const previewCoverImage = getPreviewPosterImage(storedBook);
-  const previewCoverReady =
-    isIllustrationReady(previewCoverImage) &&
-    Boolean(getDirectImageUrl(previewCoverImage) || getImageStoragePath(previewCoverImage));
+  const previewCoverReady = hasUsablePreviewCoverAsset(previewCoverImage);
   const readyPreviewAssetsCount = [page1Ready, page2Ready, previewCoverReady].filter(Boolean).length;
 
   return {
@@ -225,7 +236,8 @@ function isFreePageEligibleForGeneration(
 }
 
 function isPreviewCoverEligibleForGeneration(storedBook: StoredBook) {
-  if (isPreviewPosterReady(storedBook)) {
+  const previewCoverImage = getPreviewPosterImage(storedBook);
+  if (hasUsablePreviewCoverAsset(previewCoverImage)) {
     return false;
   }
 

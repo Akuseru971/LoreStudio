@@ -5,6 +5,7 @@ import { generateAccessToken } from "@/lib/accessToken";
 import { createSignedAssetUrl, persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
 import {
   FREE_PREVIEW_POSTER_IMAGE_KEY,
+  FREE_PREVIEW_STORY_IMAGE_PAGES,
 } from "@/lib/image-config";
 import {
   getImageForPage,
@@ -340,6 +341,27 @@ export async function saveBookAsset(
   throw new Error("Unable to save book asset.");
 }
 
+function mergeStoredFreePreviewStoryImages(
+  storedBook: StoredBook,
+  images: Record<string, BookPageImage>,
+) {
+  const merged = { ...images };
+
+  for (const pageNumber of FREE_PREVIEW_STORY_IMAGE_PAGES) {
+    const key = String(pageNumber);
+    const raw = storedBook.images[key];
+    if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+      merged[key] = {
+        ...(merged[key] ?? {}),
+        ...(raw as BookPageImage),
+        pageNumber,
+      };
+    }
+  }
+
+  return merged;
+}
+
 export async function savePreviewPosterAsset(
   accessToken: string,
   assetRef: string,
@@ -376,22 +398,25 @@ export async function savePreviewPosterAsset(
 
     const signedUrl = await createSignedAssetUrl(persistedRef, 3600);
     const normalized = normalizeStoredBookImages(storedBook);
-    const updatedImages = {
-      ...normalized.images,
-      [posterKey]: {
-        ...normalized.images[posterKey],
-        status: "ready" as ImagePageStatus,
-        url: signedUrl,
-        storagePath: persistedRef,
-        generatedAt: new Date().toISOString(),
-        startedAt: null,
-        updatedAt: new Date().toISOString(),
-        generationStartedAt: null,
-        generationClaimId: null,
-      },
-    };
+    const updatedImages = mergeStoredFreePreviewStoryImages(storedBook, normalized.images);
+    updatedImages[posterKey] = {
+      status: "ready" as ImagePageStatus,
+      url: signedUrl,
+      storagePath: persistedRef,
+      generatedAt: new Date().toISOString(),
+      startedAt: null,
+      updatedAt: new Date().toISOString(),
+      generationStartedAt: null,
+      generationClaimId: null,
+    } as BookPageImage;
     const nextImageStatus = {
       ...normalized.imageStatus,
+      ...Object.fromEntries(
+        FREE_PREVIEW_STORY_IMAGE_PAGES.map((pageNumber) => {
+          const key = String(pageNumber);
+          return [key, storedBook.image_status[key] ?? normalized.imageStatus[key] ?? "not_started"] as const;
+        }),
+      ),
       [posterKey]: "ready" as ImagePageStatus,
     };
 
@@ -406,13 +431,20 @@ export async function savePreviewPosterAsset(
       .single();
 
     if (!error && data) {
+      const savedBook = mapRow(data);
       console.log("[IMAGE_BOOK_UPDATE_DONE]", {
-        bookId: storedBook.id,
+        bookId: savedBook.id,
         assetKey: posterKey,
         url: signedUrl,
         storagePath: persistedRef,
       });
-      return mapRow(data);
+
+      const { areFreeIllustrationsReady } = await import("@/lib/freeImages");
+      if (areFreeIllustrationsReady(savedBook)) {
+        await updateGenerationProgress(savedBook.id, "ready_free", { generationError: null });
+      }
+
+      return savedBook;
     }
 
     if (attempt === 3) {

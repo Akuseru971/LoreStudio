@@ -1,5 +1,6 @@
 import "server-only";
 
+import { FREE_PREVIEW_POSTER_IMAGE_KEY } from "@/lib/image-config";
 import { BOOK_ASSETS_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
 import { isStorageAssetPath as isBookStorageAssetPath } from "@/lib/book-image-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -93,6 +94,62 @@ export function buildAssetStoragePath(
   return `books/${bookId}/page-${pageNumber}-${assetType}.${extension}`;
 }
 
+export function buildPreviewPosterStoragePath(bookId: string, mimeType: string) {
+  const extension = extensionForMime(mimeType, "image");
+  return `books/${bookId}/preview-poster.${extension}`;
+}
+
+function isPreviewPosterAssetKey(key: string) {
+  return key === FREE_PREVIEW_POSTER_IMAGE_KEY;
+}
+
+async function uploadAssetBuffer(storagePath: string, buffer: Buffer, mimeType: string) {
+  const supabase = requireSupabase();
+  await ensureBookAssetsBucketReady(supabase);
+  const { error } = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, buffer, {
+    contentType: mimeType,
+    upsert: true,
+  });
+
+  if (error) {
+    if (/bucket not found/i.test(error.message)) {
+      ensureBucketPromise = null;
+      await ensureBookAssetsBucketReady(supabase);
+      const retry = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      });
+      if (retry.error) {
+        throw new Error(retry.error.message);
+      }
+      return storagePath;
+    }
+
+    throw new Error(error.message);
+  }
+
+  return storagePath;
+}
+
+export async function uploadPreviewPosterAsset(bookId: string, assetRef: string) {
+  if (isStorageAssetPath(assetRef)) {
+    return assetRef;
+  }
+
+  if (!assetRef.startsWith("data:")) {
+    return assetRef;
+  }
+
+  const parsed = parseDataUrl(assetRef);
+  if (!parsed) {
+    throw new Error("Invalid preview poster asset payload.");
+  }
+
+  const storagePath = buildPreviewPosterStoragePath(bookId, parsed.mimeType);
+  await uploadAssetBuffer(storagePath, parsed.buffer, parsed.mimeType);
+  return storagePath;
+}
+
 export async function uploadBookAsset(
   bookId: string,
   pageNumber: number,
@@ -115,27 +172,7 @@ export async function uploadBookAsset(
   const supabase = requireSupabase();
   await ensureBookAssetsBucketReady(supabase);
   const storagePath = buildAssetStoragePath(bookId, pageNumber, assetType, parsed.mimeType);
-  const { error } = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, parsed.buffer, {
-    contentType: parsed.mimeType,
-    upsert: true,
-  });
-
-  if (error) {
-    if (/bucket not found/i.test(error.message)) {
-      ensureBucketPromise = null;
-      await ensureBookAssetsBucketReady(supabase);
-      const retry = await supabase.storage.from(BOOK_ASSETS_BUCKET).upload(storagePath, parsed.buffer, {
-        contentType: parsed.mimeType,
-        upsert: true,
-      });
-      if (retry.error) {
-        throw new Error(retry.error.message);
-      }
-      return storagePath;
-    }
-
-    throw new Error(error.message);
-  }
+  await uploadAssetBuffer(storagePath, parsed.buffer, parsed.mimeType);
 
   return storagePath;
 }
@@ -202,11 +239,17 @@ export async function persistAssetMap(
 ) {
   const persisted: Record<string, string> = {};
 
-  for (const [pageNumber, assetRef] of Object.entries(assets)) {
+  for (const [assetKey, assetRef] of Object.entries(assets)) {
     if (!assetRef) {
       continue;
     }
-    persisted[pageNumber] = await uploadBookAsset(bookId, Number(pageNumber), assetType, assetRef);
+
+    if (assetType === "image" && isPreviewPosterAssetKey(assetKey)) {
+      persisted[assetKey] = await uploadPreviewPosterAsset(bookId, assetRef);
+      continue;
+    }
+
+    persisted[assetKey] = await uploadBookAsset(bookId, Number(assetKey), assetType, assetRef);
   }
 
   return persisted;

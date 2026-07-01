@@ -56,62 +56,67 @@ export async function retryMissingImages(accessToken: string) {
       }
     }
   } else {
-    const freeMissingStoryPages = missingBefore.filter((pageNumber) => pageNumber <= 2);
+    const page2Ready = isIllustrationReady(getImageForPage(imagesInput, 2));
+    const previewReady = isPreviewPosterReady(storedBook);
 
-    if (freeMissingStoryPages.includes(1)) {
-      const image = getImageForPage(imagesInput, 1);
-      if (!isIllustrationReady(image)) {
-        await generateAndStoreFreeImageForPage({
-          accessToken,
-          bookId: storedBook.id,
-          book: sourceBook,
-          pageNumber: 1,
-        });
-      }
-    }
+    if (!(isFreePage1Ready(storedBook) && page2Ready && previewReady)) {
+      const freeMissingStoryPages = missingBefore.filter((pageNumber) => pageNumber <= 2);
 
-    const refreshedBook = await getBookByAccessToken(accessToken);
-    if (!refreshedBook) {
-      throw new Error("Book not found.");
-    }
-
-    const refreshedSource = refreshedBook.free_book;
-    if (!refreshedSource) {
-      throw new Error("Book content is missing.");
-    }
-
-    const refreshedInput = {
-      images: refreshedBook.images,
-      imageStatus: refreshedBook.image_status,
-      pages: refreshedSource.pages,
-    };
-
-    if (isFreePage1Ready(refreshedBook)) {
-      const parallelTasks: Array<Promise<unknown>> = [];
-
-      if (!isIllustrationReady(getImageForPage(refreshedInput, 2))) {
-        parallelTasks.push(
-          generateAndStoreFreeImageForPage({
+      if (freeMissingStoryPages.includes(1)) {
+        const image = getImageForPage(imagesInput, 1);
+        if (!isIllustrationReady(image)) {
+          await generateAndStoreFreeImageForPage({
             accessToken,
-            bookId: refreshedBook.id,
-            book: refreshedSource,
-            pageNumber: 2,
-          }),
-        );
+            bookId: storedBook.id,
+            book: sourceBook,
+            pageNumber: 1,
+          });
+        }
       }
 
-      if (!isPreviewPosterReady(refreshedBook)) {
-        parallelTasks.push(
-          generateAndStoreFreePreviewCover({
-            accessToken,
-            bookId: refreshedBook.id,
-            book: refreshedSource,
-          }),
-        );
+      const refreshedBook = await getBookByAccessToken(accessToken);
+      if (!refreshedBook) {
+        throw new Error("Book not found.");
       }
 
-      if (parallelTasks.length > 0) {
-        await Promise.allSettled(parallelTasks);
+      const refreshedSource = refreshedBook.free_book;
+      if (!refreshedSource) {
+        throw new Error("Book content is missing.");
+      }
+
+      const refreshedInput = {
+        images: refreshedBook.images,
+        imageStatus: refreshedBook.image_status,
+        pages: refreshedSource.pages,
+      };
+
+      if (isFreePage1Ready(refreshedBook)) {
+        const parallelTasks: Array<Promise<unknown>> = [];
+
+        if (!isIllustrationReady(getImageForPage(refreshedInput, 2))) {
+          parallelTasks.push(
+            generateAndStoreFreeImageForPage({
+              accessToken,
+              bookId: refreshedBook.id,
+              book: refreshedSource,
+              pageNumber: 2,
+            }),
+          );
+        }
+
+        if (!isPreviewPosterReady(refreshedBook)) {
+          parallelTasks.push(
+            generateAndStoreFreePreviewCover({
+              accessToken,
+              bookId: refreshedBook.id,
+              book: refreshedSource,
+            }),
+          );
+        }
+
+        if (parallelTasks.length > 0) {
+          await Promise.allSettled(parallelTasks);
+        }
       }
     }
   }
