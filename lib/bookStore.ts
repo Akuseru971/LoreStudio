@@ -2140,6 +2140,7 @@ export async function ensureBookPdf(bookId: string, book: LoreBook) {
   const pdfBuffer = await generateBookPdf(book, {
     images: normalized.images,
     imageStatus: normalized.imageStatus,
+    allImages: storedBook.images,
   });
   return uploadBookPdf(bookId, pdfBuffer);
 }

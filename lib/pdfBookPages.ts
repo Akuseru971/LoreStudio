@@ -6,11 +6,14 @@ import {
   isStorageAssetPath,
 } from "@/lib/bookAssets";
 import {
+  getDirectImageUrl,
   getImageForPage,
+  getImageStoragePath,
   logPdfImageCheck,
   resolveImageDisplayUrl,
   type BookImagesInput,
 } from "@/lib/book-images";
+import { FREE_PREVIEW_POSTER_IMAGE_KEY } from "@/lib/image-config";
 import type { BookPageImage, ImagePageStatus, LoreBook } from "@/lib/types";
 
 export type PdfStoryPage = {
@@ -23,6 +26,7 @@ export type PdfStoryPage = {
 export type PdfGenerationContext = {
   images?: Record<string, BookPageImage | string>;
   imageStatus?: Record<string, ImagePageStatus>;
+  allImages?: Record<string, BookPageImage | string>;
 };
 
 function mimeTypeForStoragePath(path: string) {
@@ -71,6 +75,83 @@ export async function resolveImageUrlForPdf(image: Awaited<ReturnType<typeof get
   }
 
   return null;
+}
+
+function readPreviewCoverImage(context: PdfGenerationContext) {
+  const source = context.allImages ?? context.images;
+  if (!source) {
+    return null;
+  }
+
+  const raw = source[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? source.previewCover;
+  if (!raw) {
+    return null;
+  }
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const storagePath = getImageStoragePath(trimmed);
+    return {
+      pageNumber: 0,
+      status: "ready" as const,
+      url: storagePath ? null : trimmed,
+      storagePath,
+      generatedAt: null,
+      startedAt: null,
+      updatedAt: null,
+      generationStartedAt: null,
+      generationClaimId: null,
+    };
+  }
+
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    const image = raw as BookPageImage;
+    return {
+      pageNumber: 0,
+      status: image.status || "ready",
+      url: getDirectImageUrl(image),
+      storagePath: getImageStoragePath(image),
+      generatedAt: image.generatedAt || null,
+      startedAt: image.startedAt || null,
+      updatedAt: image.updatedAt || null,
+      generationStartedAt: image.generationStartedAt || null,
+      generationClaimId: image.generationClaimId || null,
+    };
+  }
+
+  return null;
+}
+
+export async function resolvePreviewCoverUrlForPdf(
+  context: PdfGenerationContext = {},
+): Promise<string | null> {
+  const previewCover = readPreviewCoverImage(context);
+  if (!previewCover) {
+    console.warn("[PDF_PREVIEW_COVER_MISSING]");
+    return null;
+  }
+
+  console.log("[PDF_PREVIEW_COVER_CHECK]", {
+    storagePath: previewCover.storagePath,
+    url: previewCover.url,
+  });
+
+  try {
+    const displayUrl = await resolveImageDisplayUrl(previewCover);
+    if (!displayUrl) {
+      console.warn("[PDF_PREVIEW_COVER_UNRESOLVED]", previewCover);
+      return null;
+    }
+
+    return resolveRenderableImageSrc(displayUrl);
+  } catch (error) {
+    console.warn("[PDF_PREVIEW_COVER_RESOLVE_FAILED]", error);
+    return null;
+  }
 }
 
 export async function preparePdfStoryPages(

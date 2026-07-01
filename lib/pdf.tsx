@@ -1,6 +1,6 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { preparePdfStoryPages, type PdfGenerationContext, type PdfStoryPage } from "@/lib/pdfBookPages";
+import { preparePdfStoryPages, resolvePreviewCoverUrlForPdf, type PdfGenerationContext, type PdfStoryPage } from "@/lib/pdfBookPages";
 import type { LoreBook } from "@/lib/types";
 
 const PAGE_PADDING = 18;
@@ -26,6 +26,24 @@ const palette = {
   rule: "#6b5530",
   placeholder: "#9a7d58",
 };
+
+const coverStyles = StyleSheet.create({
+  page: {
+    backgroundColor: palette.imageWell,
+    padding: 0,
+  },
+  canvas: {
+    flex: 1,
+    backgroundColor: palette.darkBackground,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+  },
+});
 
 const imageStyles = StyleSheet.create({
   page: {
@@ -243,6 +261,16 @@ function resolveTextPageTypography(text: string): TextPageTypography {
   };
 }
 
+function CoverPdfPage({ imageSrc }: { imageSrc: string }) {
+  return (
+    <Page size="A4" style={coverStyles.page}>
+      <View style={coverStyles.canvas}>
+        <Image src={imageSrc} style={coverStyles.image} />
+      </View>
+    </Page>
+  );
+}
+
 function ImagePdfPage({ page }: { page: PdfStoryPage }) {
   return (
     <Page size="A4" style={imageStyles.page}>
@@ -309,16 +337,19 @@ function TextPdfPage({ page }: { page: PdfStoryPage }) {
 }
 
 function BookPdfDocument({
+  coverImageSrc,
   storyPages,
   bookTitle,
   characterName,
 }: {
+  coverImageSrc?: string | null;
   storyPages: PdfStoryPage[];
   bookTitle: string;
   characterName: string;
 }) {
   return (
     <Document title={bookTitle} author={characterName}>
+      {coverImageSrc ? <CoverPdfPage key="preview-cover" imageSrc={coverImageSrc} /> : null}
       {storyPages.flatMap((page) => [
         <ImagePdfPage key={`image-${page.pageNumber}`} page={page} />,
         <TextPdfPage key={`text-${page.pageNumber}`} page={page} />,
@@ -328,7 +359,10 @@ function BookPdfDocument({
 }
 
 export async function generateBookPdf(book: LoreBook, context: PdfGenerationContext = {}): Promise<Buffer> {
-  const storyPages = await preparePdfStoryPages(book, context);
+  const [storyPages, coverImageSrc] = await Promise.all([
+    preparePdfStoryPages(book, context),
+    resolvePreviewCoverUrlForPdf(context),
+  ]);
 
   if (storyPages.length !== FULL_BOOK_PAGE_COUNT) {
     console.warn(
@@ -336,8 +370,12 @@ export async function generateBookPdf(book: LoreBook, context: PdfGenerationCont
     );
   }
 
-  console.log("[PDF_LAYOUT_MODE]", "alternating_image_text_pages");
-  console.log("[PDF_TOTAL_PAGES_EXPECTED]", FULL_BOOK_PAGE_COUNT * 2);
+  console.log("[PDF_LAYOUT_MODE]", "preview_cover_then_alternating_image_text_pages");
+  console.log("[PDF_TOTAL_PAGES_EXPECTED]", (coverImageSrc ? 1 : 0) + FULL_BOOK_PAGE_COUNT * 2);
+
+  if (coverImageSrc) {
+    console.log("[PDF_ADD_PREVIEW_COVER_PAGE]");
+  }
 
   for (const page of storyPages) {
     console.log("[PDF_ADD_IMAGE_PAGE]", { storyPage: page.pageNumber });
@@ -346,6 +384,7 @@ export async function generateBookPdf(book: LoreBook, context: PdfGenerationCont
 
   const buffer = await renderToBuffer(
     <BookPdfDocument
+      coverImageSrc={coverImageSrc}
       storyPages={storyPages}
       bookTitle={book.title}
       characterName={book.characterBible.name}
