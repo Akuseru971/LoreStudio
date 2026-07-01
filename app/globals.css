@@ -1788,6 +1788,22 @@ button {
   object-fit: cover;
 }
 
+.legend-reveal-image--poster {
+  aspect-ratio: auto;
+  max-height: min(72vh, 42rem);
+  object-fit: contain;
+  background: rgba(4, 6, 12, 0.88);
+}
+
+.legend-reveal-overlay--embedded {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  min-height: min(78vh, 44rem);
+  border: 1px solid rgba(218, 185, 112, 0.16);
+  background: rgba(3, 4, 10, 0.94);
+}
+
 .legend-reveal-image-placeholder {
   position: relative;
   display: flex;

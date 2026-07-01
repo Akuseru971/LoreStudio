@@ -335,6 +335,31 @@ ${IMAGE_STYLE_AVOIDANCES}
 No written text inside the image.`;
 }
 
+export function buildFreePosterRevealPrompt(book: LoreBook, championName: string) {
+  const visual = book.visualBible;
+  const tagline = book.subtitle?.trim();
+
+  return `Create a cinematic epic League of Legends poster featuring the generated champion as the main character. Show a dramatic close-up profile of the character on the right side, with dynamic combat poses and an intense fantasy atmosphere.
+
+Use a traditional Chinese ink-wash style mixed with dark cinematic fantasy. Add splashing black brush strokes, swirling mist, ancient oriental pagodas in the background, dramatic lighting, and a glowing energy beam or light source in the center.
+
+The image should feel powerful, mysterious, and heroic, with high contrast, film grain, paper texture, intricate details, and ultra-high definition. Main color palette: deep blue, charcoal black, and subtle glowing highlights. 8K, cinematic composition, poster-style layout.
+
+The name of the champion is "${championName}".
+
+Character identity to preserve:
+${visual.appearance}. Clothing: ${visual.clothing}. Palette: ${visual.colorPalette}. Recurring motif: ${visual.recurringVisualMotif}.
+Region atmosphere: ${visual.regionAtmosphere}.
+
+This must feel like a premium collector book cover poster, not a normal chapter illustration.
+Preserve only the character's appearance and identity. Do NOT reuse the exact pose, posture, framing, or chapter composition from earlier story illustrations.
+Create a new cinematic poster composition with dramatic profile close-up and heroic poster layout.
+${tagline ? `Optional minimal elegant tagline mood: ${tagline}.` : ""}
+If rendering title text, display "${championName}" as the large poster title.
+${IMAGE_STYLE_AVOIDANCES}
+No watermark.`;
+}
+
 function summarizeForImage(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return normalized.length > 420 ? `${normalized.slice(0, 417)}...` : normalized;

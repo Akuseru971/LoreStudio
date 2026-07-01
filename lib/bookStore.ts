@@ -4,6 +4,10 @@ import { ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { generateAccessToken } from "@/lib/accessToken";
 import { createSignedAssetUrl, persistAssetMap, resolveAssetMap } from "@/lib/bookAssets";
 import {
+  FREE_PREVIEW_POSTER_IMAGE_KEY,
+  FREE_PREVIEW_POSTER_PAGE_NUMBER,
+} from "@/lib/image-config";
+import {
   getImageForPage,
   getReadyIllustrationCount,
   isIllustrationReady,
@@ -322,6 +326,90 @@ export async function saveBookAsset(
   }
 
   throw new Error("Unable to save book asset.");
+}
+
+export async function savePreviewPosterAsset(
+  accessToken: string,
+  assetRef: string,
+  options: { claimId?: string } = {},
+) {
+  const supabase = requireSupabase();
+  const pageNumber = FREE_PREVIEW_POSTER_PAGE_NUMBER;
+  const posterKey = FREE_PREVIEW_POSTER_IMAGE_KEY;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const storedBook = await getBookByAccessToken(accessToken);
+    if (!storedBook) {
+      throw new Error("Book not found.");
+    }
+
+    console.log("[IMAGE_SAVE_START]", { bookId: storedBook.id, pageNumber, assetType: "preview_poster", attempt });
+
+    const storagePath = await persistAssetMap(storedBook.id, { [posterKey]: assetRef }, "image");
+    const persistedRef = storagePath[posterKey];
+    if (!persistedRef) {
+      throw new Error("Unable to persist preview poster asset.");
+    }
+
+    if (options.claimId) {
+      if (!verifyImageGenerationClaimOwnership(storedBook, pageNumber, options.claimId)) {
+        console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+          bookId: storedBook.id,
+          pageNumber,
+          claimId: options.claimId,
+          currentClaimId: getImageGenerationClaimId(storedBook, pageNumber),
+        });
+        return storedBook;
+      }
+    }
+
+    const signedUrl = await createSignedAssetUrl(persistedRef, 3600);
+    const normalized = normalizeStoredBookImages(storedBook);
+    const updatedImages = {
+      ...normalized.images,
+      [posterKey]: {
+        ...normalized.images[posterKey],
+        pageNumber,
+        status: "ready" as ImagePageStatus,
+        url: signedUrl,
+        storagePath: persistedRef,
+        generatedAt: new Date().toISOString(),
+        generationClaimId: null,
+      },
+    };
+    const nextImageStatus = {
+      ...normalized.imageStatus,
+      [String(pageNumber)]: "ready" as ImagePageStatus,
+      [posterKey]: "ready" as ImagePageStatus,
+    };
+
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .update({
+        images: updatedImages,
+        image_status: nextImageStatus,
+      })
+      .eq("id", storedBook.id)
+      .select("*")
+      .single();
+
+    if (!error && data) {
+      console.log("[IMAGE_BOOK_UPDATE_DONE]", {
+        bookId: storedBook.id,
+        pageNumber,
+        posterKey,
+        url: signedUrl,
+        storagePath: persistedRef,
+      });
+      return mapRow(data);
+    }
+
+    if (attempt === 3) {
+      throw new Error(error?.message || "Unable to save preview poster asset.");
+    }
+  }
+
+  throw new Error("Unable to save preview poster asset.");
 }
 
 export async function getBookById(bookId: string) {

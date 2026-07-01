@@ -1,6 +1,12 @@
 import "server-only";
 
-import { FREE_IMAGE_PAGE_COUNT, FREE_IMAGE_PAGES } from "@/lib/image-config";
+import {
+  FREE_IMAGE_PAGE_COUNT,
+  FREE_IMAGE_PAGES,
+  FREE_PREVIEW_POSTER_IMAGE_KEY,
+  FREE_PREVIEW_POSTER_PAGE_NUMBER,
+  isFreePreviewPosterPage,
+} from "@/lib/image-config";
 import {
   claimPageImageGeneration,
   getBookByAccessToken,
@@ -9,6 +15,7 @@ import {
   mergeBookAssets,
   reloadAndVerifyPageImageClaim,
   saveBookAsset,
+  savePreviewPosterAsset,
   stampMissingGeneratingTimestamp,
   updateGenerationProgress,
 } from "@/lib/bookStore";
@@ -20,16 +27,45 @@ import {
   verifyImageGenerationClaimOwnership,
 } from "@/lib/imageGenerationTimestamps";
 import { generateBookPageImage } from "@/lib/images";
-import { buildFinalImagePrompt } from "@/lib/prompts";
+import { buildFinalImagePrompt, buildFreePosterRevealPrompt } from "@/lib/prompts";
 import { IMAGE_MODEL, IMAGE_QUALITY, IMAGE_SIZE, normalizeImageQuality } from "@/lib/server/ai-config";
 import { openai } from "@/lib/server/openai";
 import { IMAGE_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
-import type { BookPage, LoreBook, StoredBook } from "@/lib/types";
+import type { BookPageImage, BookPage, LoreBook, StoredBook } from "@/lib/types";
 import { dataUrlFromBase64, normalizeLoreBook } from "@/lib/utils";
 
 export { FREE_IMAGE_PAGES } from "@/lib/image-config";
 
-const FREE_PREVIEW_PARALLEL_PAGES = [2, 3] as const;
+const FREE_PREVIEW_PARALLEL_PAGES = [2, FREE_PREVIEW_POSTER_PAGE_NUMBER] as const;
+
+function getPreviewPosterImage(storedBook: StoredBook): BookPageImage | null {
+  const rawImage = storedBook.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  if (!rawImage) {
+    return null;
+  }
+
+  if (typeof rawImage === "string") {
+    const trimmed = rawImage.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const storagePath = getImageStoragePath(trimmed);
+    return {
+      pageNumber: FREE_PREVIEW_POSTER_PAGE_NUMBER,
+      status: "ready",
+      url: storagePath ? null : trimmed,
+      storagePath,
+      generatedAt: null,
+    };
+  }
+
+  return rawImage;
+}
+
+export function isPreviewPosterReady(storedBook: StoredBook) {
+  return isIllustrationReady(getPreviewPosterImage(storedBook));
+}
 
 export type GenerateStoredFreeImageResult = {
   book: StoredBook | null;
@@ -51,6 +87,10 @@ export type FreePreviewGenerationResult = {
 };
 
 function isFreePreviewPageAlreadyReady(storedBook: StoredBook, pageNumber: number) {
+  if (isFreePreviewPosterPage(pageNumber)) {
+    return isPreviewPosterReady(storedBook);
+  }
+
   const input = getFreeImagePagesInput(storedBook);
   const image = getImageForPage(input, pageNumber);
   if (!isIllustrationReady(image)) {
@@ -101,12 +141,25 @@ export function isFreePage1Ready(storedBook: StoredBook) {
 
 export function countReadyFreeImages(storedBook: StoredBook) {
   const input = getFreeImagePagesInput(storedBook);
-  return FREE_IMAGE_PAGES.filter((pageNumber) => isIllustrationReady(getImageForPage(input, pageNumber))).length;
+  const readyStoryPages = FREE_IMAGE_PAGES.filter(
+    (pageNumber) =>
+      !isFreePreviewPosterPage(pageNumber) && isIllustrationReady(getImageForPage(input, pageNumber)),
+  ).length;
+
+  return readyStoryPages + (isPreviewPosterReady(storedBook) ? 1 : 0);
 }
 
 export function getMissingFreeImagePages(storedBook: StoredBook) {
   const input = getFreeImagePagesInput(storedBook);
-  return FREE_IMAGE_PAGES.filter((pageNumber) => !isIllustrationReady(getImageForPage(input, pageNumber)));
+  const missing = FREE_IMAGE_PAGES.filter((pageNumber) => {
+    if (isFreePreviewPosterPage(pageNumber)) {
+      return !isPreviewPosterReady(storedBook);
+    }
+
+    return !isIllustrationReady(getImageForPage(input, pageNumber));
+  });
+
+  return missing;
 }
 
 export function areFreeIllustrationsReady(storedBook: StoredBook) {
@@ -118,6 +171,21 @@ function isFreePageEligibleForGeneration(
   pageNumber: number,
   input: BookImagesInput,
 ) {
+  if (isFreePreviewPosterPage(pageNumber)) {
+    if (isPreviewPosterReady(storedBook)) {
+      return false;
+    }
+
+    if (
+      storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY] === "generating" &&
+      isImageFreshlyGenerating(storedBook, pageNumber, input)
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   const image = getImageForPage(input, pageNumber);
   if (isIllustrationReady(image)) {
     return false;
@@ -185,6 +253,62 @@ async function getFreePreviewPage1ReferenceUrl(storedBook: StoredBook) {
   const input = getFreeImagePagesInput(storedBook);
   const page1Image = getImageForPage(input, 1);
   return resolveImageDisplayUrl(page1Image);
+}
+
+async function generateFreePreviewPosterImage(book: LoreBook, referenceImageUrl: string) {
+  const championName = book.characterBible?.name?.trim() || book.title?.trim() || "Your legend";
+  const posterPrompt = buildFreePosterRevealPrompt(book, championName);
+  const referencePrompt = `Image 1 is the character appearance reference only.
+
+Preserve from Image 1:
+- the same character identity and face
+- the same hairstyle
+- the same skin tone
+- the same general outfit design
+- the same overall character design and visual style
+- the same region-inspired fantasy identity
+
+Do NOT copy from Image 1:
+- pose
+- posture
+- framing
+- camera angle
+- body position
+- composition
+
+Create a premium cinematic collector poster / book cover composition. Keep the character recognizable, but use a new dramatic profile close-up and heroic poster layout.
+
+${posterPrompt}`;
+
+  try {
+    const imageBuffer = await loadReferenceImageBuffer(referenceImageUrl);
+    const referenceFile = new File([imageBuffer], "page-1-reference.png", { type: "image/png" });
+    const response = await openai.images.edit({
+      model: IMAGE_MODEL,
+      image: referenceFile,
+      prompt: referencePrompt,
+      size: IMAGE_SIZE as "1024x1024" | "1024x1536" | "1536x1024",
+      quality: normalizeImageQuality(IMAGE_QUALITY),
+    });
+
+    const image = response.data?.[0];
+    if (image?.b64_json) {
+      return dataUrlFromBase64(image.b64_json, "image/png");
+    }
+
+    if (image?.url) {
+      return image.url;
+    }
+  } catch (error) {
+    console.warn("[FREE_PREVIEW_POSTER_IMAGE_FALLBACK]", {
+      message: error instanceof Error ? error.message : error,
+    });
+  }
+
+  return generateBookPageImage(book, book.pages[0], {
+    fallbackOnFailure: false,
+    maxAttempts: 2,
+  });
 }
 
 async function generateFreePreviewPageImage(
@@ -345,7 +469,7 @@ export async function generateAndStoreFreeImageForPage({
   }
 
   const page = normalizedBook.pages.find((item) => item.pageNumber === pageNumber);
-  if (!page) {
+  if (!page && !isFreePreviewPosterPage(pageNumber)) {
     await markPageImageFailed(bookId, pageNumber, claimId);
     console.error("[IMAGE_GENERATION_ERROR]", {
       pageNumber,
@@ -371,12 +495,15 @@ export async function generateAndStoreFreeImageForPage({
       pageNumber,
       claimId,
       usesPage1Reference: pageNumber !== 1 && Boolean(referenceImageUrl),
+      previewPoster: isFreePreviewPosterPage(pageNumber),
     });
 
     const imageUrl = await withTimeout(
-      generateFreePreviewPageImage(normalizedBook, page, referenceImageUrl),
+      isFreePreviewPosterPage(pageNumber)
+        ? generateFreePreviewPosterImage(normalizedBook, referenceImageUrl as string)
+        : generateFreePreviewPageImage(normalizedBook, page as BookPage, referenceImageUrl),
       IMAGE_GENERATION_TIMEOUT_MS,
-      `FREE_IMAGE_PAGE_${pageNumber}`,
+      isFreePreviewPosterPage(pageNumber) ? "FREE_PREVIEW_POSTER" : `FREE_IMAGE_PAGE_${pageNumber}`,
     );
 
     if (!imageUrl) {
@@ -388,7 +515,9 @@ export async function generateAndStoreFreeImageForPage({
       return { book: latestBook, generated: false, claimLost: false };
     }
 
-    const savedBook = await saveBookAsset(accessToken, pageNumber, "image", imageUrl, { claimId });
+    const savedBook = isFreePreviewPosterPage(pageNumber)
+      ? await savePreviewPosterAsset(accessToken, imageUrl, { claimId })
+      : await saveBookAsset(accessToken, pageNumber, "image", imageUrl, { claimId });
     return { book: savedBook, generated: true, claimLost: false };
   } catch (error) {
     await markPageImageFailed(bookId, pageNumber, claimId);
@@ -533,7 +662,7 @@ export async function generateNextFreeImage(accessToken: string, requestedPageNu
     return buildFreePreviewGenerationResult(accessToken, latestBook, pageNumber, null);
   }
 
-  if (pageNumber === 2 || pageNumber === 3) {
+  if (pageNumber === 2 || isFreePreviewPosterPage(pageNumber)) {
     console.log("[FREE_PREVIEW_PARALLEL_REQUEST_START]", { pageNumber });
   }
 
@@ -549,7 +678,7 @@ export async function generateNextFreeImage(accessToken: string, requestedPageNu
   console.log("[FREE_IMAGE_GENERATION_DONE]", { accessToken, pageNumber, at: Date.now() });
 
   if (pageNumber === 1 && generationResult.generated) {
-    console.log("[FREE_PREVIEW_PAGE_1_READY_START_PARALLEL_2_3]");
+    console.log("[FREE_PREVIEW_PAGE_1_READY_START_PARALLEL_2_POSTER]");
   }
 
   return buildFreePreviewGenerationResult(accessToken, latestBook, pageNumber, generationResult);

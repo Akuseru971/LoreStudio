@@ -1,6 +1,7 @@
 import "server-only";
 
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
+import { FREE_PREVIEW_POSTER_IMAGE_KEY } from "@/lib/image-config";
 import { createSignedAssetUrl, isInlineAssetReference } from "@/lib/bookAssets";
 import type { ImagePageStatus, StoredBook } from "@/lib/types";
 import {
@@ -52,9 +53,25 @@ export function getNormalizedImagesForStoredBook(storedBook: StoredBook) {
     pages: sourceBook?.pages,
   };
 
+  const images = normalizeBookImages(input);
+  const posterImage = normalizedRecord.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  if (posterImage) {
+    images[FREE_PREVIEW_POSTER_IMAGE_KEY] = {
+      status: isIllustrationReady(posterImage) ? "ready" : posterImage.status || "not_started",
+      url: getDirectImageUrl(posterImage),
+      storagePath: getImageStoragePath(posterImage),
+    };
+  } else if (storedBook.image_status?.[FREE_PREVIEW_POSTER_IMAGE_KEY]) {
+    images[FREE_PREVIEW_POSTER_IMAGE_KEY] = {
+      status: storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY],
+      url: null,
+      storagePath: null,
+    };
+  }
+
   return {
     input,
-    images: normalizeBookImages(input),
+    images,
     readyIllustrationCount: getReadyIllustrationCount(input),
     allIllustrationsReady: areAllIllustrationsReady(input),
     hasFailedIllustrations: hasFailedIllustrations(input),

@@ -12,11 +12,16 @@ import MobileBookReader from "@/components/MobileBookReader";
 import BookPremiumActions from "@/components/BookPremiumActions";
 import NarratorUnlockModal from "@/components/NarratorUnlockModal";
 import ResultActions from "@/components/ResultActions";
+import FreePosterRevealStep from "@/components/FreePosterRevealStep";
 import UnlockFullStoryModal from "@/components/UnlockFullStoryModal";
-import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
+import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { buildPageNarrationText } from "@/lib/bookNarration";
 import {
-  FREE_IMAGE_PAGE_COUNT,
+  FREE_PREVIEW_EXPERIENCE_STEP_COUNT,
+  FREE_PREVIEW_POSTER_IMAGE_KEY,
+  FREE_PREVIEW_POSTER_STEP_INDEX,
+  FREE_PREVIEW_STORY_IMAGE_PAGES,
+  isFreePreviewPosterPage,
   isPremiumImageLockedBeforePayment,
   isPremiumImagePage,
   PREMIUM_IMAGE_PAGE_NUMBERS,
@@ -89,7 +94,7 @@ type InteractiveBookProps = {
 };
 
 const OPENING_DURATION_MS = 2100;
-const PAGE_FIVE_INDEX = ILLUSTRATED_PAGE_COUNT - 1;
+const FREE_EXPERIENCE_LAST_INDEX = FREE_PREVIEW_EXPERIENCE_STEP_COUNT - 1;
 const LOCKED_UNLOCK_CTA_PAGE_NUMBERS = [4, 5] as const;
 
 export default function InteractiveBook({
@@ -125,6 +130,8 @@ export default function InteractiveBook({
     ),
   );
   const [loadingImages, setLoadingImages] = useState<Record<number, boolean>>({});
+  const [posterRevealImageUrl, setPosterRevealImageUrl] = useState<string | null>(null);
+  const [loadingPosterReveal, setLoadingPosterReveal] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isLoadingVoice, setIsLoadingVoice] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -157,15 +164,19 @@ export default function InteractiveBook({
       }),
     [safePages, imageCache, isPremium],
   );
-  const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : ILLUSTRATED_PAGE_COUNT;
+  const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : FREE_PREVIEW_STORY_IMAGE_PAGES.length;
   const illustratedPages = useMemo(() => pagesWithImages.slice(0, pageLimit), [pagesWithImages, pageLimit]);
+  const isOnPosterRevealStep = !isPremium && activePageIndex === FREE_PREVIEW_POSTER_STEP_INDEX;
   const activePage = illustratedPages[activePageIndex] || illustratedPages[0];
   const isOpen = bookState === "open";
-  const isFinalPage = isOpen && activePageIndex >= illustratedPages.length - 1;
+  const isFinalPage = isPremium
+    ? isOpen && activePageIndex >= illustratedPages.length - 1
+    : isOpen && activePageIndex >= FREE_EXPERIENCE_LAST_INDEX;
   const canGoPrevious = activePageIndex > 0;
   const canGoNext = isPremium
     ? activePageIndex < illustratedPages.length - 1
-    : activePageIndex <= PAGE_FIVE_INDEX;
+    : activePageIndex < FREE_PREVIEW_POSTER_STEP_INDEX;
+  const maxExperiencePageIndex = isPremium ? illustratedPages.length - 1 : FREE_EXPERIENCE_LAST_INDEX;
 
   const escapeParticles = useMemo(
     () =>
@@ -239,7 +250,7 @@ export default function InteractiveBook({
         return;
       }
 
-      if (!isPremium && pageNumber > FREE_IMAGE_PAGE_COUNT) {
+      if (!isPremium && (pageNumber > FREE_PREVIEW_STORY_IMAGE_PAGES.length || isFreePreviewPosterPage(pageNumber))) {
         return;
       }
 
@@ -298,10 +309,10 @@ export default function InteractiveBook({
 
     const bookPages = Array.isArray(normalizedBook.pages) ? normalizedBook.pages : [];
     const imageMap = bookData.images || bookData.imageStatus || {};
-    const pageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT;
+    const storyPageLimit = isPremium ? FULL_BOOK_PAGE_COUNT : FREE_PREVIEW_STORY_IMAGE_PAGES.length;
     const nextCache: Record<number, string> = {};
 
-    for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+    for (let pageNumber = 1; pageNumber <= storyPageLimit; pageNumber += 1) {
       const state = imageMap[String(pageNumber)];
       const page = bookPages.find((item) => item.pageNumber === pageNumber);
       const url = getDirectImageUrl(state) || page?.imageUrl || null;
@@ -311,6 +322,13 @@ export default function InteractiveBook({
     }
 
     setImageCache((current) => ({ ...current, ...nextCache }));
+
+    if (!isPremium) {
+      const posterState = imageMap[FREE_PREVIEW_POSTER_IMAGE_KEY];
+      const posterUrl = getDirectImageUrl(posterState);
+      setPosterRevealImageUrl(posterUrl);
+      setLoadingPosterReveal(posterState?.status === "generating" && !posterUrl);
+    }
 
     const nextLoading: Record<number, boolean> = {};
     for (const pageNumber of PREMIUM_IMAGE_PAGE_NUMBERS) {
@@ -340,7 +358,23 @@ export default function InteractiveBook({
   }, [accessToken, isPremium, refreshBookImages]);
 
   useEffect(() => {
-    const pagesToIllustrate = safePages.slice(0, isPremium ? FULL_BOOK_PAGE_COUNT : FREE_IMAGE_PAGE_COUNT);
+    if (!accessToken || isPremium || !loadingPosterReveal) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshBookImages();
+    }, 3000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [accessToken, isPremium, loadingPosterReveal, refreshBookImages]);
+
+  useEffect(() => {
+    const pagesToIllustrate = isPremium
+      ? safePages.slice(0, FULL_BOOK_PAGE_COUNT)
+      : safePages.filter((page) => (FREE_PREVIEW_STORY_IMAGE_PAGES as readonly number[]).includes(page.pageNumber));
     void Promise.all(pagesToIllustrate.map((page) => fetchImageForPage(page.pageNumber)));
   }, [safePages, fetchImageForPage, isPremium]);
 
@@ -363,15 +397,15 @@ export default function InteractiveBook({
 
   const tryForwardNavigation = useCallback(
     (targetIndex: number) => {
-      if (!isPremium && activePageIndex === PAGE_FIVE_INDEX && targetIndex > PAGE_FIVE_INDEX) {
+      if (!isPremium && activePageIndex >= FREE_PREVIEW_POSTER_STEP_INDEX && targetIndex > FREE_PREVIEW_POSTER_STEP_INDEX) {
         stopNarration();
         setShowUnlockModal(true);
         return false;
       }
 
-      return targetIndex <= illustratedPages.length - 1;
+      return targetIndex <= maxExperiencePageIndex;
     },
-    [activePageIndex, illustratedPages.length, isPremium, stopNarration],
+    [activePageIndex, isPremium, maxExperiencePageIndex, stopNarration],
   );
 
   const handleUnlockClick = useCallback(() => {
@@ -386,11 +420,11 @@ export default function InteractiveBook({
 
   const goToSpread = useCallback(
     (pageIndex: number) => {
-      const nextIndex = Math.min(Math.max(pageIndex, 0), illustratedPages.length - 1);
+      const nextIndex = Math.min(Math.max(pageIndex, 0), maxExperiencePageIndex);
       setActivePageIndex(nextIndex);
       flipRef.current?.pageFlip()?.flip(nextIndex * 2, "top");
     },
-    [illustratedPages.length],
+    [maxExperiencePageIndex],
   );
 
   const playNarratorTeaser = useCallback(async () => {
@@ -541,7 +575,7 @@ export default function InteractiveBook({
   }, [activePageIndex, isOpen, stopNarration]);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || isOnPosterRevealStep) {
       return;
     }
 
@@ -557,10 +591,10 @@ export default function InteractiveBook({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
+  }, [activePageIndex, fetchImageForPage, illustratedPages, isOnPosterRevealStep, isOpen]);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || isOnPosterRevealStep) {
       return;
     }
 
@@ -584,7 +618,7 @@ export default function InteractiveBook({
     return () => {
       cancelled = true;
     };
-  }, [activePageIndex, fetchImageForPage, illustratedPages, isOpen]);
+  }, [activePageIndex, fetchImageForPage, illustratedPages, isOnPosterRevealStep, isOpen]);
 
   function handleOpen() {
     if (bookState !== "closed") {
@@ -594,7 +628,9 @@ export default function InteractiveBook({
     stopNarration();
     setShowUnlockModal(false);
     setBookState("opening");
-    setActivePageIndex(initialPageIndex);
+    setActivePageIndex(
+      isPremium ? initialPageIndex : Math.min(initialPageIndex, FREE_PREVIEW_POSTER_STEP_INDEX),
+    );
     const openingDelay = isMobile ? 900 : OPENING_DURATION_MS;
     window.setTimeout(() => {
       setBookState("open");
@@ -607,7 +643,7 @@ export default function InteractiveBook({
   function handleFlip(event: { data?: number }) {
     const physicalPage = typeof event.data === "number" ? event.data : 0;
     const nextIndex = Math.floor(Math.max(physicalPage, 0) / 2);
-    const boundedIndex = Math.min(Math.max(nextIndex, 0), illustratedPages.length - 1);
+    const boundedIndex = Math.min(Math.max(nextIndex, 0), maxExperiencePageIndex);
 
     if (boundedIndex > activePageIndex && !tryForwardNavigation(boundedIndex)) {
       window.setTimeout(() => goToSpread(activePageIndex), 0);
@@ -646,7 +682,7 @@ export default function InteractiveBook({
       return;
     }
 
-    const nextSpread = Math.min(nextIndex, illustratedPages.length - 1);
+    const nextSpread = Math.min(nextIndex, maxExperiencePageIndex);
     flipRef.current?.pageFlip()?.flip(nextSpread * 2, "top");
   }
 
@@ -671,7 +707,7 @@ export default function InteractiveBook({
     });
   }
 
-  if (!illustratedPages.length || !activePage) {
+  if (!illustratedPages.length || (!isOnPosterRevealStep && !activePage)) {
     return (
       <main className="archive-shell flex min-h-screen items-center justify-center px-5 py-10">
         <section className="glass-panel max-w-lg rounded-[2rem] p-8 text-center">
@@ -736,11 +772,25 @@ export default function InteractiveBook({
                 {!(isMobile && isOpen) ? (
                   <div className="mb-5 flex flex-wrap items-start justify-between gap-4 text-center sm:text-left">
                     <div className="mx-auto sm:mx-0">
-                      <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
-                        Chapter {activePage.pageNumber}
-                      </p>
-                      <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{activePage.title}</h1>
-                      <p className="mt-2 text-sm text-[#a89068]/70">{characterName}</p>
+                      {isOnPosterRevealStep ? (
+                        <>
+                          <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#7eb6ff]/85">
+                            Collector edition reveal
+                          </p>
+                          <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{characterName}</h1>
+                          {safeBook.subtitle ? (
+                            <p className="mt-2 text-sm text-[#a89068]/70">{safeBook.subtitle}</p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-title text-[0.62rem] uppercase tracking-[0.32em] text-[#a89068]/80">
+                            Chapter {activePage.pageNumber}
+                          </p>
+                          <h1 className="font-cover-title mt-2 text-2xl text-[#d4c4a0]/90 sm:text-3xl">{activePage.title}</h1>
+                          <p className="mt-2 text-sm text-[#a89068]/70">{characterName}</p>
+                        </>
+                      )}
                     </div>
                     {isPremium && accessToken ? (
                       <BookPremiumActions accessToken={accessToken} className="mx-auto sm:mx-0" />
@@ -753,7 +803,18 @@ export default function InteractiveBook({
                 ) : null}
 
                 <div className={cn("mx-auto flex w-full justify-center overflow-visible", isMobile && "min-h-0 flex-1")}>
-                  {isMobile ? (
+                  {isOnPosterRevealStep ? (
+                    <FreePosterRevealStep
+                      championName={characterName}
+                      legendaryTitle={safeBook.subtitle}
+                      region={safeBook.region}
+                      posterImageUrl={posterRevealImageUrl}
+                      isImageLoading={loadingPosterReveal}
+                      onUnlockClick={handleUnlockClick}
+                      onPrevious={flipPrevious}
+                      className={cn("w-full", isMobile ? "min-h-0 flex-1" : "max-w-3xl")}
+                    />
+                  ) : isMobile ? (
                     <MobileBookReader
                       pages={illustratedPages}
                       activePageIndex={activePageIndex}
