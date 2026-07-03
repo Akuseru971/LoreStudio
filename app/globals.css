@@ -2036,6 +2036,18 @@ button {
     padding-top: 0.45rem;
     padding-bottom: 0.45rem;
   }
+
+  .unlock-offer-trust-block {
+    padding: 0.7rem 0.8rem;
+  }
+
+  .unlock-offer-trust-block h3 {
+    font-size: 0.62rem;
+  }
+
+  .unlock-offer-trust-block ul {
+    margin-top: 0.55rem;
+  }
 }
 
 /* ── Ritual launch video ── */

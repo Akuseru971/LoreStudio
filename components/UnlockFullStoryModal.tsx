@@ -22,6 +22,15 @@ const CAROUSEL_SLIDES = [
   },
 ] as const;
 
+const LAUNCH_PRICE = "€2.99";
+
+const UNLOCK_BENEFITS = [
+  "8 illustrated story chapters",
+  "A cinematic PDF book with your cover",
+  "Premium continuation of your preview",
+  "Delivered by email after payment",
+] as const;
+
 type UnlockFullStoryModalProps = {
   book: LoreBook;
   accessToken: string;
@@ -205,7 +214,29 @@ export default function UnlockFullStoryModal({
                               title="Preview what you'll receive"
                               subtitle="Listen to a sample chapter and open a sample PDF before unlocking your full legend."
                               disabled={isRedirecting}
+                              prominent
+                              audioHeading="Listen sample audio"
+                              pdfButtonLabel="Preview final PDF example"
                             />
+                          </div>
+
+                          <div className="unlock-offer-trust-block mt-5 rounded-2xl border border-[#d9bd78]/18 bg-black/24 px-4 py-4 max-sm:mt-3 max-sm:px-3.5 max-sm:py-3">
+                            <h3 className="font-title text-[0.68rem] uppercase tracking-[0.22em] text-[#d9bd78]/90">
+                              What you unlock
+                            </h3>
+                            <ul className="mt-3 space-y-2 max-sm:mt-2.5 max-sm:space-y-1.5">
+                              {UNLOCK_BENEFITS.map((benefit) => (
+                                <li key={benefit} className="flex items-start gap-2.5 text-left text-sm leading-6 text-[#c9d3df] max-sm:text-[0.8rem] max-sm:leading-5">
+                                  <span className="mt-0.5 shrink-0 text-[#d9bd78]" aria-hidden="true">
+                                    ✓
+                                  </span>
+                                  <span>{benefit}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-4 border-t border-white/6 pt-3 text-center text-[0.65rem] tracking-[0.06em] text-[#8f9aac] max-sm:mt-3 max-sm:pt-2.5">
+                              Secure payment by Stripe
+                            </p>
                           </div>
 
                           {error ? (
@@ -247,17 +278,17 @@ export default function UnlockFullStoryModal({
                             {isRedirecting ? (
                               "Opening secure checkout..."
                             ) : (
-                              <span className="flex flex-col items-center gap-1.5">
+                              <span className="flex flex-col items-center gap-1">
                                 <span className="tracking-[0.08em]">Unlock my full legend</span>
+                                <span className="text-[0.58rem] font-semibold uppercase tracking-[0.18em] text-[#2a1c0b]/72">
+                                  Launch price
+                                </span>
                                 <span className="font-cover-title text-[1.35rem] leading-none tracking-[0.05em] text-[#2a1c0b]/88">
-                                  €3.99
+                                  {LAUNCH_PRICE}
                                 </span>
                               </span>
                             )}
                           </button>
-                          <p className="mt-3 text-center text-[0.68rem] text-[#8f9aac] max-sm:mt-2">
-                            Secure payment by Stripe · Delivered by email in 5–15 min
-                          </p>
                           <button
                             type="button"
                             onClick={onClose}
