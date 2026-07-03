@@ -22,7 +22,7 @@ const CAROUSEL_SLIDES = [
   },
 ] as const;
 
-const LAUNCH_PRICE = "€2.99";
+const LAUNCH_PRICE = "$2.99";
 
 const UNLOCK_BENEFITS = [
   "8 illustrated story chapters",
