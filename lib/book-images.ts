@@ -43,6 +43,34 @@ export async function resolveImageDisplayUrl(image: NormalizedPageImage | null):
   return createSignedAssetUrl(storagePath, 3600);
 }
 
+export function readStoredPreviewPosterImage(storedBook: StoredBook) {
+  const raw = storedBook.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
+  if (!raw) {
+    return null;
+  }
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const storagePath = getImageStoragePath(trimmed);
+    return {
+      status: storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? "ready",
+      url: storagePath ? null : trimmed,
+      storagePath,
+      generatedAt: null,
+    };
+  }
+
+  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    return raw as { status?: string; url?: string | null; storagePath?: string | null; generatedAt?: string | null };
+  }
+
+  return null;
+}
+
 export async function resolvePreviewCoverImageForClient(
   images: Record<string, { status?: string; url?: string | null; storagePath?: string | null; generatedAt?: string | null }>,
 ) {
@@ -82,34 +110,6 @@ export async function resolvePreviewCoverImageForClient(
     [FREE_PREVIEW_POSTER_IMAGE_KEY]: resolvedPreviewCover,
     previewCover: resolvedPreviewCover,
   };
-}
-
-function readStoredPreviewPosterImage(storedBook: StoredBook) {
-  const raw = storedBook.images[FREE_PREVIEW_POSTER_IMAGE_KEY];
-  if (!raw) {
-    return null;
-  }
-
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    const storagePath = getImageStoragePath(trimmed);
-    return {
-      status: storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? "ready",
-      url: storagePath ? null : trimmed,
-      storagePath,
-      generatedAt: null,
-    };
-  }
-
-  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
-    return raw as { status?: string; url?: string | null; storagePath?: string | null; generatedAt?: string | null };
-  }
-
-  return null;
 }
 
 export function getNormalizedImagesForStoredBook(storedBook: StoredBook) {

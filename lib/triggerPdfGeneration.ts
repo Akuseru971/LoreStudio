@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getBookById, isFinalReadyEmailAlreadySent, isFinalReadyEmailSendingInProgress, recoverStalePdfGeneration } from "@/lib/bookStore";
-import { getNormalizedImagesForStoredBook } from "@/lib/book-images";
+import { getNormalizedImagesForStoredBook, normalizeStoredBookImages } from "@/lib/book-images";
 import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { isPdfGenerationInProgress, resolvePdfDownload } from "@/lib/pdfDownload";
@@ -166,14 +166,27 @@ export async function triggerPdfGenerationIfReady(
   }
 
   if (isPdfReady(book)) {
-    console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
-      bookId,
-      reason: "pdf_ready_email_only",
-    });
-    await sendFinalReadyEmailIfNeeded(bookId).catch((error) => {
-      console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
-    });
-    return { triggered: false, skipped: true, reason: "pdf_ready_email_only", pdfStatus: "ready" };
+    const { buildPdfGenerationContext, pdfNeedsPreviewCoverRecovery, resolvePreviewCoverUrlForPdf } =
+      await import("@/lib/pdfBookPages");
+    const normalizedImages = normalizeStoredBookImages(book);
+    const context = buildPdfGenerationContext(book, normalizedImages);
+    const coverImageSrc = await resolvePreviewCoverUrlForPdf(context);
+    const needsCoverRecovery = book.pdf_storage_path
+      ? await pdfNeedsPreviewCoverRecovery(book.pdf_storage_path, coverImageSrc)
+      : false;
+
+    if (!needsCoverRecovery) {
+      console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
+        bookId,
+        reason: "pdf_ready_email_only",
+      });
+      await sendFinalReadyEmailIfNeeded(bookId).catch((error) => {
+        console.error("[FINAL_READY_EMAIL_FAILED]", { bookId, error });
+      });
+      return { triggered: false, skipped: true, reason: "pdf_ready_email_only", pdfStatus: "ready" };
+    }
+
+    console.log("[PDF_COVER_RECOVERY_REQUESTED]", { bookId });
   }
 
   if (

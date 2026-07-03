@@ -2086,8 +2086,42 @@ export async function recoverStalePdfGeneration(bookId: string) {
 export async function claimPdfGeneration(bookId: string) {
   const supabase = requireSupabase();
   const storedBook = await getBookById(bookId);
-  if (!storedBook || storedBook.pdf_storage_path || storedBook.pdf_status === "generating") {
+  if (!storedBook) {
     return null;
+  }
+
+  if (storedBook.pdf_status === "generating") {
+    console.log("[PDF_GENERATION_SKIPPED_ALREADY_GENERATING]", { bookId });
+    return null;
+  }
+
+  if (storedBook.pdf_storage_path) {
+    const { buildPdfGenerationContext, pdfNeedsPreviewCoverRecovery, resolvePreviewCoverUrlForPdf } =
+      await import("@/lib/pdfBookPages");
+    const normalized = normalizeStoredBookImages(storedBook);
+    const context = buildPdfGenerationContext(storedBook, normalized);
+    const coverImageSrc = await resolvePreviewCoverUrlForPdf(context);
+    const needsCoverRecovery = await pdfNeedsPreviewCoverRecovery(storedBook.pdf_storage_path, coverImageSrc);
+
+    if (!needsCoverRecovery) {
+      console.log("[PDF_GENERATION_SKIPPED_ALREADY_READY]", { bookId });
+      return null;
+    }
+
+    console.log("[PDF_COVER_RECOVERY_CLAIM]", { bookId });
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .update({ pdf_status: "generating", pdf_error: null })
+      .eq("id", bookId)
+      .eq("pdf_status", "ready")
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data ? mapRow(data) : null;
   }
 
   const { data, error } = await supabase
@@ -2131,17 +2165,35 @@ export async function ensureBookPdf(bookId: string, book: LoreBook) {
     throw new Error("Book not found.");
   }
 
+  if (storedBook.pdf_status === "generating" && !storedBook.pdf_storage_path) {
+    console.log("[PDF_GENERATION_SKIPPED_ALREADY_GENERATING]", { bookId });
+    throw new Error("PDF generation already in progress.");
+  }
+
+  const { buildPdfGenerationContext, pdfNeedsPreviewCoverRecovery, resolvePreviewCoverUrlForPdf } =
+    await import("@/lib/pdfBookPages");
+  const normalized = normalizeStoredBookImages(storedBook);
+  const context = buildPdfGenerationContext(storedBook, normalized);
+  const coverImageSrc = await resolvePreviewCoverUrlForPdf(context);
+
   if (storedBook.pdf_storage_path) {
-    return storedBook.pdf_storage_path;
+    if (!coverImageSrc) {
+      console.log("[PDF_PREVIEW_COVER_NOT_AVAILABLE_FOR_THIS_BOOK]", { bookId });
+      console.log("[PDF_GENERATION_SKIPPED_ALREADY_READY]", { bookId });
+      return storedBook.pdf_storage_path;
+    }
+
+    const needsCoverRecovery = await pdfNeedsPreviewCoverRecovery(storedBook.pdf_storage_path, coverImageSrc);
+    if (!needsCoverRecovery) {
+      console.log("[PDF_GENERATION_SKIPPED_ALREADY_READY]", { bookId });
+      return storedBook.pdf_storage_path;
+    }
+
+    console.log("[PDF_COVER_RECOVERY_REGENERATE]", { bookId });
   }
 
   const { generateBookPdf } = await import("@/lib/pdf");
-  const normalized = normalizeStoredBookImages(storedBook);
-  const pdfBuffer = await generateBookPdf(book, {
-    images: normalized.images,
-    imageStatus: normalized.imageStatus,
-    allImages: storedBook.images,
-  });
+  const pdfBuffer = await generateBookPdf(book, context);
   return uploadBookPdf(bookId, pdfBuffer);
 }
 

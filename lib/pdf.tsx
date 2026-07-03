@@ -370,7 +370,7 @@ export async function generateBookPdf(book: LoreBook, context: PdfGenerationCont
     );
   }
 
-  console.log("[PDF_LAYOUT_MODE]", "preview_cover_then_alternating_image_text_pages");
+  console.log("[PDF_LAYOUT_MODE]", coverImageSrc ? "preview_cover_then_alternating_image_text_pages" : "alternating_image_text_pages");
   console.log("[PDF_TOTAL_PAGES_EXPECTED]", (coverImageSrc ? 1 : 0) + FULL_BOOK_PAGE_COUNT * 2);
 
   if (coverImageSrc) {

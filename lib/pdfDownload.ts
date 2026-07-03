@@ -15,6 +15,7 @@ import {
   getNormalizedImagesForStoredBook,
   hasFailedIllustrations,
   logPdfReadyCheck,
+  normalizeStoredBookImages,
 } from "@/lib/book-images";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
@@ -122,8 +123,19 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
   }
 
   if (storedBook.pdf_storage_path) {
-    const downloadUrl = await createSignedPdfUrl(storedBook.pdf_storage_path, 3600);
-    return { status: "ready", downloadUrl };
+    const { buildPdfGenerationContext, pdfNeedsPreviewCoverRecovery, resolvePreviewCoverUrlForPdf } =
+      await import("@/lib/pdfBookPages");
+    const normalizedImages = normalizeStoredBookImages(storedBook);
+    const context = buildPdfGenerationContext(storedBook, normalizedImages);
+    const coverImageSrc = await resolvePreviewCoverUrlForPdf(context);
+    const needsCoverRecovery = await pdfNeedsPreviewCoverRecovery(storedBook.pdf_storage_path, coverImageSrc);
+
+    if (!needsCoverRecovery) {
+      const downloadUrl = await createSignedPdfUrl(storedBook.pdf_storage_path, 3600);
+      return { status: "ready", downloadUrl };
+    }
+
+    console.log("[PDF_COVER_RECOVERY_REQUESTED]", { bookId: storedBook.id });
   }
 
   let activeBook = storedBook;
@@ -149,6 +161,12 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     if (latestBook?.pdf_storage_path) {
       const downloadUrl = await createSignedPdfUrl(latestBook.pdf_storage_path, 3600);
       return { status: "ready", downloadUrl };
+    }
+
+    if (latestBook?.pdf_status === "generating" || pdfGenerationTasks.has(activeBook.id)) {
+      console.log("[PDF_GENERATION_SKIPPED_ALREADY_GENERATING]", { bookId: activeBook.id });
+    } else if (latestBook?.pdf_storage_path) {
+      console.log("[PDF_GENERATION_SKIPPED_ALREADY_READY]", { bookId: activeBook.id });
     }
 
     return {
