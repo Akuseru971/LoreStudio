@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 
 const CAROUSEL_SLIDES = [
   {
-    title: "Unlock your full legend",
-    text: "Continue your story with all 8 illustrated pages, including the premium chapters hidden in the preview.",
+    title: "Your full legend includes",
+    text: "",
   },
   {
     title: "Receive a cinematic PDF",
@@ -20,6 +20,14 @@ const CAROUSEL_SLIDES = [
     title: "Ready in a few minutes",
     text: "After payment, your full book is prepared automatically. This usually takes around 5 to 15 minutes.",
   },
+] as const;
+
+const FIRST_SLIDE_BENEFITS = [
+  "8 illustrated chapters",
+  "A cinematic PDF book",
+  "Your premium cover included",
+  "Delivered by email",
+  "Secure payment by Stripe",
 ] as const;
 
 const LAUNCH_PRICE = "$2.99";
@@ -111,6 +119,7 @@ export default function UnlockFullStoryModal({
   }, [accessToken, email]);
 
   const isLastSlide = carouselIndex === CAROUSEL_SLIDES.length - 1;
+  const isFirstSlide = carouselIndex === 0;
   const slide = CAROUSEL_SLIDES[carouselIndex];
 
   const handleCarouselNext = () => {
@@ -179,19 +188,39 @@ export default function UnlockFullStoryModal({
                         className={cn(
                           "font-cover-title mt-3 text-2xl leading-tight text-[#f7ebce]",
                           isLastSlide && "max-sm:mt-2 max-sm:text-xl",
+                          isFirstSlide && "max-sm:mt-2 max-sm:text-xl",
                         )}
                       >
                         {slide.title}
                       </h2>
-                      <p
-                        id="unlock-carousel-description"
-                        className={cn(
-                          "mt-4 text-sm leading-7 text-[#b8c2d0]",
-                          isLastSlide && "max-sm:mt-2 max-sm:text-[0.8rem] max-sm:leading-6",
-                        )}
-                      >
-                        {slide.text}
-                      </p>
+                      {isFirstSlide ? (
+                        <ul
+                          id="unlock-carousel-description"
+                          className="unlock-carousel-first-benefits mt-4 space-y-2.5 max-sm:mt-3 max-sm:space-y-2"
+                        >
+                          {FIRST_SLIDE_BENEFITS.map((benefit) => (
+                            <li
+                              key={benefit}
+                              className="flex items-start gap-2.5 text-left text-sm leading-6 text-[#c9d3df] max-sm:text-[0.82rem] max-sm:leading-5"
+                            >
+                              <span className="mt-0.5 shrink-0 text-[#d9bd78]" aria-hidden="true">
+                                ✓
+                              </span>
+                              <span>{benefit}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p
+                          id="unlock-carousel-description"
+                          className={cn(
+                            "mt-4 text-sm leading-7 text-[#b8c2d0]",
+                            isLastSlide && "max-sm:mt-2 max-sm:text-[0.8rem] max-sm:leading-6",
+                          )}
+                        >
+                          {slide.text}
+                        </p>
+                      )}
 
                       {isLastSlide ? (
                         <>
@@ -247,7 +276,13 @@ export default function UnlockFullStoryModal({
                         </>
                       ) : null}
 
-                      <div className={cn("mt-6 flex items-center justify-center gap-2", isLastSlide && "max-sm:mt-4")}>
+                      <div
+                        className={cn(
+                          "mt-6 flex items-center justify-center gap-2",
+                          isLastSlide && "max-sm:mt-4",
+                          isFirstSlide && "max-sm:mt-5",
+                        )}
+                      >
                         {CAROUSEL_SLIDES.map((_, dotIndex) => (
                           <span
                             key={dotIndex}
