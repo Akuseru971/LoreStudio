@@ -958,6 +958,10 @@ async function buildFreePreviewGenerationResult(
 
   if (allFreeImagesReady) {
     await updateGenerationProgress(refreshedBook.id, "ready_free", { generationError: null });
+    const { triggerFreePreviewReadyEmailCheck } = await import("@/lib/freePreviewReadyEmail");
+    void triggerFreePreviewReadyEmailCheck(refreshedBook.id).catch((error) => {
+      console.error("[PREVIEW_READY_EMAIL_FAILED]", { bookId: refreshedBook.id, error });
+    });
   } else if (generationResult?.generated) {
     await updateGenerationProgress(refreshedBook.id, "generating_images", { generationError: null });
   }

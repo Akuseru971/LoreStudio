@@ -236,6 +236,67 @@ ${pdfUrl}`,
   return { sent: true, id: data?.id };
 }
 
+export type FreePreviewReadyEmailInput = {
+  to: string;
+  bookUrl: string;
+  idempotencyKey: string;
+};
+
+export async function sendFreePreviewReadyEmail({ to, bookUrl, idempotencyKey }: FreePreviewReadyEmailInput) {
+  const resend = getResendClient();
+  const fromEmail = process.env.FROM_EMAIL?.trim();
+
+  if (!resend || !fromEmail) {
+    console.warn("[PREVIEW_READY_EMAIL_FAILED]", { error: "Email provider is not configured." });
+    return { sent: false, error: "Email provider is not configured." };
+  }
+
+  const fromEmailError = validateFromEmail(fromEmail);
+  if (fromEmailError) {
+    console.error("[PREVIEW_READY_EMAIL_FAILED]", { error: fromEmailError });
+    return { sent: false, error: fromEmailError };
+  }
+
+  const { data, error } = await resend.emails.send(
+    {
+      from: fromEmail,
+      to: [to],
+      subject: "Your legend preview is ready",
+      text: `Hi,
+
+Your legend preview is ready.
+
+You can open it here:
+${bookUrl}
+
+The full legend can be unlocked from your preview page.`,
+      html: `
+        <div style="font-family: Georgia, 'Times New Roman', serif; color: #2f2419; background: #f5ead2; padding: 32px;">
+          <p style="font-size: 16px; line-height: 1.8; color: #4a3724; margin: 0 0 20px;">Hi,</p>
+          <p style="font-size: 16px; line-height: 1.8; color: #4a3724;">
+            Your legend preview is ready.
+          </p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            You can open it here:<br />
+            <a href="${bookUrl}" style="color: #4a3724;">${bookUrl}</a>
+          </p>
+          <p style="font-size: 15px; line-height: 1.9; color: #4a3724;">
+            The full legend can be unlocked from your preview page.
+          </p>
+        </div>
+      `,
+    },
+    { idempotencyKey },
+  );
+
+  if (error) {
+    console.error("[PREVIEW_READY_EMAIL_FAILED]", { error: error.message });
+    return { sent: false, error: error.message };
+  }
+
+  return { sent: true, id: data?.id };
+}
+
 export function buildBookUnlockedEmailUrls(accessToken: string) {
   const appUrl = getAppUrl();
   return {

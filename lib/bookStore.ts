@@ -37,6 +37,7 @@ import type {
   Mp3Status,
   PaymentEmailStatus,
   PdfReadyEmailStatus,
+  PreviewReadyEmailStatus,
   PdfStatus,
   StoredBook,
 } from "@/lib/types";
@@ -137,6 +138,11 @@ function mapRow(row: Record<string, unknown>): StoredBook {
     pdf_ready_email_sent_at: row.pdf_ready_email_sent_at ? String(row.pdf_ready_email_sent_at) : null,
     pdf_ready_email_status: (row.pdf_ready_email_status as PdfReadyEmailStatus | null) ?? "not_started",
     pdf_ready_email_error: row.pdf_ready_email_error ? String(row.pdf_ready_email_error) : null,
+    preview_notify_requested: Boolean(row.preview_notify_requested),
+    preview_notification_email: row.preview_notification_email ? String(row.preview_notification_email) : null,
+    preview_ready_email_sent_at: row.preview_ready_email_sent_at ? String(row.preview_ready_email_sent_at) : null,
+    preview_ready_email_status: (row.preview_ready_email_status as PreviewReadyEmailStatus | null) ?? "not_started",
+    preview_ready_email_error: row.preview_ready_email_error ? String(row.preview_ready_email_error) : null,
     generation_status: (row.generation_status as GenerationProgressStatus | null) ?? "not_started",
     generation_started_at: row.generation_started_at ? String(row.generation_started_at) : null,
     generation_updated_at: row.generation_updated_at ? String(row.generation_updated_at) : null,
@@ -538,6 +544,10 @@ export async function savePreviewPosterAsset(
       const { areFreeIllustrationsReady } = await import("@/lib/freeImages");
       if (areFreeIllustrationsReady(savedBook)) {
         await updateGenerationProgress(savedBook.id, "ready_free", { generationError: null });
+        const { triggerFreePreviewReadyEmailCheck } = await import("@/lib/freePreviewReadyEmail");
+        void triggerFreePreviewReadyEmailCheck(savedBook.id).catch((error) => {
+          console.error("[PREVIEW_READY_EMAIL_FAILED]", { bookId: savedBook.id, error });
+        });
       }
 
       return savedBook;
@@ -1973,6 +1983,149 @@ export async function markPdfReadyEmailFailed(bookId: string, errorMessage?: str
     }
 
     throw new Error("Unable to mark PDF ready email as failed.");
+  }
+
+  return mapRow(data);
+}
+
+export const PREVIEW_READY_EMAIL_STALE_SENDING_MS = 10 * 60 * 1000;
+
+export function isPreviewReadyEmailAlreadySent(
+  book: Pick<StoredBook, "preview_ready_email_status" | "preview_ready_email_sent_at">,
+) {
+  return Boolean(book.preview_ready_email_sent_at) || book.preview_ready_email_status === "sent";
+}
+
+export function isPreviewReadyEmailSendingInProgress(
+  book: Pick<StoredBook, "preview_ready_email_status" | "updated_at">,
+) {
+  if (book.preview_ready_email_status !== "sending") {
+    return false;
+  }
+
+  return Date.now() - new Date(book.updated_at).getTime() < PREVIEW_READY_EMAIL_STALE_SENDING_MS;
+}
+
+export async function savePreviewNotificationRequest(bookId: string, email: string) {
+  const supabase = requireSupabase();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      preview_notify_requested: true,
+      preview_notification_email: normalizedEmail,
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to save preview notification request.");
+  }
+
+  return mapRow(data);
+}
+
+export async function claimPreviewReadyEmailSend(bookId: string) {
+  const supabase = requireSupabase();
+  const freshBook = await getBookById(bookId);
+  if (!freshBook || isPreviewReadyEmailAlreadySent(freshBook)) {
+    return null;
+  }
+
+  if (freshBook.preview_ready_email_status === "sending" && isPreviewReadyEmailSendingInProgress(freshBook)) {
+    return null;
+  }
+
+  if (freshBook.preview_ready_email_status === "sending" && !isPreviewReadyEmailSendingInProgress(freshBook)) {
+    const { error: recoverError } = await supabase
+      .from(BOOKS_TABLE)
+      .update({
+        preview_ready_email_status: "failed",
+        preview_ready_email_error: "Stale sending state recovered for retry.",
+      })
+      .eq("id", bookId)
+      .eq("preview_ready_email_status", "sending")
+      .is("preview_ready_email_sent_at", null);
+
+    if (recoverError) {
+      throw new Error(recoverError.message);
+    }
+  }
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({ preview_ready_email_status: "sending" })
+    .eq("id", bookId)
+    .is("preview_ready_email_sent_at", null)
+    .in("preview_ready_email_status", ["not_started", "failed"])
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapRow(data) : null;
+}
+
+export async function markPreviewReadyEmailSent(bookId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      preview_ready_email_status: "sent",
+      preview_ready_email_sent_at: new Date().toISOString(),
+      preview_ready_email_error: null,
+    })
+    .eq("id", bookId)
+    .is("preview_ready_email_sent_at", null)
+    .neq("preview_ready_email_status", "sent")
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    const existing = await getBookById(bookId);
+    if (existing && isPreviewReadyEmailAlreadySent(existing)) {
+      return existing;
+    }
+
+    throw new Error("Unable to mark preview ready email as sent.");
+  }
+
+  return mapRow(data);
+}
+
+export async function markPreviewReadyEmailFailed(bookId: string, errorMessage?: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      preview_ready_email_status: "failed",
+      preview_ready_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
+    })
+    .eq("id", bookId)
+    .is("preview_ready_email_sent_at", null)
+    .neq("preview_ready_email_status", "sent")
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    const existing = await getBookById(bookId);
+    if (existing) {
+      return existing;
+    }
+
+    throw new Error("Unable to mark preview ready email as failed.");
   }
 
   return mapRow(data);

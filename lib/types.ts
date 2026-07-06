@@ -149,6 +149,8 @@ export type PaymentEmailStatus = ConfirmationEmailStatus;
 
 export type PdfReadyEmailStatus = "not_started" | "sending" | "sent" | "failed";
 
+export type PreviewReadyEmailStatus = "not_started" | "sending" | "sent" | "failed" | "skipped";
+
 export type GenerationProgressStatus =
   | "not_started"
   | "generating_text"
@@ -191,6 +193,11 @@ export type StoredBook = {
   pdf_ready_email_sent_at: string | null;
   pdf_ready_email_status: PdfReadyEmailStatus;
   pdf_ready_email_error: string | null;
+  preview_notify_requested: boolean;
+  preview_notification_email: string | null;
+  preview_ready_email_sent_at: string | null;
+  preview_ready_email_status: PreviewReadyEmailStatus;
+  preview_ready_email_error: string | null;
   generation_status: GenerationProgressStatus;
   generation_started_at: string | null;
   generation_updated_at: string | null;

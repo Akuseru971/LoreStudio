@@ -89,6 +89,19 @@ export async function retryMissingImages(accessToken: string) {
   });
 }
 
+export async function requestPreviewNotify(accessToken: string, email?: string) {
+  const response = await fetch("/api/preview-notify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      accessToken,
+      ...(email ? { email } : {}),
+    }),
+  });
+  const data = await response.json();
+  return { response, data };
+}
+
 export function getPdfOpenUrl(accessToken: string) {
   return `/api/pdf/${encodeURIComponent(accessToken)}`;
 }

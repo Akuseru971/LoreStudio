@@ -6,6 +6,7 @@ import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generatio
 import { FREE_IMAGE_PAGE_COUNT, FREE_PREVIEW_POSTER_IMAGE_KEY, PREMIUM_IMAGE_PAGES } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck, resolvePreviewCoverImageForClient } from "@/lib/book-images";
 import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
+import { triggerFreePreviewReadyEmailCheck } from "@/lib/freePreviewReadyEmail";
 import { arePremiumIllustrationsReady, getMissingPremiumImagePages, getPremiumGenerationStatus, recoverStalePremiumImages } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
@@ -124,6 +125,18 @@ export async function GET(request: Request) {
       });
     }
 
+    if (
+      !isPremium &&
+      freePreviewReadiness.freePreviewReady &&
+      activeBook.preview_notify_requested &&
+      activeBook.preview_ready_email_status !== "sent" &&
+      !activeBook.preview_ready_email_sent_at
+    ) {
+      void triggerFreePreviewReadyEmailCheck(activeBook.id).catch((error) => {
+        console.error("[PREVIEW_READY_EMAIL_FAILED]", { bookId: activeBook.id, error });
+      });
+    }
+
     if (isPremium) {
       console.log("[PREMIUM_GENERATION_STATUS]", {
         bookId: activeBook.id,
@@ -173,6 +186,7 @@ export async function GET(request: Request) {
       freePreviewReady: freePreviewReadiness.freePreviewReady,
       page1Ready: freePreviewReadiness.page1Ready,
       page2Ready: freePreviewReadiness.page2Ready,
+      previewNotifyRequested: activeBook.preview_notify_requested,
       previewCover,
       illustrationsTotal: FULL_BOOK_PAGE_COUNT,
       allIllustrationsReady: normalized.allIllustrationsReady,

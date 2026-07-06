@@ -7,6 +7,7 @@ import AmbientMusicToggle from "@/components/AmbientMusicToggle";
 import ArchiveErrorBoundary from "@/components/ArchiveErrorBoundary";
 import IntroCarousel from "@/components/IntroCarousel";
 import InteractiveBook from "@/components/InteractiveBook";
+import PreviewNotifyModal from "@/components/PreviewNotifyModal";
 import SynopsisLoadingScreen from "@/components/SynopsisLoadingScreen";
 import MysticalStartTransition from "@/components/MysticalStartTransition";
 import ProgressiveLoreForm from "@/components/ProgressiveLoreForm";
@@ -50,6 +51,7 @@ type AppStep =
 type GenerationStatus = "idle" | "generating" | "ready" | "failed";
 
 const MAX_SYNOPSIS_REGENERATIONS = 3;
+const PREVIEW_NOTIFY_MODAL_DELAY_MS = 20_000;
 
 type FreePreviewImageResponse = {
   allFreeImagesReady?: boolean;
@@ -79,6 +81,7 @@ type BookStatusResponse = {
   previewCoverReady?: boolean;
   readyPreviewAssetsCount?: number;
   readyFreeImageCount?: number;
+  previewNotifyRequested?: boolean;
 };
 
 function shouldStopFreePreviewLoop(data: FreePreviewImageResponse | null | undefined) {
@@ -142,12 +145,14 @@ export default function Home() {
   const [ambientMuted, setAmbientMuted] = useState(() => readAmbientMusicMutedPreference());
   const [videoFinished, setVideoFinished] = useState(false);
   const [bookIsOpen, setBookIsOpen] = useState(false);
+  const [showPreviewNotifyModal, setShowPreviewNotifyModal] = useState(false);
 
   const generationRunRef = useRef(0);
   const generationStartedRef = useRef(false);
   const generationPromiseRef = useRef<Promise<void> | null>(null);
   const freePreviewGenerationInFlightRef = useRef<Promise<void> | null>(null);
   const freePreviewParallelStartedRunRef = useRef<number | null>(null);
+  const previewNotifyHandledRunRef = useRef<number | null>(null);
   const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
@@ -179,6 +184,28 @@ export default function Home() {
       setStep("error");
     }
   }, [generationStatus, step, videoFinished]);
+
+  useEffect(() => {
+    if (step !== "creationRitual" || generationStatus !== "generating" || !accessToken) {
+      setShowPreviewNotifyModal(false);
+      return;
+    }
+
+    const runId = generationRunRef.current;
+    if (previewNotifyHandledRunRef.current === runId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (generationRunRef.current === runId && previewNotifyHandledRunRef.current !== runId) {
+        setShowPreviewNotifyModal(true);
+      }
+    }, PREVIEW_NOTIFY_MODAL_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [accessToken, generationStatus, step]);
 
   const fetchSynopsis = useCallback(async (input: BookFormInput, regenerationAttempt = 0) => {
     synopsisRequestRef.current += 1;
@@ -381,6 +408,11 @@ export default function Home() {
             }),
         );
 
+        if (status.previewNotifyRequested) {
+          previewNotifyHandledRunRef.current = runId;
+          setShowPreviewNotifyModal(false);
+        }
+
         if (status.status === "failed" || status.generationStatus === "failed") {
           throw new Error(
             (status.generationError as string | undefined) || "The archives refused to open. Try again.",
@@ -544,7 +576,9 @@ export default function Home() {
     generationStartedRef.current = false;
     generationRunRef.current += 1;
     freePreviewParallelStartedRunRef.current = null;
+    previewNotifyHandledRunRef.current = null;
     synopsisRequestRef.current += 1;
+    setShowPreviewNotifyModal(false);
     setBook(null);
     setAccessToken(null);
     setFormInput(null);
@@ -630,6 +664,22 @@ export default function Home() {
               loadingMessage={generationProgressMessage}
             />
           </motion.div>
+        ) : null}
+
+        {step === "creationRitual" && accessToken ? (
+          <PreviewNotifyModal
+            accessToken={accessToken}
+            isOpen={showPreviewNotifyModal}
+            onClose={() => setShowPreviewNotifyModal(false)}
+            onDismiss={() => {
+              previewNotifyHandledRunRef.current = generationRunRef.current;
+              setShowPreviewNotifyModal(false);
+            }}
+            onNotifyRequested={() => {
+              previewNotifyHandledRunRef.current = generationRunRef.current;
+              safeTrackClient("preview_notify_requested", { source: "loading" });
+            }}
+          />
         ) : null}
 
         {step === "book" && book && accessToken ? (
