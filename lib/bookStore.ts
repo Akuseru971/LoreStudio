@@ -208,6 +208,30 @@ export async function createFreeBook(
   return mapRow(data);
 }
 
+export async function updateFreeBook(bookId: string, book: LoreBook) {
+  const supabase = requireSupabase();
+  const leanBook = stripBookAssets(book);
+  const { freePages, premiumPages } = splitFreeAndPremiumPages(leanBook);
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      free_book: leanBook,
+      free_pages: freePages,
+      premium_pages: premiumPages,
+      generation_updated_at: new Date().toISOString(),
+    })
+    .eq("id", bookId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "Unable to update the free book.");
+  }
+
+  return mapRow(data);
+}
+
 export async function saveNormalizedBookImages(
   bookId: string,
   images: Record<string, BookPageImage>,

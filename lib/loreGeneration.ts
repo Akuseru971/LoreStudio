@@ -9,9 +9,9 @@ import {
   isCliffhangerOnlyFailure,
   validatePage5Cliffhanger,
 } from "@/lib/page5Cliffhanger";
-import { buildLorePrompt } from "@/lib/prompts";
+import { buildLorePhase1Prompt, buildLorePhase2Prompt, buildLorePrompt } from "@/lib/prompts";
 import { validateGeneratedStory } from "@/lib/story-engine";
-import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
+import type { ApprovedSynopsis, BookFormInput, BookPage, LoreBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
 const IMMERSION_BANNED_PATTERN =
@@ -174,12 +174,102 @@ function validateLoreStructure(book: Partial<LoreBook>) {
   return errors;
 }
 
-async function finalizeLoreBook(parsed: Partial<LoreBook>, input: BookFormInput) {
-  let workingBook: Partial<LoreBook> = {
+function validateLorePhase1Structure(book: Partial<LoreBook>) {
+  const errors: string[] = [];
+
+  if (!book.title?.trim()) {
+    errors.push("Missing title.");
+  }
+
+  if (!book.visualBible || !book.visualBible.appearance?.trim()) {
+    errors.push("Missing visualBible.");
+  }
+
+  if (!book.pages || book.pages.length < 2) {
+    errors.push("Phase 1 must contain pages 1 and 2.");
+  }
+
+  for (let index = 0; index < 2; index += 1) {
+    const page = book.pages?.[index];
+    const pageNumber = page?.pageNumber ?? index + 1;
+    if (!page?.title?.trim() || !page?.text?.trim() || !page?.imagePrompt?.trim()) {
+      errors.push(`Page ${pageNumber} is missing title, text, or imagePrompt.`);
+    }
+
+    if (IMMERSION_BANNED_PATTERN.test(page?.text || "") || IMMERSION_BANNED_PATTERN.test(page?.title || "")) {
+      errors.push(`Page ${pageNumber} contains immersion-breaking meta text.`);
+    }
+  }
+
+  return errors;
+}
+
+function validateLorePhase2Pages(pages: BookPage[], championName?: string) {
+  const errors: string[] = [];
+
+  if (pages.length !== 6) {
+    errors.push("Phase 2 must contain exactly 6 pages (3 through 8).");
+  }
+
+  pages.forEach((page, index) => {
+    const pageNumber = page.pageNumber ?? index + 3;
+    if (pageNumber < 3 || pageNumber > 8) {
+      errors.push(`Phase 2 page ${pageNumber} is out of range.`);
+    }
+
+    if (!page.title?.trim() || !page.text?.trim() || !page.imagePrompt?.trim()) {
+      errors.push(`Page ${pageNumber} is missing title, text, or imagePrompt.`);
+    }
+
+    if (IMMERSION_BANNED_PATTERN.test(page.text || "") || IMMERSION_BANNED_PATTERN.test(page.title || "")) {
+      errors.push(`Page ${pageNumber} contains immersion-breaking meta text.`);
+    }
+  });
+
+  const pageFive = pages.find((page) => (page.pageNumber ?? 0) === 5) ?? pages[2];
+  if (pageFive && championName && !pageFive.text?.toLowerCase().includes(championName.toLowerCase())) {
+    errors.push("Page 5 must reference the chosen champion connection.");
+  }
+
+  errors.push(...validatePage5Cliffhanger(pageFive));
+
+  return errors;
+}
+
+export function mergeLoreBookPhases(phase1Book: LoreBook, phase2Pages: BookPage[]): Partial<LoreBook> {
+  const normalizedPhase2Pages = phase2Pages.map((page, index) => ({
+    ...page,
+    pageNumber: page.pageNumber ?? index + 3,
+  }));
+
+  return {
+    title: phase1Book.title,
+    subtitle: phase1Book.subtitle,
+    region: phase1Book.region,
+    genre: phase1Book.genre,
+    storyEngine: phase1Book.storyEngine,
+    championConnection: phase1Book.championConnection,
+    visualBible: phase1Book.visualBible,
+    pages: [...phase1Book.pages.slice(0, 2), ...normalizedPhase2Pages],
+  };
+}
+
+async function finalizeLoreBookPhase1(parsed: Partial<LoreBook>, input: BookFormInput) {
+  const structureErrors = validateLorePhase1Structure(parsed);
+  if (structureErrors.length > 0) {
+    throw new Error(`Generated lore phase 1 failed validation: ${structureErrors.join(" ")}`);
+  }
+
+  const partial = {
     ...parsed,
-    pages: parsed.pages ? [...parsed.pages] : [],
+    pages: parsed.pages?.slice(0, 2),
   };
 
+  return normalizeLoreBook(partial);
+}
+
+async function finalizeMergedLoreBook(phase1Book: LoreBook, phase2Pages: BookPage[], input: BookFormInput) {
+  let workingBook: Partial<LoreBook> = mergeLoreBookPhases(phase1Book, phase2Pages);
   let structureErrors = validateLoreStructure(workingBook);
 
   if (isCliffhangerOnlyFailure(structureErrors)) {
@@ -200,24 +290,8 @@ async function finalizeLoreBook(parsed: Partial<LoreBook>, input: BookFormInput)
   return normalized;
 }
 
-async function parseLoreBook(rawText: string, input: BookFormInput) {
-  let parsed: Partial<LoreBook>;
-
-  try {
-    parsed = JSON.parse(extractJson(rawText)) as Partial<LoreBook>;
-  } catch (error) {
-    console.error("[LORE_JSON_PARSE_ERROR]", {
-      rawPreview: rawText.slice(0, 1000),
-      message: error instanceof Error ? error.message : "Invalid JSON",
-    });
-    throw error;
-  }
-
-  return finalizeLoreBook(parsed, input);
-}
-
-async function requestRawLoreText(input: BookFormInput, approvedSynopsis?: ApprovedSynopsis | null) {
-  const { system, user } = buildLorePrompt(input, approvedSynopsis);
+async function requestRawLoreTextPhase1(input: BookFormInput, approvedSynopsis?: ApprovedSynopsis | null) {
+  const { system, user } = buildLorePhase1Prompt(input, approvedSynopsis);
   const model = getLoreModel();
 
   const response = await withTimeout(
@@ -229,15 +303,46 @@ async function requestRawLoreText(input: BookFormInput, approvedSynopsis?: Appro
         format: { type: "json_object" },
         verbosity: "medium",
       },
-      max_output_tokens: 4500,
+      max_output_tokens: 2800,
     }),
     TEXT_GENERATION_TIMEOUT_MS,
-    "TEXT_GENERATION",
+    "TEXT_GENERATION_PHASE_1",
   );
 
   const rawText = getResponseText(response);
   if (!rawText) {
-    throw new Error("The lore model returned an empty response.");
+    throw new Error("The lore phase 1 model returned an empty response.");
+  }
+
+  return rawText;
+}
+
+async function requestRawLoreTextPhase2(
+  input: BookFormInput,
+  phase1Book: LoreBook,
+  approvedSynopsis?: ApprovedSynopsis | null,
+) {
+  const { system, user } = buildLorePhase2Prompt(input, phase1Book, approvedSynopsis);
+  const model = getLoreModel();
+
+  const response = await withTimeout(
+    openai.responses.create({
+      model,
+      instructions: `${system}\nReturn only one valid JSON object. No markdown fences. No prose outside JSON.`,
+      input: `${user}\n\nReturn only one valid JSON object. No markdown fences. No apology. No explanatory sentence.`,
+      text: {
+        format: { type: "json_object" },
+        verbosity: "medium",
+      },
+      max_output_tokens: 3800,
+    }),
+    TEXT_GENERATION_TIMEOUT_MS,
+    "TEXT_GENERATION_PHASE_2",
+  );
+
+  const rawText = getResponseText(response);
+  if (!rawText) {
+    throw new Error("The lore phase 2 model returned an empty response.");
   }
 
   return rawText;
@@ -270,7 +375,47 @@ async function repairLoreJson(invalidOutput: string, input: BookFormInput) {
   return rawText;
 }
 
-export async function generateLoreBook(
+async function parseLoreBookPhase1(rawText: string, input: BookFormInput) {
+  let parsed: Partial<LoreBook>;
+
+  try {
+    parsed = JSON.parse(extractJson(rawText)) as Partial<LoreBook>;
+  } catch (error) {
+    console.error("[LORE_JSON_PARSE_ERROR]", {
+      phase: 1,
+      rawPreview: rawText.slice(0, 1000),
+      message: error instanceof Error ? error.message : "Invalid JSON",
+    });
+    throw error;
+  }
+
+  return finalizeLoreBookPhase1(parsed, input);
+}
+
+async function parseLoreBookPhase2(rawText: string, phase1Book: LoreBook, input: BookFormInput) {
+  let parsed: { pages?: BookPage[] };
+
+  try {
+    parsed = JSON.parse(extractJson(rawText)) as { pages?: BookPage[] };
+  } catch (error) {
+    console.error("[LORE_JSON_PARSE_ERROR]", {
+      phase: 2,
+      rawPreview: rawText.slice(0, 1000),
+      message: error instanceof Error ? error.message : "Invalid JSON",
+    });
+    throw error;
+  }
+
+  const pages = Array.isArray(parsed.pages) ? parsed.pages : [];
+  const structureErrors = validateLorePhase2Pages(pages, phase1Book.championConnection?.championName);
+  if (structureErrors.length > 0) {
+    throw new Error(`Generated lore phase 2 failed validation: ${structureErrors.join(" ")}`);
+  }
+
+  return finalizeMergedLoreBook(phase1Book, pages, input);
+}
+
+export async function generateLoreBookPhase1(
   input: BookFormInput,
   approvedSynopsis?: ApprovedSynopsis | null,
 ): Promise<GenerateLoreResult> {
@@ -279,18 +424,19 @@ export async function generateLoreBook(
   console.log("[TEXT_GENERATION_START]", Date.now());
 
   if (!approvedSynopsis) {
-    console.warn("[SYNOPSIS_MISSING] Full generation started without approved synopsis");
+    console.warn("[SYNOPSIS_MISSING] Phase 1 generation started without approved synopsis");
   }
 
   let lastError: unknown;
   let lastRawText = "";
 
   try {
-    lastRawText = await requestRawLoreText(input, approvedSynopsis);
-    console.log("[TEXT_GENERATION_DONE]", Date.now());
-    console.time("[TEXT_VALIDATION]");
-    const book = await parseLoreBook(lastRawText, input);
-    console.timeEnd("[TEXT_VALIDATION]");
+    lastRawText = await requestRawLoreTextPhase1(input, approvedSynopsis);
+    const book = await parseLoreBookPhase1(lastRawText, input);
+    console.log("[TEXT_PHASE_1_DONE_CHAPTERS_1_2]", {
+      pageCount: book.pages.length,
+      hasVisualBible: Boolean(book.visualBible?.appearance),
+    });
     return { book, fallback: false };
   } catch (error) {
     lastError = error;
@@ -300,19 +446,20 @@ export async function generateLoreBook(
   if (lastRawText) {
     for (let attempt = 1; attempt <= MAX_TEXT_REPAIR_ATTEMPTS; attempt += 1) {
       console.log("[TEXT_REPAIR_ATTEMPT]", attempt, {
+        phase: 1,
         hasRawText: Boolean(lastRawText),
       });
-      console.time("[TEXT_REPAIR]");
 
       try {
         const repairedText = await repairLoreJson(lastRawText, input);
-        console.timeEnd("[TEXT_REPAIR]");
-        console.time("[TEXT_VALIDATION]");
-        const book = await parseLoreBook(repairedText, input);
-        console.timeEnd("[TEXT_VALIDATION]");
+        const book = await parseLoreBookPhase1(repairedText, input);
+        console.log("[TEXT_PHASE_1_DONE_CHAPTERS_1_2]", {
+          pageCount: book.pages.length,
+          hasVisualBible: Boolean(book.visualBible?.appearance),
+          repaired: true,
+        });
         return { book, fallback: false };
       } catch (repairError) {
-        console.timeEnd("[TEXT_REPAIR]");
         lastError = repairError;
         logLoreGenerationError(repairError);
       }
@@ -320,13 +467,82 @@ export async function generateLoreBook(
   }
 
   if (isFallbackLoreEnabled()) {
-    console.error("[LORE_GENERATION_FALLBACK]", "All lore generation attempts failed. Returning fallback lore book.", lastError);
+    console.error("[LORE_GENERATION_FALLBACK]", "Phase 1 generation failed. Returning fallback lore book.", lastError);
     return { book: buildFallbackLoreBook(input), fallback: true };
   }
 
   if (isDevOrPreview()) {
-    throw lastError instanceof Error ? lastError : new Error("Lore generation failed.");
+    throw lastError instanceof Error ? lastError : new Error("Lore phase 1 generation failed.");
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Lore generation failed.");
+  throw lastError instanceof Error ? lastError : new Error("Lore phase 1 generation failed.");
+}
+
+export async function generateLoreBookPhase2(
+  phase1Book: LoreBook,
+  input: BookFormInput,
+  approvedSynopsis?: ApprovedSynopsis | null,
+): Promise<GenerateLoreResult> {
+  requireOpenAiKey();
+
+  let lastError: unknown;
+  let lastRawText = "";
+
+  try {
+    lastRawText = await requestRawLoreTextPhase2(input, phase1Book, approvedSynopsis);
+    const book = await parseLoreBookPhase2(lastRawText, phase1Book, input);
+    console.log("[TEXT_PHASE_2_DONE_CHAPTERS_3_8]", {
+      pageCount: book.pages.length,
+    });
+    return { book, fallback: false };
+  } catch (error) {
+    lastError = error;
+    logLoreGenerationError(error);
+  }
+
+  if (lastRawText) {
+    for (let attempt = 1; attempt <= MAX_TEXT_REPAIR_ATTEMPTS; attempt += 1) {
+      console.log("[TEXT_REPAIR_ATTEMPT]", attempt, {
+        phase: 2,
+        hasRawText: Boolean(lastRawText),
+      });
+
+      try {
+        const repairedText = await repairLoreJson(lastRawText, input);
+        const book = await parseLoreBookPhase2(repairedText, phase1Book, input);
+        console.log("[TEXT_PHASE_2_DONE_CHAPTERS_3_8]", {
+          pageCount: book.pages.length,
+          repaired: true,
+        });
+        return { book, fallback: false };
+      } catch (repairError) {
+        lastError = repairError;
+        logLoreGenerationError(repairError);
+      }
+    }
+  }
+
+  if (isFallbackLoreEnabled()) {
+    console.error("[LORE_GENERATION_FALLBACK]", "Phase 2 generation failed. Returning fallback lore book.", lastError);
+    return { book: buildFallbackLoreBook(input), fallback: true };
+  }
+
+  if (isDevOrPreview()) {
+    throw lastError instanceof Error ? lastError : new Error("Lore phase 2 generation failed.");
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Lore phase 2 generation failed.");
+}
+
+export async function generateLoreBook(
+  input: BookFormInput,
+  approvedSynopsis?: ApprovedSynopsis | null,
+): Promise<GenerateLoreResult> {
+  const phase1Result = await generateLoreBookPhase1(input, approvedSynopsis);
+  if (phase1Result.fallback) {
+    return phase1Result;
+  }
+
+  const phase2Result = await generateLoreBookPhase2(phase1Result.book, input, approvedSynopsis);
+  return phase2Result;
 }

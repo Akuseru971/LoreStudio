@@ -288,6 +288,289 @@ Return strict JSON only.`;
   return { system, user };
 }
 
+const LORE_METADATA_SCHEMA = `{
+  "title": "character name",
+  "subtitle": "legendary epithet",
+  "region": "selected or chosen region",
+  "genre": "in-world biography",
+  "storyEngine": {
+    "archetype": "string",
+    "centralIrony": "string",
+    "publicReputation": "string",
+    "privateTruth": "string",
+    "socialPressure": "string",
+    "irreversibleEvent": "string",
+    "championConnectionType": "string",
+    "finalContradiction": "string"
+  },
+  "championConnection": {
+    "championName": "string",
+    "connectionType": "string",
+    "connectionSummary": "string",
+    "whyItMatters": "string",
+    "canonSafetyNote": "string"
+  },
+  "visualBible": {
+    "appearance": "string",
+    "clothing": "string",
+    "regionAtmosphere": "string",
+    "colorPalette": "string",
+    "recurringVisualMotif": "string"
+  }
+}`;
+
+const LORE_PAGE_SCHEMA = `{
+  "pageNumber": 1,
+  "title": "specific biography title",
+  "text": "55-95 words",
+  "imagePrompt": "specific scene prompt"
+}`;
+
+const LORE_SHARED_STYLE_RULES = `${PAGE_TITLE_PROMPT_RULES}
+
+${IMAGE_PROMPT_RULES}
+- Every imagePrompt must include: ${IMAGE_STYLE_LOCK}
+- ${IMAGE_STYLE_AVOIDANCES}
+
+${ANTI_REPETITION_VALIDATION}
+
+${PAGE_TITLE_SELF_CHECK}`;
+
+const LORE_PAGE_5_RULES = `Page 5 rule:
+Page 5 must reveal the champion connection and end with a direct cliffhanger.
+The final sentence of page 5 must create unresolved danger, discovery, arrival, message, betrayal, transformation, or threat.
+
+The final sentence must not resolve the scene.
+It must leave the protagonist facing something immediate and unanswered.
+
+Do not end page 5 with:
+- a reflection
+- a lesson
+- a summary
+- a poetic conclusion
+- a resolved emotion
+- a calm statement
+- a vague prophecy`;
+
+export function buildLorePhase1Prompt(input: BookFormInput, approvedSynopsis?: ApprovedSynopsis | null) {
+  if (approvedSynopsis) {
+    const system = `You are a narrative designer writing original Runeterra-style champion biographies.
+Your task is to establish the story foundation and write the first 2 pages of an 8-page biography.
+You must preserve the approved premise exactly.
+You output strict valid JSON only.`;
+
+    const user = `Create the FIRST 2 PAGES of an 8-page illustrated biography for an original character in Runeterra.
+
+User input:
+Name: ${input.name}
+Gender: ${input.gender}
+Character type: ${input.characterType}
+Region preference: ${input.runeterraRegion}
+
+Approved synopsis:
+${JSON.stringify(approvedSynopsis, null, 2)}
+
+The final book will follow this approved synopsis across all 8 pages.
+Do not change the protagonist's role, region, champion connection, or central conflict.
+Use "${approvedSynopsis.legendaryTitle}" as the subtitle / legendary epithet.
+Use region "${approvedSynopsis.region}".
+Build the protagonist around this specific role: ${approvedSynopsis.specificRole}.
+The emotional engine of the story must come from this core conflict: ${approvedSynopsis.coreConflict}.
+The page 5 champion connection must feature ${approvedSynopsis.championConnection.championName}.
+Page 5 connection summary to honor: ${approvedSynopsis.championConnection.connectionSummary}.
+
+In this phase, write only pages 1 and 2, but fully establish:
+- storyEngine
+- championConnection
+- visualBible
+
+The visualBible must be complete and stable enough for illustration.
+Pages 6–8 will continue the consequence of the synopsis conflict in a later generation phase.
+
+Style:
+- serious, elegant, immersive, easy to follow
+- inspired by official League champion biographies
+- concrete and specific
+- no meta language
+- no page references inside text
+- no generic chapter titles
+
+Length:
+- exactly 2 pages in this response
+- 55 to 95 words per page
+
+${LORE_SHARED_STYLE_RULES}
+
+Return strict JSON matching this schema:
+${LORE_METADATA_SCHEMA},
+  "pages": [
+    ${LORE_PAGE_SCHEMA},
+    {
+      "pageNumber": 2,
+      "title": "specific biography title",
+      "text": "55-95 words",
+      "imagePrompt": "specific scene prompt"
+    }
+  ]
+}
+
+Return strict JSON only.`;
+
+    return { system, user };
+  }
+
+  const suggestedArchetype = pickStoryArchetype(
+    `${input.name}:${input.gender}:${input.characterType}:${input.runeterraRegion}:${Date.now()}`,
+  );
+
+  const system = `You are a narrative designer writing original Runeterra-style champion biographies.
+Your task is to establish the story foundation and write the first 2 pages of an 8-page biography.
+You must avoid formulaic fantasy patterns.
+You output strict valid JSON only.`;
+
+  const user = `Create the FIRST 2 PAGES of an 8-page illustrated biography for an original character in Runeterra.
+
+User input:
+Name: ${input.name}
+Gender: ${input.gender}
+Character type: ${input.characterType}
+Region: ${input.runeterraRegion}
+
+Main goal:
+Create a biography that feels fresh, unusual, and specific.
+Before writing, choose a unique story engine and build the entire 8-page arc from it.
+In this phase, write only pages 1 and 2, but fully establish:
+- storyEngine
+- championConnection
+- visualBible
+
+Suggested archetype for this generation (invent a stronger one if needed):
+${suggestedArchetype}
+
+The visualBible must be complete and stable enough for illustration.
+Pages 3–8 will continue naturally from pages 1 and 2 in a later generation phase.
+
+Champion connection:
+The champion connection must appear on page 5 in the final book.
+It must be structural, social, political, religious, cultural, historical, or reputational.
+
+Style:
+- serious, elegant, immersive, easy to follow
+- inspired by official League champion biographies
+- concrete and specific
+- no meta language
+- no page references inside text
+- no generic chapter titles
+
+Length:
+- exactly 2 pages in this response
+- 55 to 95 words per page
+
+${LORE_SHARED_STYLE_RULES}
+
+Return strict JSON matching this schema:
+${LORE_METADATA_SCHEMA},
+  "pages": [
+    ${LORE_PAGE_SCHEMA},
+    {
+      "pageNumber": 2,
+      "title": "specific biography title",
+      "text": "55-95 words",
+      "imagePrompt": "specific scene prompt"
+    }
+  ]
+}
+
+Return strict JSON only.`;
+
+  return { system, user };
+}
+
+export function buildLorePhase2Prompt(
+  input: BookFormInput,
+  phase1Book: LoreBook,
+  approvedSynopsis?: ApprovedSynopsis | null,
+) {
+  const synopsisBlock = approvedSynopsis
+    ? `Approved synopsis to preserve:
+${JSON.stringify(approvedSynopsis, null, 2)}`
+    : "";
+
+  const system = `You are a narrative designer continuing an original Runeterra-style champion biography.
+Your task is to write pages 3 through 8 only, continuing naturally from the established story foundation.
+You must preserve the storyEngine, championConnection, visualBible, and pages 1–2 exactly.
+You output strict valid JSON only.`;
+
+  const user = `Continue this 8-page illustrated biography by writing pages 3 through 8 only.
+
+User input:
+Name: ${input.name}
+Gender: ${input.gender}
+Character type: ${input.characterType}
+Region: ${input.runeterraRegion}
+
+${synopsisBlock}
+
+Established story foundation and pages 1–2:
+${JSON.stringify(
+  {
+    title: phase1Book.title,
+    subtitle: phase1Book.subtitle,
+    region: phase1Book.region,
+    genre: phase1Book.genre,
+    storyEngine: phase1Book.storyEngine,
+    championConnection: phase1Book.championConnection,
+    visualBible: phase1Book.visualBible,
+    pages: phase1Book.pages.slice(0, 2).map((page) => ({
+      pageNumber: page.pageNumber,
+      title: page.title,
+      text: page.text,
+      imagePrompt: page.imagePrompt,
+    })),
+  },
+  null,
+  2,
+)}
+
+Do not rewrite pages 1 or 2.
+Continue the biography naturally from page 2 into pages 3–8.
+Preserve the same protagonist, tone, region, visual identity, and story engine.
+
+${LORE_PAGE_5_RULES}
+Page 5 must reference the chosen champion connection: ${phase1Book.championConnection.championName}.
+Pages 6–8 must continue the consequence of the established conflict.
+
+Style:
+- serious, elegant, immersive, easy to follow
+- inspired by official League champion biographies
+- concrete and specific
+- no meta language
+- no page references inside text
+- no generic chapter titles
+
+Length:
+- exactly pages 3, 4, 5, 6, 7, and 8 in this response
+- 55 to 95 words per page
+
+${LORE_SHARED_STYLE_RULES}
+
+Return strict JSON matching this schema:
+{
+  "pages": [
+    {
+      "pageNumber": 3,
+      "title": "specific biography title",
+      "text": "55-95 words",
+      "imagePrompt": "specific scene prompt"
+    }
+  ]
+}
+
+Return strict JSON only.`;
+
+  return { system, user };
+}
+
 export function buildFinalImagePrompt(book: LoreBook, page: BookPage) {
   const visual = book.visualBible;
   const summary = summarizeForImage(page.text);

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { createFreeBook, findExistingGenerationBook, mergeBookAssets } from "@/lib/bookStore";
+import { createFreeBook, findExistingGenerationBook, mergeBookAssets, updateFreeBook } from "@/lib/bookStore";
+import { startEarlyPage1ImageGeneration } from "@/lib/freeImages";
 import { TEXT_MODEL } from "@/lib/server/generation-config";
-import { generateLoreBook, isDevOrPreview } from "@/lib/loreGeneration";
+import { generateLoreBookPhase1, generateLoreBookPhase2, isDevOrPreview } from "@/lib/loreGeneration";
 import { normalizeBook } from "@/lib/normalizeBook";
 import { validateGenerateBookRequest } from "@/lib/utils";
 
@@ -67,18 +68,42 @@ export async function POST(request: Request) {
 
     console.time("[TEXT_GENERATION]");
     console.log("[TEXT_GENERATION_START]", Date.now());
-    const loreResult = await generateLoreBook(input, approvedSynopsis);
-    console.log("[TEXT_GENERATION_DONE]", Date.now());
+    const phase1Result = await generateLoreBookPhase1(input, approvedSynopsis);
     console.timeEnd("[TEXT_GENERATION]");
 
-    console.time("[IMAGE_PROMPTS_READY]");
     console.time("[SUPABASE_SAVE]");
-    const storedBook = await createFreeBook(input, loreResult.book, approvedSynopsis ?? null);
+    const storedBook = await createFreeBook(input, phase1Result.book, approvedSynopsis ?? null);
     console.timeEnd("[SUPABASE_SAVE]");
-    console.timeEnd("[IMAGE_PROMPTS_READY]");
 
     const accessToken = storedBook.access_token;
-    const mergedBook = await mergeBookAssets(loreResult.book, storedBook.images, storedBook.audio);
+    const earlyPage1ImagePromise = startEarlyPage1ImageGeneration({
+      accessToken,
+      bookId: storedBook.id,
+      book: phase1Result.book,
+    }).catch((error) => {
+      console.error("[EARLY_PAGE_1_IMAGE_GENERATION_ERROR]", {
+        bookId: storedBook.id,
+        error,
+      });
+    });
+
+    console.time("[TEXT_GENERATION_PHASE_2]");
+    const phase2Result = phase1Result.fallback
+      ? phase1Result
+      : await generateLoreBookPhase2(phase1Result.book, input, approvedSynopsis);
+    console.log("[TEXT_GENERATION_DONE]", Date.now());
+    console.timeEnd("[TEXT_GENERATION_PHASE_2]");
+
+    let activeBook = storedBook;
+    if (!phase1Result.fallback) {
+      activeBook = await updateFreeBook(storedBook.id, phase2Result.book);
+    }
+
+    void earlyPage1ImagePromise;
+
+    console.time("[IMAGE_PROMPTS_READY]");
+    const mergedBook = await mergeBookAssets(phase2Result.book, activeBook.images, activeBook.audio);
+    console.timeEnd("[IMAGE_PROMPTS_READY]");
     const book = normalizeBook(mergedBook);
     if (!book) {
       throw new Error("The generated book could not be prepared for reading.");
@@ -90,7 +115,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       book,
       accessToken,
-      fallback: loreResult.fallback,
+      fallback: phase1Result.fallback || phase2Result.fallback,
       imagesQueued: true,
     });
   } catch (error) {

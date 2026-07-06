@@ -430,6 +430,32 @@ ${prompt}`;
   });
 }
 
+export async function startEarlyPage1ImageGeneration({
+  accessToken,
+  bookId,
+  book,
+}: {
+  accessToken: string;
+  bookId: string;
+  book: LoreBook;
+}) {
+  console.log("[EARLY_PAGE_1_IMAGE_GENERATION_START]", { bookId });
+  const result = await generateAndStoreFreeImageForPage({
+    accessToken,
+    bookId,
+    book,
+    pageNumber: 1,
+  });
+
+  if (result.generated) {
+    console.log("[EARLY_PAGE_1_IMAGE_GENERATION_DONE]", { bookId });
+  } else if (result.book && isFreePreviewStoryPageAlreadyReady(result.book, 1)) {
+    console.log("[EARLY_PAGE_1_IMAGE_GENERATION_DONE]", { bookId, alreadyReady: true });
+  }
+
+  return result;
+}
+
 export async function generateAndStoreFreeImageForPage({
   accessToken,
   bookId,
