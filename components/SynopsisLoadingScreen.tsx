@@ -19,6 +19,13 @@ const EARLY_STAGE_CEILING = 48;
 const FIRST_VISION_CEILING = 87;
 const COMPLETE_CEILING = 100;
 const PROGRESS_TICK_MS = 150;
+const ESTIMATED_WAIT_SECONDS = 3 * 60;
+
+function formatEstimatedWait(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
 
 function getStageCeiling(loadingMessage: string | undefined) {
   const message = loadingMessage?.trim() || GENERATION_PROGRESS_MESSAGES.writing;
@@ -82,6 +89,17 @@ function getScrollDuration(synopsisText: string) {
 
 export default function SynopsisLoadingScreen({ synopsis, formInput, loadingMessage }: SynopsisLoadingScreenProps) {
   const [progress, setProgress] = useState(INITIAL_PROGRESS);
+  const [estimatedWaitSeconds, setEstimatedWaitSeconds] = useState(ESTIMATED_WAIT_SECONDS);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setEstimatedWaitSeconds((current) => (current > 0 ? current - 1 : 0));
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -145,6 +163,11 @@ export default function SynopsisLoadingScreen({ synopsis, formInput, loadingMess
           >
             <div className="loading-progress-fill" style={{ width: `${progress}%` }} />
           </div>
+          <p className="loading-estimated-wait mt-3 text-[0.68rem] tracking-[0.08em] text-[#9baabd]/88 max-sm:text-[0.64rem]">
+            {estimatedWaitSeconds > 0
+              ? `Estimated wait: ${formatEstimatedWait(estimatedWaitSeconds)}`
+              : "Finalizing your legend..."}
+          </p>
           <span className="whitespace-pre-line">{loadingMessage || "Writing your illustrated chronicle..."}</span>
         </div>
 
