@@ -464,16 +464,18 @@ export async function savePreviewPosterAsset(
 
     console.log("[IMAGE_SAVE_START]", { bookId: storedBook.id, assetType: "preview_poster", attempt });
 
-    if (options.claimId) {
-      if (!verifyPreviewCoverClaimOwnership(storedBook, options.claimId)) {
-        console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
-          bookId: storedBook.id,
-          assetKey: posterKey,
-          claimId: options.claimId,
-          currentClaimId: getPreviewCoverClaimId(storedBook),
-        });
-        return storedBook;
-      }
+    const claimLost = Boolean(
+      options.claimId && !verifyPreviewCoverClaimOwnership(storedBook, options.claimId),
+    );
+    if (claimLost) {
+      console.log("[IMAGE_GENERATION_CLAIM_LOST_SKIP_OPENAI]", {
+        bookId: storedBook.id,
+        assetKey: posterKey,
+        claimId: options.claimId,
+        currentClaimId: getPreviewCoverClaimId(storedBook),
+        previewCover: true,
+        continuingFinalize: true,
+      });
     }
 
     const storagePath = await persistAssetMap(storedBook.id, { [posterKey]: assetRef }, "image");
@@ -519,6 +521,12 @@ export async function savePreviewPosterAsset(
 
     if (!error && data) {
       const savedBook = mapRow(data);
+      console.log("[PREVIEW_COVER_FINALIZE_AFTER_SAVE]", {
+        bookId: savedBook.id,
+        storagePath: persistedRef,
+        status: "ready",
+        claimLost,
+      });
       console.log("[PREVIEW_COVER_UPDATE_DONE]", {
         bookId: savedBook.id,
         assetKey: posterKey,

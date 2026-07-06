@@ -17,6 +17,7 @@ import {
   mergeBookAssets,
   reloadAndVerifyPageImageClaim,
   reloadAndVerifyPreviewCoverClaim,
+  repairPreviewCoverFromStorage,
   resetStalePageImageGeneration,
   resetStalePreviewCoverGeneration,
   saveBookAsset,
@@ -276,6 +277,24 @@ export const FREE_PREVIEW_ASSET_STALE_AFTER_MS = 4 * 60 * 1000;
 const FREE_PREVIEW_STATUS_LOG_INTERVAL_MS = 15_000;
 const freePreviewWaitingLogAt = new Map<string, number>();
 const freePreviewAssetStatusLogAt = new Map<string, number>();
+
+export function isRecentPreviewCoverGenerationInProgress(storedBook: StoredBook) {
+  const state = getPreviewCoverGenerationStatus(storedBook);
+  return (
+    state.status === "generating" &&
+    !state.isReady &&
+    Boolean(state.generationStartedAt) &&
+    state.ageMs !== null &&
+    state.ageMs < FREE_PREVIEW_ASSET_STALE_AFTER_MS
+  );
+}
+
+export function logPreviewCoverSkipAlreadyGeneratingRecent(bookId: string, ageMs: number | null) {
+  console.log("[PREVIEW_COVER_SKIP_ALREADY_GENERATING_RECENT]", {
+    bookId,
+    ageMs,
+  });
+}
 
 function shouldThrottleFreePreviewStatusLog(
   bookId: string,
@@ -762,9 +781,21 @@ export async function generateAndStoreFreePreviewCover({
   bookId: string;
   book: LoreBook;
 }): Promise<GenerateStoredFreeImageResult> {
-  const latestBeforeClaim = await getBookById(bookId);
-  if (latestBeforeClaim && isPreviewPosterReady(latestBeforeClaim)) {
+  let latestBeforeClaim = await getBookById(bookId);
+  if (!latestBeforeClaim) {
+    return { book: null, generated: false, claimLost: false };
+  }
+
+  latestBeforeClaim = await repairPreviewCoverFromStorage(latestBeforeClaim);
+
+  if (isPreviewPosterReady(latestBeforeClaim)) {
     console.log("[FREE_PREVIEW_COVER_SKIP_ALREADY_READY]");
+    return { book: latestBeforeClaim, generated: false, claimLost: false };
+  }
+
+  if (isRecentPreviewCoverGenerationInProgress(latestBeforeClaim)) {
+    const state = getPreviewCoverGenerationStatus(latestBeforeClaim);
+    logPreviewCoverSkipAlreadyGeneratingRecent(bookId, state.ageMs);
     return { book: latestBeforeClaim, generated: false, claimLost: false };
   }
 
@@ -772,13 +803,19 @@ export async function generateAndStoreFreePreviewCover({
 
   const claim = await claimPreviewCoverGeneration(bookId);
   if (!claim) {
-    const refreshedBook = await getBookById(bookId);
-    if (refreshedBook && isPreviewPosterReady(refreshedBook)) {
+    const refreshedBook = await repairPreviewCoverFromStorage((await getBookById(bookId)) || latestBeforeClaim);
+    if (isPreviewPosterReady(refreshedBook)) {
       console.log("[FREE_PREVIEW_COVER_SKIP_ALREADY_READY]");
       return { book: refreshedBook, generated: false, claimLost: false };
     }
 
-    if (refreshedBook && isPreviewCoverFreshlyGenerating(refreshedBook)) {
+    if (isRecentPreviewCoverGenerationInProgress(refreshedBook)) {
+      const state = getPreviewCoverGenerationStatus(refreshedBook);
+      logPreviewCoverSkipAlreadyGeneratingRecent(bookId, state.ageMs);
+      return { book: refreshedBook, generated: false, claimLost: false };
+    }
+
+    if (isPreviewCoverFreshlyGenerating(refreshedBook, FREE_PREVIEW_ASSET_STALE_AFTER_MS)) {
       const state = getPreviewCoverGenerationStatus(refreshedBook);
       console.log("[IMAGE_GENERATION_SKIP_ALREADY_GENERATING]", {
         bookId,
@@ -791,7 +828,7 @@ export async function generateAndStoreFreePreviewCover({
 
     logClaimLostSkipOpenAi(bookId, { previewCover: true });
     return {
-      book: refreshedBook || (await getBookById(bookId)),
+      book: refreshedBook,
       generated: false,
       claimLost: true,
     };
@@ -877,7 +914,11 @@ export async function generateAndStoreFreePreviewCover({
     }
 
     const savedBook = await savePreviewPosterAsset(accessToken, imageUrl, { claimId });
-    return { book: savedBook, generated: true, claimLost: false };
+    const finalizedBook =
+      savedBook && !isPreviewPosterReady(savedBook)
+        ? await repairPreviewCoverFromStorage(savedBook)
+        : savedBook;
+    return { book: finalizedBook, generated: true, claimLost: false };
   } catch (error) {
     await markPreviewCoverFailed(bookId, claimId);
     console.error("[IMAGE_GENERATION_ERROR]", {
@@ -971,26 +1012,28 @@ export async function generateNextFreeImage(
     throw new Error("Book not found.");
   }
 
+  const activeBook = await repairPreviewCoverFromStorage(storedBook);
+
   console.log("[GENERATE_NEXT_FREE_IMAGE_START]", {
-    nextAsset: peekNextFreePreviewAsset(storedBook, normalizedOptions),
+    nextAsset: peekNextFreePreviewAsset(activeBook, normalizedOptions),
     accessToken,
   });
 
-  const sourceBook = storedBook.free_book;
+  const sourceBook = activeBook.free_book;
   if (!sourceBook) {
     throw new Error("Book content is missing.");
   }
 
-  if (!isFreePreviewStoryTextReady(storedBook)) {
+  if (!isFreePreviewStoryTextReady(activeBook)) {
     const result: FreePreviewGenerationResult = {
-      storedBook,
+      storedBook: activeBook,
       pageNumber: null,
       previewCover: false,
       generated: false,
       done: false,
       allFreeImagesReady: false,
-      readyFreeImageCount: countReadyFreeImages(storedBook),
-      missingFreePages: getMissingFreeImagePages(storedBook),
+      readyFreeImageCount: countReadyFreeImages(activeBook),
+      missingFreePages: getMissingFreeImagePages(activeBook),
       skipped: true,
       reason: "preview_text_not_ready",
     };
@@ -1002,9 +1045,9 @@ export async function generateNextFreeImage(
     return result;
   }
 
-  if (areFreeIllustrationsReady(storedBook)) {
+  if (areFreeIllustrationsReady(activeBook)) {
     const result: FreePreviewGenerationResult = {
-      storedBook,
+      storedBook: activeBook,
       pageNumber: null,
       previewCover: false,
       generated: false,
@@ -1023,7 +1066,9 @@ export async function generateNextFreeImage(
   }
 
   if (requestedPreviewCover) {
-    const latestBook = (await getBookByAccessToken(accessToken)) || storedBook;
+    const latestBook = await repairPreviewCoverFromStorage(
+      (await getBookByAccessToken(accessToken)) || activeBook,
+    );
 
     if (isPreviewPosterReady(latestBook)) {
       return buildFreePreviewSkipReadyResult(latestBook, null, true);
@@ -1070,7 +1115,9 @@ export async function generateNextFreeImage(
   }
 
   if (requestedPageNumber !== undefined && !isValidFreePreviewTargetPage(requestedPageNumber)) {
-    const refreshedBook = (await getBookByAccessToken(accessToken)) || storedBook;
+    const refreshedBook = await repairPreviewCoverFromStorage(
+      (await getBookByAccessToken(accessToken)) || activeBook,
+    );
     return {
       storedBook: refreshedBook,
       pageNumber: null,
@@ -1083,20 +1130,22 @@ export async function generateNextFreeImage(
     };
   }
 
-  const nextTarget = requestedPageNumber ?? getFreePreviewGenerationTargets(storedBook)[0] ?? null;
+  const nextTarget = requestedPageNumber ?? getFreePreviewGenerationTargets(activeBook)[0] ?? null;
 
   if (nextTarget === "preview_cover") {
     return generateNextFreeImage(accessToken, { previewCover: true });
   }
 
-  const pageNumber = typeof nextTarget === "number" ? nextTarget : findNextMissingFreeImagePage(storedBook);
+  const pageNumber = typeof nextTarget === "number" ? nextTarget : findNextMissingFreeImagePage(activeBook);
 
   if (!pageNumber) {
-    if (isPreviewCoverMissing(storedBook)) {
+    if (isPreviewCoverMissing(activeBook)) {
       return generateNextFreeImage(accessToken, { previewCover: true });
     }
 
-    const refreshedBook = (await getBookByAccessToken(accessToken)) || storedBook;
+    const refreshedBook = await repairPreviewCoverFromStorage(
+      (await getBookByAccessToken(accessToken)) || activeBook,
+    );
     return {
       storedBook: refreshedBook,
       pageNumber: null,
@@ -1108,7 +1157,9 @@ export async function generateNextFreeImage(
     };
   }
 
-  const latestBook = (await getBookByAccessToken(accessToken)) || storedBook;
+  const latestBook = await repairPreviewCoverFromStorage(
+    (await getBookByAccessToken(accessToken)) || activeBook,
+  );
   const input = getFreeImagePagesInput(latestBook);
 
   if (isFreePreviewStoryPageAlreadyReady(latestBook, pageNumber)) {
