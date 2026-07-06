@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBookByAccessToken, mergeBookAssets } from "@/lib/bookStore";
+import { getBookByAccessToken, mergeBookAssets, repairPreviewCoverFromStorage } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT, ILLUSTRATED_PAGE_COUNT } from "@/lib/book-config";
 import { FREE_PREVIEW_POSTER_IMAGE_KEY } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, resolvePreviewCoverImageForClient } from "@/lib/book-images";
@@ -23,17 +23,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Book not found." }, { status: 404 });
     }
 
-    const isPremium = hasPremiumAccess(storedBook.status);
-    const sourceBook = isPremium ? storedBook.full_book || storedBook.free_book : storedBook.free_book;
-    const normalized = getNormalizedImagesForStoredBook(storedBook);
+    const activeBook = await repairPreviewCoverFromStorage(storedBook);
+    const isPremium = hasPremiumAccess(activeBook.status);
+    const sourceBook = isPremium ? activeBook.full_book || activeBook.free_book : activeBook.free_book;
+    const normalized = getNormalizedImagesForStoredBook(activeBook);
     const clientImages = await resolvePreviewCoverImageForClient(normalized.images);
     const previewCover = clientImages.previewCover ?? clientImages[FREE_PREVIEW_POSTER_IMAGE_KEY] ?? null;
 
     console.log("[BOOK_API_PREVIEW_COVER_RETURNED]", {
+      bookId: activeBook.id,
       hasPreviewCover: Boolean(previewCover),
       status: previewCover?.status ?? null,
-      hasUrl: Boolean(previewCover?.url || (previewCover as { signedUrl?: string | null } | null)?.signedUrl),
       hasStoragePath: Boolean(previewCover?.storagePath),
+      hasSignedUrl: Boolean(previewCover?.signedUrl || previewCover?.url),
     });
 
     const mergedBook = sourceBook
@@ -42,9 +44,9 @@ export async function GET(request: Request) {
     const book = mergedBook ? normalizeBook(mergedBook) : null;
 
     return NextResponse.json({
-      status: storedBook.status,
-      accessToken: storedBook.access_token,
-      email: storedBook.email,
+      status: activeBook.status,
+      accessToken: activeBook.access_token,
+      email: activeBook.email,
       book,
       imageStatus: clientImages,
       images: clientImages,

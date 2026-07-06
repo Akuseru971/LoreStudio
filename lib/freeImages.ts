@@ -23,7 +23,7 @@ import {
   stampMissingPreviewCoverTimestamp,
   updateGenerationProgress,
 } from "@/lib/bookStore";
-import { getImageForPage, isIllustrationReady, resolveImageDisplayUrl, type BookImagesInput } from "@/lib/book-images";
+import { getImageForPage, isIllustrationReady, isPreviewCoverReady, readStoredPreviewPosterImage, resolveImageDisplayUrl, type BookImagesInput } from "@/lib/book-images";
 import { getDirectImageUrl, getImageStoragePath } from "@/lib/book-image-utils";
 import {
   getPageGenerationStatus,
@@ -96,24 +96,15 @@ function isStoryPreviewImageReady(storedBook: StoredBook, pageNumber: number) {
   return Boolean(getDirectImageUrl(image) || getImageStoragePath(image));
 }
 
-function hasUsablePreviewCoverAsset(image: BookPageImage | null) {
-  if (!image) {
-    return false;
-  }
-
-  const storagePath = getImageStoragePath(image);
-  if (storagePath?.includes("page-NaN")) {
-    return false;
-  }
-
-  return Boolean(getDirectImageUrl(image) || storagePath);
+function hasUsablePreviewCoverAsset(storedBook: StoredBook) {
+  const image = readStoredPreviewPosterImage(storedBook);
+  return isPreviewCoverReady(image, storedBook.image_status[FREE_PREVIEW_POSTER_IMAGE_KEY]);
 }
 
 export function getFreePreviewReadiness(storedBook: StoredBook): FreePreviewReadiness {
   const page1Ready = isStoryPreviewImageReady(storedBook, 1);
   const page2Ready = isStoryPreviewImageReady(storedBook, 2);
-  const previewCoverImage = getPreviewPosterImage(storedBook);
-  const previewCoverReady = hasUsablePreviewCoverAsset(previewCoverImage);
+  const previewCoverReady = hasUsablePreviewCoverAsset(storedBook);
   const readyPreviewAssetsCount = [page1Ready, page2Ready, previewCoverReady].filter(Boolean).length;
 
   return {
@@ -236,8 +227,7 @@ function isFreePageEligibleForGeneration(
 }
 
 function isPreviewCoverEligibleForGeneration(storedBook: StoredBook) {
-  const previewCoverImage = getPreviewPosterImage(storedBook);
-  if (hasUsablePreviewCoverAsset(previewCoverImage)) {
+  if (hasUsablePreviewCoverAsset(storedBook)) {
     return false;
   }
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getBookById, isFinalReadyEmailAlreadySent, isFinalReadyEmailSendingInProgress, recoverStalePdfGeneration } from "@/lib/bookStore";
+import { getBookById, isFinalReadyEmailAlreadySent, isFinalReadyEmailSendingInProgress, recoverStalePdfGeneration, repairPreviewCoverFromStorage } from "@/lib/bookStore";
 import { getNormalizedImagesForStoredBook, normalizeStoredBookImages } from "@/lib/book-images";
 import { triggerFinalBookReadyEmailCheck } from "@/lib/finalBookReadyEmail";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
@@ -114,16 +114,17 @@ export async function triggerPdfGenerationIfReady(
     return { triggered: false, skipped: true, reason: "book_not_found", pdfStatus: "not_started" };
   }
 
-  const pdfStatus = book.pdf_status || "not_started";
+  const activeBook = await repairPreviewCoverFromStorage(book);
+  const pdfStatus = activeBook.pdf_status || "not_started";
   console.log("[PDF_AUTO_TRIGGER_PDF_STATUS_BEFORE]", {
     bookId,
-    pdfStatus: book.pdf_status,
-    pdfStoragePath: book.pdf_storage_path,
+    pdfStatus: activeBook.pdf_status,
+    pdfStoragePath: activeBook.pdf_storage_path,
   });
 
-  const normalized = getNormalizedImagesForStoredBook(book);
+  const normalized = getNormalizedImagesForStoredBook(activeBook);
 
-  if (!hasPremiumAccess(book.status)) {
+  if (!hasPremiumAccess(activeBook.status)) {
     console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
       bookId,
       reason: "premium_required",
@@ -139,7 +140,7 @@ export async function triggerPdfGenerationIfReady(
     return { triggered: false, skipped: true, reason: "images_not_ready", pdfStatus };
   }
 
-  if (isFinalReadyEmailAlreadySent(book)) {
+  if (isFinalReadyEmailAlreadySent(activeBook)) {
     console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
       bookId,
       reason: "email_already_sent",
@@ -148,11 +149,11 @@ export async function triggerPdfGenerationIfReady(
       triggered: false,
       skipped: true,
       reason: "email_already_sent",
-      pdfStatus: isPdfReady(book) ? "ready" : pdfStatus,
+      pdfStatus: isPdfReady(activeBook) ? "ready" : pdfStatus,
     };
   }
 
-  if (isFinalReadyEmailSendingInProgress(book)) {
+  if (isFinalReadyEmailSendingInProgress(activeBook)) {
     console.log("[PDF_AUTO_TRIGGER_SKIPPED]", {
       bookId,
       reason: "final_email_in_progress",
@@ -161,18 +162,18 @@ export async function triggerPdfGenerationIfReady(
       triggered: false,
       skipped: true,
       reason: "final_email_in_progress",
-      pdfStatus: isPdfReady(book) ? "ready" : pdfStatus,
+      pdfStatus: isPdfReady(activeBook) ? "ready" : pdfStatus,
     };
   }
 
-  if (isPdfReady(book)) {
+  if (isPdfReady(activeBook)) {
     const { buildPdfGenerationContext, pdfNeedsPreviewCoverRecovery, resolvePreviewCoverUrlForPdf } =
       await import("@/lib/pdfBookPages");
-    const normalizedImages = normalizeStoredBookImages(book);
-    const context = buildPdfGenerationContext(book, normalizedImages);
+    const normalizedImages = normalizeStoredBookImages(activeBook);
+    const context = buildPdfGenerationContext(activeBook, normalizedImages);
     const coverImageSrc = await resolvePreviewCoverUrlForPdf(context);
-    const needsCoverRecovery = book.pdf_storage_path
-      ? await pdfNeedsPreviewCoverRecovery(book.pdf_storage_path, coverImageSrc)
+    const needsCoverRecovery = activeBook.pdf_storage_path
+      ? await pdfNeedsPreviewCoverRecovery(activeBook.pdf_storage_path, coverImageSrc)
       : false;
 
     if (!needsCoverRecovery) {
@@ -191,14 +192,14 @@ export async function triggerPdfGenerationIfReady(
 
   if (
     pdfStatus === "generating" &&
-    !book.pdf_storage_path &&
+    !activeBook.pdf_storage_path &&
     !isPdfGenerationInProgress(bookId) &&
     !autoTriggerTasks.has(bookId)
   ) {
     await recoverStalePdfGeneration(bookId);
   }
 
-  const refreshedBook = await getBookById(bookId);
+  const refreshedBook = await repairPreviewCoverFromStorage((await getBookById(bookId)) || activeBook);
   const currentPdfStatus = refreshedBook?.pdf_status || pdfStatus;
   if (
     currentPdfStatus === "generating" &&
@@ -222,7 +223,7 @@ export async function triggerPdfGenerationIfReady(
   });
 
   autoTriggerTasks.add(bookId);
-  const accessToken = refreshedBook?.access_token || book.access_token;
+  const accessToken = refreshedBook.access_token;
   const task = runPdfAutoTrigger(accessToken, bookId).finally(() => {
     autoTriggerTasks.delete(bookId);
   });

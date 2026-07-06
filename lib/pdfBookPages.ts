@@ -6,9 +6,11 @@ import {
   isStorageAssetPath,
 } from "@/lib/bookAssets";
 import {
+  findPreviewPosterStoragePath,
   getDirectImageUrl,
   getImageForPage,
   getImageStoragePath,
+  isCanonicalPreviewCoverStoragePath,
   logPdfImageCheck,
   readStoredPreviewPosterImage,
   resolveImageDisplayUrl,
@@ -33,8 +35,6 @@ export type PdfGenerationContext = {
   previewCover?: unknown;
 };
 
-const PREVIEW_POSTER_EXTENSIONS = ["png", "jpg", "webp"] as const;
-
 function mimeTypeForStoragePath(path: string) {
   if (path.includes(".png")) {
     return "image/png";
@@ -46,7 +46,7 @@ function mimeTypeForStoragePath(path: string) {
 }
 
 function isInvalidPreviewCoverStoragePath(storagePath: string | null | undefined) {
-  return !storagePath || storagePath.includes("page-NaN");
+  return !isCanonicalPreviewCoverStoragePath(storagePath);
 }
 
 function normalizePreviewCoverRecord(raw: unknown) {
@@ -106,22 +106,6 @@ function readPreviewCoverImage(context: PdfGenerationContext) {
   return normalizePreviewCoverRecord(raw);
 }
 
-async function resolveFallbackPreviewPosterStoragePath(bookId: string | undefined) {
-  if (!bookId) {
-    return null;
-  }
-
-  for (const extension of PREVIEW_POSTER_EXTENSIONS) {
-    const storagePath = `books/${bookId}/preview-poster.${extension}`;
-    const buffer = await downloadAssetBuffer(storagePath);
-    if (buffer) {
-      return storagePath;
-    }
-  }
-
-  return null;
-}
-
 export async function resolveRenderableImageSrc(url: string): Promise<string | null> {
   const trimmed = url.trim();
   if (!trimmed) {
@@ -165,30 +149,47 @@ async function resolvePreviewCoverDisplayUrlForPdf(
   bookId?: string,
 ) {
   const storagePath = getImageStoragePath(previewCover);
-  if (!isInvalidPreviewCoverStoragePath(storagePath) && storagePath && isStorageAssetPath(storagePath)) {
-    console.log("[PDF_PREVIEW_COVER_FOUND]", { storagePath, source: "stored_asset" });
-    const signedUrl = await createSignedAssetUrl(storagePath, 3600);
-    console.log("[PDF_PREVIEW_COVER_SIGNED_URL_READY]", { storagePath });
+  if (isCanonicalPreviewCoverStoragePath(storagePath)) {
+    console.log("[PDF_PREVIEW_COVER_FOUND]", {
+      bookId: bookId ?? null,
+      hasStoragePath: true,
+      storagePath,
+    });
+    const signedUrl = await createSignedAssetUrl(storagePath!, 3600);
+    console.log("[PDF_PREVIEW_COVER_SIGNED_URL_READY]", {
+      bookId: bookId ?? null,
+      hasSignedUrl: Boolean(signedUrl),
+    });
     return signedUrl;
   }
 
-  const fallbackStoragePath = await resolveFallbackPreviewPosterStoragePath(bookId);
+  const fallbackStoragePath = bookId ? await findPreviewPosterStoragePath(bookId) : null;
   if (fallbackStoragePath) {
-    console.log("[PDF_PREVIEW_COVER_FOUND]", { storagePath: fallbackStoragePath, source: "storage_fallback" });
+    console.log("[PDF_PREVIEW_COVER_FOUND]", {
+      bookId: bookId ?? null,
+      hasStoragePath: true,
+      storagePath: fallbackStoragePath,
+    });
     const signedUrl = await createSignedAssetUrl(fallbackStoragePath, 3600);
-    console.log("[PDF_PREVIEW_COVER_SIGNED_URL_READY]", { storagePath: fallbackStoragePath });
+    console.log("[PDF_PREVIEW_COVER_SIGNED_URL_READY]", {
+      bookId: bookId ?? null,
+      hasSignedUrl: Boolean(signedUrl),
+    });
     return signedUrl;
   }
+
+  console.warn("[PDF_PREVIEW_COVER_STORAGE_PATH_MISSING]", {
+    bookId: bookId ?? null,
+    storagePath: storagePath ?? null,
+  });
 
   const directUrl = getDirectImageUrl(previewCover);
   if (directUrl) {
-    console.log("[PDF_PREVIEW_COVER_FOUND]", { source: "direct_url" });
     return directUrl;
   }
 
   const displayUrl = await resolveImageDisplayUrl(previewCover);
   if (displayUrl) {
-    console.log("[PDF_PREVIEW_COVER_FOUND]", { source: "resolved_display_url" });
     return displayUrl;
   }
 
@@ -207,7 +208,7 @@ export async function resolvePreviewCoverUrlForPdf(
   }
 
   if (isInvalidPreviewCoverStoragePath(getImageStoragePath(previewCover)) && !getDirectImageUrl(previewCover)) {
-    const fallbackStoragePath = await resolveFallbackPreviewPosterStoragePath(context.bookId);
+    const fallbackStoragePath = context.bookId ? await findPreviewPosterStoragePath(context.bookId) : null;
     if (!fallbackStoragePath) {
       console.warn("[PDF_PREVIEW_COVER_NOT_AVAILABLE_FOR_THIS_BOOK]", {
         bookId: context.bookId ?? null,

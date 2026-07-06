@@ -9,6 +9,7 @@ import {
   markPdfWaitingForImages,
   mergeBookAssets,
   recoverStalePdfGeneration,
+  repairPreviewCoverFromStorage,
 } from "@/lib/bookStore";
 import {
   areAllIllustrationsReady,
@@ -88,7 +89,9 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     return { status: "failed", message: "Book not found." };
   }
 
-  if (!hasPremiumAccess(storedBook.status)) {
+  const activeBook = await repairPreviewCoverFromStorage(storedBook);
+
+  if (!hasPremiumAccess(activeBook.status)) {
     return {
       status: "not_ready",
       reason: "premium_required",
@@ -96,7 +99,7 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     };
   }
 
-  const normalized = getNormalizedImagesForStoredBook(storedBook);
+  const normalized = getNormalizedImagesForStoredBook(activeBook);
 
   if (!normalized.allIllustrationsReady) {
     logPdfReadyCheck(normalized.input, "download-pdf");
@@ -111,7 +114,7 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
   }
 
   if (!areAllIllustrationsReady(normalized.input)) {
-    void markPdfWaitingForImages(storedBook.id).catch((error) => {
+    void markPdfWaitingForImages(activeBook.id).catch((error) => {
       console.warn("[PDF_STATUS_UPDATE_FAILED]", error);
     });
 
@@ -122,51 +125,52 @@ export async function resolvePdfDownload(accessToken: string): Promise<PdfDownlo
     };
   }
 
-  if (storedBook.pdf_storage_path) {
+  if (activeBook.pdf_storage_path) {
     const { buildPdfGenerationContext, pdfNeedsPreviewCoverRecovery, resolvePreviewCoverUrlForPdf } =
       await import("@/lib/pdfBookPages");
-    const normalizedImages = normalizeStoredBookImages(storedBook);
-    const context = buildPdfGenerationContext(storedBook, normalizedImages);
+    const normalizedImages = normalizeStoredBookImages(activeBook);
+    const context = buildPdfGenerationContext(activeBook, normalizedImages);
     const coverImageSrc = await resolvePreviewCoverUrlForPdf(context);
-    const needsCoverRecovery = await pdfNeedsPreviewCoverRecovery(storedBook.pdf_storage_path, coverImageSrc);
+    const needsCoverRecovery = await pdfNeedsPreviewCoverRecovery(activeBook.pdf_storage_path, coverImageSrc);
 
     if (!needsCoverRecovery) {
-      const downloadUrl = await createSignedPdfUrl(storedBook.pdf_storage_path, 3600);
-      return { status: "ready", downloadUrl };
-    }
-
-    console.log("[PDF_COVER_RECOVERY_REQUESTED]", { bookId: storedBook.id });
-  }
-
-  let activeBook = storedBook;
-  if (activeBook.pdf_status === "generating" && !pdfGenerationTasks.has(activeBook.id)) {
-    const recoveredBook = await recoverStalePdfGeneration(activeBook.id);
-    activeBook = recoveredBook || activeBook;
-    if (activeBook.pdf_storage_path) {
       const downloadUrl = await createSignedPdfUrl(activeBook.pdf_storage_path, 3600);
       return { status: "ready", downloadUrl };
     }
+
+    console.log("[PDF_COVER_RECOVERY_REQUESTED]", { bookId: activeBook.id });
   }
 
-  if (activeBook.pdf_status === "generating" || pdfGenerationTasks.has(activeBook.id)) {
+  let currentBook = activeBook;
+  if (currentBook.pdf_status === "generating" && !pdfGenerationTasks.has(currentBook.id)) {
+    const recoveredBook = await recoverStalePdfGeneration(currentBook.id);
+    currentBook = recoveredBook || currentBook;
+    if (currentBook.pdf_storage_path) {
+      const downloadUrl = await createSignedPdfUrl(currentBook.pdf_storage_path, 3600);
+      return { status: "ready", downloadUrl };
+    }
+  }
+
+  if (currentBook.pdf_status === "generating" || pdfGenerationTasks.has(currentBook.id)) {
     return {
       status: "generating_pdf",
       message: "PDF is being generated.",
     };
   }
 
-  const claimedBook = await claimPdfGeneration(activeBook.id);
+  const claimedBook = await claimPdfGeneration(currentBook.id);
   if (!claimedBook) {
-    const latestBook = await getBookByAccessToken(accessToken);
+    const latestRawBook = await getBookByAccessToken(accessToken);
+    const latestBook = latestRawBook ? await repairPreviewCoverFromStorage(latestRawBook) : null;
     if (latestBook?.pdf_storage_path) {
       const downloadUrl = await createSignedPdfUrl(latestBook.pdf_storage_path, 3600);
       return { status: "ready", downloadUrl };
     }
 
-    if (latestBook?.pdf_status === "generating" || pdfGenerationTasks.has(activeBook.id)) {
-      console.log("[PDF_GENERATION_SKIPPED_ALREADY_GENERATING]", { bookId: activeBook.id });
+    if (latestBook?.pdf_status === "generating" || pdfGenerationTasks.has(currentBook.id)) {
+      console.log("[PDF_GENERATION_SKIPPED_ALREADY_GENERATING]", { bookId: currentBook.id });
     } else if (latestBook?.pdf_storage_path) {
-      console.log("[PDF_GENERATION_SKIPPED_ALREADY_READY]", { bookId: activeBook.id });
+      console.log("[PDF_GENERATION_SKIPPED_ALREADY_READY]", { bookId: currentBook.id });
     }
 
     return {

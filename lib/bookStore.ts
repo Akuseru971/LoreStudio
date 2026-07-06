@@ -8,14 +8,20 @@ import {
   FREE_PREVIEW_STORY_IMAGE_PAGES,
 } from "@/lib/image-config";
 import {
+  buildPreviewCoverAsset,
+  findPreviewPosterStoragePath,
   getImageForPage,
   getReadyIllustrationCount,
+  isCanonicalPreviewCoverStoragePath,
   isIllustrationReady,
+  isPreviewCoverReady,
   mergeUpdatedImage,
   mergeNormalizedImagesPreservingGenerationClaims,
   normalizeStoredBookImages,
+  readStoredPreviewPosterImage,
   resolveImageDisplayUrl,
 } from "@/lib/book-images";
+import { getImageStoragePath } from "@/lib/book-image-utils";
 import { BOOK_AUDIO_BUCKET, BOOK_PDF_BUCKET, getSupabaseServerClient } from "@/lib/supabase/server";
 import { safeTrackServer } from "@/lib/safe-analytics-server";
 import type {
@@ -362,6 +368,62 @@ function mergeStoredFreePreviewStoryImages(
   return merged;
 }
 
+export async function repairPreviewCoverFromStorage(storedBook: StoredBook): Promise<StoredBook> {
+  const posterKey = FREE_PREVIEW_POSTER_IMAGE_KEY;
+  const existing = readStoredPreviewPosterImage(storedBook);
+  const existingStoragePath = getImageStoragePath(existing);
+
+  if (isPreviewCoverReady(existing, storedBook.image_status[posterKey])) {
+    return storedBook;
+  }
+
+  const storagePath = isCanonicalPreviewCoverStoragePath(existingStoragePath)
+    ? existingStoragePath!
+    : await findPreviewPosterStoragePath(storedBook.id);
+
+  if (!storagePath) {
+    return storedBook;
+  }
+
+  console.log("[PREVIEW_COVER_REPAIRED_FROM_STORAGE]", {
+    bookId: storedBook.id,
+    storagePath,
+  });
+
+  const previewCoverAsset = buildPreviewCoverAsset(storagePath);
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = mergeStoredFreePreviewStoryImages(storedBook, normalized.images);
+  updatedImages[posterKey] = {
+    ...previewCoverAsset,
+    startedAt: null,
+    updatedAt: new Date().toISOString(),
+    generationStartedAt: null,
+    generationClaimId: null,
+  } as unknown as BookPageImage;
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [posterKey]: "ready" as ImagePageStatus,
+  };
+
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: updatedImages,
+      image_status: nextImageStatus,
+    })
+    .eq("id", storedBook.id)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.warn("[PREVIEW_COVER_REPAIR_FAILED]", { bookId: storedBook.id, error });
+    return storedBook;
+  }
+
+  return mapRow(data);
+}
+
 export async function savePreviewPosterAsset(
   accessToken: string,
   assetRef: string,
@@ -401,6 +463,7 @@ export async function savePreviewPosterAsset(
     const updatedImages = mergeStoredFreePreviewStoryImages(storedBook, normalized.images);
     updatedImages[posterKey] = {
       status: "ready" as ImagePageStatus,
+      assetKey: posterKey,
       url: signedUrl,
       storagePath: persistedRef,
       generatedAt: new Date().toISOString(),
@@ -408,7 +471,7 @@ export async function savePreviewPosterAsset(
       updatedAt: new Date().toISOString(),
       generationStartedAt: null,
       generationClaimId: null,
-    } as BookPageImage;
+    } as unknown as BookPageImage;
     const nextImageStatus = {
       ...normalized.imageStatus,
       ...Object.fromEntries(
@@ -432,10 +495,11 @@ export async function savePreviewPosterAsset(
 
     if (!error && data) {
       const savedBook = mapRow(data);
-      console.log("[IMAGE_BOOK_UPDATE_DONE]", {
+      console.log("[PREVIEW_COVER_UPDATE_DONE]", {
         bookId: savedBook.id,
         assetKey: posterKey,
-        url: signedUrl,
+        status: "ready",
+        hasStoragePath: true,
         storagePath: persistedRef,
       });
 
@@ -2085,10 +2149,12 @@ export async function recoverStalePdfGeneration(bookId: string) {
 
 export async function claimPdfGeneration(bookId: string) {
   const supabase = requireSupabase();
-  const storedBook = await getBookById(bookId);
+  let storedBook = await getBookById(bookId);
   if (!storedBook) {
     return null;
   }
+
+  storedBook = await repairPreviewCoverFromStorage(storedBook);
 
   if (storedBook.pdf_status === "generating") {
     console.log("[PDF_GENERATION_SKIPPED_ALREADY_GENERATING]", { bookId });
@@ -2160,10 +2226,12 @@ export async function markPdfFailed(bookId: string, errorMessage?: string) {
 }
 
 export async function ensureBookPdf(bookId: string, book: LoreBook) {
-  const storedBook = await getBookById(bookId);
+  let storedBook = await getBookById(bookId);
   if (!storedBook) {
     throw new Error("Book not found.");
   }
+
+  storedBook = await repairPreviewCoverFromStorage(storedBook);
 
   if (storedBook.pdf_status === "generating" && !storedBook.pdf_storage_path) {
     console.log("[PDF_GENERATION_SKIPPED_ALREADY_GENERATING]", { bookId });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBookByAccessToken } from "@/lib/bookStore";
+import { getBookByAccessToken, repairPreviewCoverFromStorage } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { countReadyFreeImages, getFreePreviewReadiness } from "@/lib/freeImages";
 import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generation-progress";
@@ -62,9 +62,10 @@ export async function GET(request: Request) {
     }
 
     const isPremium = hasPremiumAccess(storedBook.status);
-    let activeBook = storedBook;
+    let activeBook = await repairPreviewCoverFromStorage(storedBook);
     if (isPremium) {
-      activeBook = (await recoverStalePremiumImages(storedBook)) || storedBook;
+      activeBook = (await recoverStalePremiumImages(activeBook)) || activeBook;
+      activeBook = await repairPreviewCoverFromStorage(activeBook);
     }
 
     const normalized = getNormalizedImagesForStoredBook(activeBook);
