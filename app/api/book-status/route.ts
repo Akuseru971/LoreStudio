@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, repairPreviewCoverFromStorage } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { countReadyFreeImages, getFreePreviewReadiness } from "@/lib/freeImages";
+import { countReadyFreeImages, getFreePreviewReadiness, logFreePreviewWaitingStatus, recoverStaleFreePreviewAssets } from "@/lib/freeImages";
 import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generation-progress";
 import { FREE_IMAGE_PAGE_COUNT, FREE_PREVIEW_POSTER_IMAGE_KEY, PREMIUM_IMAGE_PAGES } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck, resolvePreviewCoverImageForClient } from "@/lib/book-images";
@@ -66,6 +66,8 @@ export async function GET(request: Request) {
     if (isPremium) {
       activeBook = (await recoverStalePremiumImages(activeBook)) || activeBook;
       activeBook = await repairPreviewCoverFromStorage(activeBook);
+    } else {
+      activeBook = (await recoverStaleFreePreviewAssets(activeBook)) || activeBook;
     }
 
     const normalized = getNormalizedImagesForStoredBook(activeBook);
@@ -88,11 +90,15 @@ export async function GET(request: Request) {
     const missingPremiumPages = isPremium ? getMissingPremiumImagePages(activeBook) : [];
     const premiumImagesReady = isPremium ? arePremiumIllustrationsReady(activeBook) : false;
     const premiumGeneration = isPremium ? getPremiumGenerationStatus(activeBook) : null;
-    const pdfReady = activeBook.pdf_status === "ready" || Boolean(activeBook.pdf_storage_path);
+    const pdfReady = isPremium && (activeBook.pdf_status === "ready" || Boolean(activeBook.pdf_storage_path));
     const pdfStatus = activeBook.pdf_status || "not_started";
 
-    if (!normalized.allIllustrationsReady) {
+    if (isPremium && !normalized.allIllustrationsReady) {
       logPdfReadyCheck(normalized.input, "book-status");
+    }
+
+    if (!isPremium && !freePreviewReadiness.freePreviewReady) {
+      logFreePreviewWaitingStatus(activeBook, freePreviewReadiness);
     }
 
     if (
@@ -118,12 +124,14 @@ export async function GET(request: Request) {
       });
     }
 
-    console.log("[PREMIUM_GENERATION_STATUS]", {
-      bookId: activeBook.id,
-      readyImagesCount: normalized.readyIllustrationCount,
-      missingPremiumPages,
-      stalePremiumPages: premiumGeneration?.stalePremiumPages || [],
-    });
+    if (isPremium) {
+      console.log("[PREMIUM_GENERATION_STATUS]", {
+        bookId: activeBook.id,
+        readyImagesCount: normalized.readyIllustrationCount,
+        missingPremiumPages,
+        stalePremiumPages: premiumGeneration?.stalePremiumPages || [],
+      });
+    }
 
     console.log("[BOOK_STATUS]", {
       bookId: activeBook.id,

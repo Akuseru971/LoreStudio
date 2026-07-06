@@ -17,6 +17,8 @@ import {
   mergeBookAssets,
   reloadAndVerifyPageImageClaim,
   reloadAndVerifyPreviewCoverClaim,
+  resetStalePageImageGeneration,
+  resetStalePreviewCoverGeneration,
   saveBookAsset,
   savePreviewPosterAsset,
   stampMissingGeneratingTimestamp,
@@ -29,7 +31,9 @@ import {
   getPageGenerationStatus,
   getPreviewCoverGenerationStatus,
   isImageFreshlyGenerating,
+  isImageGeneratingStale,
   isPreviewCoverFreshlyGenerating,
+  isPreviewCoverGeneratingStale,
   verifyImageGenerationClaimOwnership,
   verifyPreviewCoverClaimOwnership,
 } from "@/lib/imageGenerationTimestamps";
@@ -266,6 +270,118 @@ export function getMissingFreeImagePages(storedBook: StoredBook) {
 
 export function areFreeIllustrationsReady(storedBook: StoredBook) {
   return getFreePreviewReadiness(storedBook).freePreviewReady;
+}
+
+export const FREE_PREVIEW_ASSET_STALE_AFTER_MS = 4 * 60 * 1000;
+const FREE_PREVIEW_STATUS_LOG_INTERVAL_MS = 15_000;
+const freePreviewWaitingLogAt = new Map<string, number>();
+const freePreviewAssetStatusLogAt = new Map<string, number>();
+
+function shouldThrottleFreePreviewStatusLog(
+  bookId: string,
+  cache: Map<string, number>,
+  intervalMs = FREE_PREVIEW_STATUS_LOG_INTERVAL_MS,
+) {
+  const now = Date.now();
+  const lastLoggedAt = cache.get(bookId) ?? 0;
+  if (now - lastLoggedAt < intervalMs) {
+    return true;
+  }
+
+  cache.set(bookId, now);
+  return false;
+}
+
+export function logFreePreviewWaitingStatus(storedBook: StoredBook, readiness: FreePreviewReadiness) {
+  if (readiness.freePreviewReady || shouldThrottleFreePreviewStatusLog(storedBook.id, freePreviewWaitingLogAt)) {
+    return;
+  }
+
+  const page1State = getPageGenerationStatus(storedBook, 1);
+  const page2State = getPageGenerationStatus(storedBook, 2);
+  const previewCoverState = getPreviewCoverGenerationStatus(storedBook);
+
+  console.log("[FREE_PREVIEW_WAITING_STATUS]", {
+    bookId: storedBook.id,
+    page1Status: page1State.status,
+    page2Status: page2State.status,
+    previewCoverStatus: previewCoverState.status,
+    page2AgeMs: page2State.ageMs,
+    previewCoverAgeMs: previewCoverState.ageMs,
+    freePreviewReady: readiness.freePreviewReady,
+  });
+}
+
+export async function recoverStaleFreePreviewAssets(storedBook: StoredBook) {
+  let latestBook = storedBook;
+  const page2Input = getFreeImagePagesInput(latestBook);
+  const page2State = getPageGenerationStatus(latestBook, 2, page2Input);
+
+  if (page2State.status === "generating" && !page2State.isReady) {
+    if (!page2State.timestamp) {
+      const stampedBook = await stampMissingGeneratingTimestamp(latestBook.id, 2);
+      if (stampedBook) {
+        latestBook = stampedBook;
+      }
+    } else if (
+      isImageGeneratingStale(
+        latestBook,
+        2,
+        getFreeImagePagesInput(latestBook),
+        FREE_PREVIEW_ASSET_STALE_AFTER_MS,
+      )
+    ) {
+      console.log("[FREE_PREVIEW_ASSET_STALE]", {
+        bookId: latestBook.id,
+        pageNumber: 2,
+        ageMs: page2State.ageMs,
+      });
+      const resetBook = await resetStalePageImageGeneration(latestBook.id, 2);
+      if (resetBook) {
+        latestBook = resetBook;
+      }
+    } else if (
+      page2State.ageMs !== null &&
+      !shouldThrottleFreePreviewStatusLog(latestBook.id, freePreviewAssetStatusLogAt)
+    ) {
+      console.log("[FREE_PREVIEW_ASSET_STILL_GENERATING]", {
+        bookId: latestBook.id,
+        pageNumber: 2,
+        ageMs: page2State.ageMs,
+      });
+    }
+  }
+
+  const previewCoverState = getPreviewCoverGenerationStatus(latestBook);
+  if (previewCoverState.status === "generating" && !previewCoverState.isReady) {
+    if (!previewCoverState.timestamp) {
+      const stampedBook = await stampMissingPreviewCoverTimestamp(latestBook.id);
+      if (stampedBook) {
+        latestBook = stampedBook;
+      }
+    } else if (isPreviewCoverGeneratingStale(latestBook, FREE_PREVIEW_ASSET_STALE_AFTER_MS)) {
+      console.log("[FREE_PREVIEW_ASSET_STALE]", {
+        bookId: latestBook.id,
+        assetKey: FREE_PREVIEW_POSTER_IMAGE_KEY,
+        ageMs: previewCoverState.ageMs,
+      });
+      const resetBook = await resetStalePreviewCoverGeneration(latestBook.id);
+      if (resetBook) {
+        latestBook = resetBook;
+      }
+    } else if (
+      previewCoverState.ageMs !== null &&
+      !shouldThrottleFreePreviewStatusLog(`${latestBook.id}:poster`, freePreviewAssetStatusLogAt)
+    ) {
+      console.log("[FREE_PREVIEW_ASSET_STILL_GENERATING]", {
+        bookId: latestBook.id,
+        assetKey: FREE_PREVIEW_POSTER_IMAGE_KEY,
+        ageMs: previewCoverState.ageMs,
+      });
+    }
+  }
+
+  return latestBook;
 }
 
 function isFreePageEligibleForGeneration(
