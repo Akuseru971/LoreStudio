@@ -1,6 +1,7 @@
 import "server-only";
 
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
+import { updateFreeBook } from "@/lib/bookStore";
 import { openai } from "@/lib/server/openai";
 import { BOOK_TEXT_MODEL } from "@/lib/server/ai-config";
 import { MAX_TEXT_REPAIR_ATTEMPTS, TEXT_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
@@ -532,6 +533,27 @@ export async function generateLoreBookPhase2(
   }
 
   throw lastError instanceof Error ? lastError : new Error("Lore phase 2 generation failed.");
+}
+
+export async function continueBookTextPhase2(
+  bookId: string,
+  phase1Book: LoreBook,
+  input: BookFormInput,
+  approvedSynopsis?: ApprovedSynopsis | null,
+) {
+  console.log("[TEXT_PHASE_2_START_CHAPTERS_3_8]", { bookId });
+
+  try {
+    const phase2Result = await generateLoreBookPhase2(phase1Book, input, approvedSynopsis);
+    await updateFreeBook(bookId, phase2Result.book);
+    console.log("[TEXT_PHASE_2_DONE_CHAPTERS_3_8]", {
+      bookId,
+      pageCount: phase2Result.book.pages.length,
+      fallback: phase2Result.fallback,
+    });
+  } catch (error) {
+    console.error("[TEXT_PHASE_2_ERROR]", { bookId, error });
+  }
 }
 
 export async function generateLoreBook(
