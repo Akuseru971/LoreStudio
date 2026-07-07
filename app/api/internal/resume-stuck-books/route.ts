@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  findFreeBooksNeedingPreviewResume,
   findPaidBooksNeedingPdfOrFinalEmail,
   findPaidBooksWithIncompletePremiumGeneration,
   getBookByAccessToken,
@@ -15,6 +16,7 @@ import {
   recoverStalePremiumImages,
 } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { resumeFreePreviewGeneration } from "@/lib/resumeFreePreviewGeneration";
 import { triggerPdfGenerationIfReady } from "@/lib/triggerPdfGeneration";
 
 export const runtime = "nodejs";
@@ -86,6 +88,19 @@ export async function POST(request: Request) {
       }
 
       if (!hasPremiumAccess(storedBook.status)) {
+        if (storedBook.preview_notify_requested) {
+          const result = await resumeFreePreviewGeneration(storedBook.access_token);
+          return NextResponse.json({
+            resumed: result.resumed || result.freePreviewReady,
+            reason: result.reason || "free_preview_resume",
+            bookId: result.bookId,
+            freePreviewReady: result.freePreviewReady,
+            page1Ready: result.page1Ready,
+            page2Ready: result.page2Ready,
+            previewCoverReady: result.previewCoverReady,
+          });
+        }
+
         return NextResponse.json({
           resumed: false,
           reason: "not_premium",
@@ -104,6 +119,20 @@ export async function POST(request: Request) {
       const pdfEmailCandidates = await findPaidBooksNeedingPdfOrFinalEmail(1);
       if (pdfEmailCandidates.length > 0) {
         return resumePdfOrFinalEmail(pdfEmailCandidates[0]!);
+      }
+
+      const freePreviewCandidates = await findFreeBooksNeedingPreviewResume(1);
+      if (freePreviewCandidates.length > 0) {
+        const result = await resumeFreePreviewGeneration(freePreviewCandidates[0]!.access_token);
+        return NextResponse.json({
+          resumed: result.resumed || result.freePreviewReady,
+          reason: result.reason || "free_preview_resume",
+          bookId: result.bookId,
+          freePreviewReady: result.freePreviewReady,
+          page1Ready: result.page1Ready,
+          page2Ready: result.page2Ready,
+          previewCoverReady: result.previewCoverReady,
+        });
       }
     }
 

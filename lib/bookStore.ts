@@ -2131,6 +2131,41 @@ export async function markPreviewReadyEmailFailed(bookId: string, errorMessage?:
   return mapRow(data);
 }
 
+export async function findFreeBooksNeedingPreviewResume(limit = 1) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .select("*")
+    .eq("preview_notify_requested", true)
+    .in("status", ["free", "checkout_started"])
+    .neq("preview_ready_email_status", "sent")
+    .is("preview_ready_email_sent_at", null)
+    .order("updated_at", { ascending: true })
+    .limit(Math.max(limit * 5, 5));
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { getFreePreviewReadiness } = await import("@/lib/freeImages");
+  const results: StoredBook[] = [];
+
+  for (const row of data || []) {
+    const book = await repairPreviewCoverFromStorage(mapRow(row));
+    const readiness = getFreePreviewReadiness(book);
+    const emailPending = !isPreviewReadyEmailAlreadySent(book);
+
+    if (!readiness.freePreviewReady || emailPending) {
+      results.push(book);
+      if (results.length >= limit) {
+        break;
+      }
+    }
+  }
+
+  return results;
+}
+
 export async function uploadBookPdf(bookId: string, pdfBuffer: Buffer) {
   const supabase = requireSupabase();
   const pdfStoragePath = `books/${bookId}/book.pdf`;

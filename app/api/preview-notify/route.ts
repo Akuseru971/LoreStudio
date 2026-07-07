@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, savePreviewNotificationRequest } from "@/lib/bookStore";
+import { resumeFreePreviewGeneration } from "@/lib/resumeFreePreviewGeneration";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { getSafeApiErrorMessage } from "@/lib/supabaseErrors";
 
@@ -8,6 +9,53 @@ export const dynamic = "force-dynamic";
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function getAppBaseUrl() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (appUrl) {
+    return appUrl;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  return "http://localhost:3000";
+}
+
+function scheduleBackgroundFreePreviewResume(accessToken: string) {
+  const fulfillmentSecret = process.env.INTERNAL_FULFILLMENT_SECRET;
+  const baseUrl = getAppBaseUrl();
+
+  if (!fulfillmentSecret) {
+    console.warn("[PREVIEW_NOTIFY_BACKGROUND_RESUME_FALLBACK_INLINE]", { accessToken });
+    void resumeFreePreviewGeneration(accessToken).catch((error) => {
+      console.error("[PREVIEW_NOTIFY_BACKGROUND_RESUME_ERROR]", { accessToken, error });
+    });
+    return;
+  }
+
+  void fetch(`${baseUrl}/api/internal/resume-free-preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-fulfillment-secret": fulfillmentSecret,
+    },
+    body: JSON.stringify({ accessToken }),
+  })
+    .then(async (response) => {
+      const result = await response.json().catch(() => ({}));
+      console.log("[PREVIEW_NOTIFY_BACKGROUND_RESUME_DISPATCHED]", {
+        accessToken,
+        ok: response.ok,
+        status: response.status,
+        result,
+      });
+    })
+    .catch((error) => {
+      console.error("[PREVIEW_NOTIFY_BACKGROUND_RESUME_DISPATCH_ERROR]", { accessToken, error });
+    });
 }
 
 export async function POST(request: Request) {
@@ -39,6 +87,8 @@ export async function POST(request: Request) {
       bookId: updatedBook.id,
       hasEmail: true,
     });
+
+    scheduleBackgroundFreePreviewResume(accessToken);
 
     return NextResponse.json({
       success: true,
