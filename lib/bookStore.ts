@@ -56,7 +56,7 @@ import {
 } from "@/lib/imageGenerationTimestamps";
 import { createDefaultImageStatusMap } from "@/lib/imageStatus";
 import { resolveApprovedSynopsis } from "@/lib/synopsisValidation";
-import { isSupabaseSchemaError } from "@/lib/supabaseErrors";
+import { getSupabaseSchemaErrorMessage, isSupabaseSchemaError } from "@/lib/supabaseErrors";
 import { stripBookAssets } from "@/lib/utils";
 
 const BOOKS_TABLE = "books";
@@ -2010,160 +2010,233 @@ export async function savePreviewNotificationRequest(bookId: string, email: stri
   const supabase = requireSupabase();
   const normalizedEmail = email.trim().toLowerCase();
 
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .update({
-      preview_notify_requested: true,
-      preview_notification_email: normalizedEmail,
-    })
-    .eq("id", bookId)
-    .select("*")
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .update({
+        preview_notify_requested: true,
+        preview_notification_email: normalizedEmail,
+      })
+      .eq("id", bookId)
+      .select("*")
+      .single();
 
-  if (error || !data) {
-    throw new Error(error?.message || "Unable to save preview notification request.");
+    if (error || !data) {
+      throw new Error(error?.message || "Unable to save preview notification request.");
+    }
+
+    return mapRow(data);
+  } catch (error) {
+    if (isSupabaseSchemaError(error)) {
+      console.error("[PREVIEW_NOTIFY_SCHEMA_OUT_OF_DATE]", {
+        bookId,
+        hint: "Apply supabase/migrations/013_preview_ready_email.sql",
+      });
+      throw new Error(getSupabaseSchemaErrorMessage());
+    }
+
+    throw error;
   }
-
-  return mapRow(data);
 }
 
 export async function claimPreviewReadyEmailSend(bookId: string) {
   const supabase = requireSupabase();
-  const freshBook = await getBookById(bookId);
-  if (!freshBook || isPreviewReadyEmailAlreadySent(freshBook)) {
-    return null;
-  }
 
-  if (freshBook.preview_ready_email_status === "sending" && isPreviewReadyEmailSendingInProgress(freshBook)) {
-    return null;
-  }
-
-  if (freshBook.preview_ready_email_status === "sending" && !isPreviewReadyEmailSendingInProgress(freshBook)) {
-    const { error: recoverError } = await supabase
-      .from(BOOKS_TABLE)
-      .update({
-        preview_ready_email_status: "failed",
-        preview_ready_email_error: "Stale sending state recovered for retry.",
-      })
-      .eq("id", bookId)
-      .eq("preview_ready_email_status", "sending")
-      .is("preview_ready_email_sent_at", null);
-
-    if (recoverError) {
-      throw new Error(recoverError.message);
+  try {
+    const freshBook = await getBookById(bookId);
+    if (!freshBook || isPreviewReadyEmailAlreadySent(freshBook)) {
+      return null;
     }
+
+    if (freshBook.preview_ready_email_status === "sending" && isPreviewReadyEmailSendingInProgress(freshBook)) {
+      return null;
+    }
+
+    if (freshBook.preview_ready_email_status === "sending" && !isPreviewReadyEmailSendingInProgress(freshBook)) {
+      const { error: recoverError } = await supabase
+        .from(BOOKS_TABLE)
+        .update({
+          preview_ready_email_status: "failed",
+          preview_ready_email_error: "Stale sending state recovered for retry.",
+        })
+        .eq("id", bookId)
+        .eq("preview_ready_email_status", "sending")
+        .is("preview_ready_email_sent_at", null);
+
+      if (recoverError) {
+        throw new Error(recoverError.message);
+      }
+    }
+
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .update({ preview_ready_email_status: "sending" })
+      .eq("id", bookId)
+      .is("preview_ready_email_sent_at", null)
+      .in("preview_ready_email_status", ["not_started", "failed"])
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data ? mapRow(data) : null;
+  } catch (error) {
+    if (isSupabaseSchemaError(error)) {
+      console.warn("[PREVIEW_READY_EMAIL_SCHEMA_FALLBACK]", {
+        bookId,
+        action: "claim",
+        hint: "Apply supabase/migrations/013_preview_ready_email.sql",
+      });
+      return getBookById(bookId);
+    }
+
+    throw error;
   }
-
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .update({ preview_ready_email_status: "sending" })
-    .eq("id", bookId)
-    .is("preview_ready_email_sent_at", null)
-    .in("preview_ready_email_status", ["not_started", "failed"])
-    .select("*")
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data ? mapRow(data) : null;
 }
 
 export async function markPreviewReadyEmailSent(bookId: string) {
   const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .update({
-      preview_ready_email_status: "sent",
-      preview_ready_email_sent_at: new Date().toISOString(),
-      preview_ready_email_error: null,
-    })
-    .eq("id", bookId)
-    .is("preview_ready_email_sent_at", null)
-    .neq("preview_ready_email_status", "sent")
-    .select("*")
-    .maybeSingle();
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  try {
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .update({
+        preview_ready_email_status: "sent",
+        preview_ready_email_sent_at: new Date().toISOString(),
+        preview_ready_email_error: null,
+      })
+      .eq("id", bookId)
+      .is("preview_ready_email_sent_at", null)
+      .neq("preview_ready_email_status", "sent")
+      .select("*")
+      .maybeSingle();
 
-  if (!data) {
-    const existing = await getBookById(bookId);
-    if (existing && isPreviewReadyEmailAlreadySent(existing)) {
-      return existing;
+    if (error) {
+      throw new Error(error.message);
     }
 
-    throw new Error("Unable to mark preview ready email as sent.");
-  }
+    if (!data) {
+      const existing = await getBookById(bookId);
+      if (existing && isPreviewReadyEmailAlreadySent(existing)) {
+        return existing;
+      }
 
-  return mapRow(data);
+      throw new Error("Unable to mark preview ready email as sent.");
+    }
+
+    return mapRow(data);
+  } catch (error) {
+    if (isSupabaseSchemaError(error)) {
+      console.warn("[PREVIEW_READY_EMAIL_SCHEMA_FALLBACK]", {
+        bookId,
+        action: "mark_sent",
+        hint: "Apply supabase/migrations/013_preview_ready_email.sql",
+      });
+      const existing = await getBookById(bookId);
+      if (existing) {
+        return existing;
+      }
+    }
+
+    throw error;
+  }
 }
 
 export async function markPreviewReadyEmailFailed(bookId: string, errorMessage?: string) {
   const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .update({
-      preview_ready_email_status: "failed",
-      preview_ready_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
-    })
-    .eq("id", bookId)
-    .is("preview_ready_email_sent_at", null)
-    .neq("preview_ready_email_status", "sent")
-    .select("*")
-    .maybeSingle();
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  try {
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .update({
+        preview_ready_email_status: "failed",
+        preview_ready_email_error: errorMessage ? errorMessage.slice(0, 500) : null,
+      })
+      .eq("id", bookId)
+      .is("preview_ready_email_sent_at", null)
+      .neq("preview_ready_email_status", "sent")
+      .select("*")
+      .maybeSingle();
 
-  if (!data) {
-    const existing = await getBookById(bookId);
-    if (existing) {
-      return existing;
+    if (error) {
+      throw new Error(error.message);
     }
 
-    throw new Error("Unable to mark preview ready email as failed.");
-  }
+    if (!data) {
+      const existing = await getBookById(bookId);
+      if (existing) {
+        return existing;
+      }
 
-  return mapRow(data);
+      throw new Error("Unable to mark preview ready email as failed.");
+    }
+
+    return mapRow(data);
+  } catch (error) {
+    if (isSupabaseSchemaError(error)) {
+      console.warn("[PREVIEW_READY_EMAIL_SCHEMA_FALLBACK]", {
+        bookId,
+        action: "mark_failed",
+        hint: "Apply supabase/migrations/013_preview_ready_email.sql",
+      });
+      const existing = await getBookById(bookId);
+      if (existing) {
+        return existing;
+      }
+    }
+
+    throw error;
+  }
 }
 
 export async function findFreeBooksNeedingPreviewResume(limit = 1) {
   const supabase = requireSupabase();
-  const { data, error } = await supabase
-    .from(BOOKS_TABLE)
-    .select("*")
-    .eq("preview_notify_requested", true)
-    .in("status", ["free", "checkout_started"])
-    .neq("preview_ready_email_status", "sent")
-    .is("preview_ready_email_sent_at", null)
-    .order("updated_at", { ascending: true })
-    .limit(Math.max(limit * 5, 5));
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  try {
+    const { data, error } = await supabase
+      .from(BOOKS_TABLE)
+      .select("*")
+      .eq("preview_notify_requested", true)
+      .in("status", ["free", "checkout_started"])
+      .neq("preview_ready_email_status", "sent")
+      .is("preview_ready_email_sent_at", null)
+      .order("updated_at", { ascending: true })
+      .limit(Math.max(limit * 5, 5));
 
-  const { getFreePreviewReadiness } = await import("@/lib/freeImages");
-  const results: StoredBook[] = [];
+    if (error) {
+      throw new Error(error.message);
+    }
 
-  for (const row of data || []) {
-    const book = await repairPreviewCoverFromStorage(mapRow(row));
-    const readiness = getFreePreviewReadiness(book);
-    const emailPending = !isPreviewReadyEmailAlreadySent(book);
+    const { getFreePreviewReadiness } = await import("@/lib/freeImages");
+    const results: StoredBook[] = [];
 
-    if (!readiness.freePreviewReady || emailPending) {
-      results.push(book);
-      if (results.length >= limit) {
-        break;
+    for (const row of data || []) {
+      const book = await repairPreviewCoverFromStorage(mapRow(row));
+      const readiness = getFreePreviewReadiness(book);
+      const emailPending = !isPreviewReadyEmailAlreadySent(book);
+
+      if (!readiness.freePreviewReady || emailPending) {
+        results.push(book);
+        if (results.length >= limit) {
+          break;
+        }
       }
     }
-  }
 
-  return results;
+    return results;
+  } catch (error) {
+    if (isSupabaseSchemaError(error)) {
+      console.warn("[PREVIEW_NOTIFY_SCHEMA_OUT_OF_DATE]", {
+        action: "find_free_books_needing_preview_resume",
+        hint: "Apply supabase/migrations/013_preview_ready_email.sql",
+      });
+      return [];
+    }
+
+    throw error;
+  }
 }
 
 export async function uploadBookPdf(bookId: string, pdfBuffer: Buffer) {

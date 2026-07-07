@@ -11,6 +11,7 @@ import {
 import { areFreeIllustrationsReady } from "@/lib/freeImages";
 import { buildBookUnlockedEmailUrls, sendFreePreviewReadyEmail } from "@/lib/email";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
+import { isSupabaseSchemaError } from "@/lib/supabaseErrors";
 
 function safeErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -123,6 +124,33 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
     await markPreviewReadyEmailFailed(bookId, message).catch((markError) => {
       console.error("[PREVIEW_READY_EMAIL_FAILED]", { bookId, error: markError });
     });
+
+    if (isSupabaseSchemaError(error)) {
+      const fallbackBook = await getBookById(bookId);
+      const recipient = fallbackBook?.preview_notification_email?.trim();
+      if (
+        fallbackBook &&
+        recipient &&
+        !hasPremiumAccess(fallbackBook.status) &&
+        fallbackBook.preview_notify_requested &&
+        areFreeIllustrationsReady(fallbackBook)
+      ) {
+        console.warn("[PREVIEW_READY_EMAIL_SCHEMA_FALLBACK]", {
+          bookId,
+          action: "send_without_db_tracking",
+        });
+        const result = await sendFreePreviewReadyEmail({
+          to: recipient,
+          bookUrl: buildBookUnlockedEmailUrls(fallbackBook.access_token).bookUrl,
+          idempotencyKey: `free-preview-ready/${fallbackBook.id}`,
+        });
+        if (result.sent) {
+          console.log("[PREVIEW_READY_EMAIL_SENT]", { bookId, email: recipient, schemaFallback: true });
+          return { sent: true, reason: "sent" };
+        }
+      }
+    }
+
     return { sent: false, reason: "unexpected_error", error: message };
   }
 }
