@@ -12,6 +12,7 @@ type SynopsisLoadingScreenProps = {
   synopsis: ApprovedSynopsis | null;
   formInput?: BookFormInput | null;
   loadingMessage?: string;
+  generationStartedAt?: number | null;
 };
 
 const INITIAL_PROGRESS = 2;
@@ -20,6 +21,15 @@ const FIRST_VISION_CEILING = 87;
 const COMPLETE_CEILING = 100;
 const PROGRESS_TICK_MS = 150;
 const ESTIMATED_WAIT_SECONDS = 3 * 60;
+
+function getRemainingWaitSeconds(generationStartedAt?: number | null) {
+  if (!generationStartedAt) {
+    return ESTIMATED_WAIT_SECONDS;
+  }
+
+  const elapsedSeconds = Math.floor((Date.now() - generationStartedAt) / 1000);
+  return Math.max(0, ESTIMATED_WAIT_SECONDS - elapsedSeconds);
+}
 
 function formatEstimatedWait(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -87,19 +97,29 @@ function getScrollDuration(synopsisText: string) {
   return baseScrollDuration * 2;
 }
 
-export default function SynopsisLoadingScreen({ synopsis, formInput, loadingMessage }: SynopsisLoadingScreenProps) {
+export default function SynopsisLoadingScreen({
+  synopsis,
+  formInput,
+  loadingMessage,
+  generationStartedAt,
+}: SynopsisLoadingScreenProps) {
   const [progress, setProgress] = useState(INITIAL_PROGRESS);
-  const [estimatedWaitSeconds, setEstimatedWaitSeconds] = useState(ESTIMATED_WAIT_SECONDS);
+  const [estimatedWaitSeconds, setEstimatedWaitSeconds] = useState(() =>
+    getRemainingWaitSeconds(generationStartedAt),
+  );
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setEstimatedWaitSeconds((current) => (current > 0 ? current - 1 : 0));
-    }, 1000);
+    const updateRemaining = () => {
+      setEstimatedWaitSeconds(getRemainingWaitSeconds(generationStartedAt));
+    };
+
+    updateRemaining();
+    const intervalId = window.setInterval(updateRemaining, 1000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [generationStartedAt]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {

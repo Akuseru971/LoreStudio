@@ -51,7 +51,7 @@ type AppStep =
 type GenerationStatus = "idle" | "generating" | "ready" | "failed";
 
 const MAX_SYNOPSIS_REGENERATIONS = 3;
-const PREVIEW_NOTIFY_MODAL_DELAY_MS = 20_000;
+const PREVIEW_NOTIFY_MODAL_DELAY_MS = 10_000;
 
 type FreePreviewImageResponse = {
   allFreeImagesReady?: boolean;
@@ -146,6 +146,7 @@ export default function Home() {
   const [videoFinished, setVideoFinished] = useState(false);
   const [bookIsOpen, setBookIsOpen] = useState(false);
   const [showPreviewNotifyModal, setShowPreviewNotifyModal] = useState(false);
+  const [generationStartedAtClient, setGenerationStartedAtClient] = useState<number | null>(null);
 
   const generationRunRef = useRef(0);
   const generationStartedRef = useRef(false);
@@ -153,6 +154,8 @@ export default function Home() {
   const freePreviewGenerationInFlightRef = useRef<Promise<void> | null>(null);
   const freePreviewParallelStartedRunRef = useRef<number | null>(null);
   const previewNotifyHandledRunRef = useRef<number | null>(null);
+  const loadingScreenEnteredAtRef = useRef<number | null>(null);
+  const generationStatusRef = useRef<GenerationStatus>(generationStatus);
   const synopsisRequestRef = useRef(0);
   const introVideoSrc = getRitualLaunchVideoSrc();
   const hasIntroVideo = isRitualLaunchVideoConfigured() && Boolean(introVideoSrc);
@@ -186,7 +189,22 @@ export default function Home() {
   }, [generationStatus, step, videoFinished]);
 
   useEffect(() => {
-    if (step !== "creationRitual" || generationStatus !== "generating" || !accessToken) {
+    generationStatusRef.current = generationStatus;
+  }, [generationStatus]);
+
+  useEffect(() => {
+    if (step === "creationRitual") {
+      if (!loadingScreenEnteredAtRef.current) {
+        loadingScreenEnteredAtRef.current = Date.now();
+      }
+      return;
+    }
+
+    loadingScreenEnteredAtRef.current = null;
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== "creationRitual" || generationStatus !== "generating") {
       setShowPreviewNotifyModal(false);
       return;
     }
@@ -196,11 +214,25 @@ export default function Home() {
       return;
     }
 
+    const enteredAt = loadingScreenEnteredAtRef.current ?? Date.now();
+    const elapsed = Date.now() - enteredAt;
+    const remaining = Math.max(0, PREVIEW_NOTIFY_MODAL_DELAY_MS - elapsed);
+
     const timeoutId = window.setTimeout(() => {
-      if (generationRunRef.current === runId && previewNotifyHandledRunRef.current !== runId) {
-        setShowPreviewNotifyModal(true);
+      if (generationRunRef.current !== runId) {
+        return;
       }
-    }, PREVIEW_NOTIFY_MODAL_DELAY_MS);
+
+      if (previewNotifyHandledRunRef.current === runId) {
+        return;
+      }
+
+      if (generationStatusRef.current !== "generating") {
+        return;
+      }
+
+      setShowPreviewNotifyModal(true);
+    }, remaining);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -484,6 +516,7 @@ export default function Home() {
     }
 
     generationStartedRef.current = true;
+    setGenerationStartedAtClient(Date.now());
     console.log("[CREATE_LEGEND_CLICK]", Date.now());
     safeTrackClient("book_creation_started", { source: "homepage" });
 
@@ -577,8 +610,10 @@ export default function Home() {
     generationRunRef.current += 1;
     freePreviewParallelStartedRunRef.current = null;
     previewNotifyHandledRunRef.current = null;
+    loadingScreenEnteredAtRef.current = null;
     synopsisRequestRef.current += 1;
     setShowPreviewNotifyModal(false);
+    setGenerationStartedAtClient(null);
     setBook(null);
     setAccessToken(null);
     setFormInput(null);
@@ -662,6 +697,7 @@ export default function Home() {
               synopsis={approvedSynopsis}
               formInput={formInput}
               loadingMessage={generationProgressMessage}
+              generationStartedAt={generationStartedAtClient}
             />
           </motion.div>
         ) : null}
