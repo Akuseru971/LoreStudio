@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookByAccessToken, repairPreviewCoverFromStorage } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
-import { countReadyFreeImages, getFreePreviewReadiness, logFreePreviewWaitingStatus, recoverStaleFreePreviewAssets } from "@/lib/freeImages";
+import { countReadyFreeImages, getFreePreviewReadiness, logFreePreviewWaitingStatus, recoverStaleFreePreviewAssets, triggerMissingFreePreviewPage2IfNeeded } from "@/lib/freeImages";
 import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generation-progress";
 import { FREE_IMAGE_PAGE_COUNT, FREE_PREVIEW_POSTER_IMAGE_KEY, PREMIUM_IMAGE_PAGES } from "@/lib/image-config";
 import { getNormalizedImagesForStoredBook, logPdfReadyCheck, resolvePreviewCoverImageForClient } from "@/lib/book-images";
@@ -100,6 +100,7 @@ export async function GET(request: Request) {
 
     if (!isPremium && !freePreviewReadiness.freePreviewReady) {
       logFreePreviewWaitingStatus(activeBook, freePreviewReadiness);
+      triggerMissingFreePreviewPage2IfNeeded(activeBook.access_token, activeBook);
     }
 
     if (

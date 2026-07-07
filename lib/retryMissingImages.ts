@@ -18,10 +18,12 @@ import {
   generateAndStoreFreePreviewCover,
   isFreePage1Ready,
   isPreviewPosterReady,
+  isRecentFreePageImageGenerationInProgress,
   isRecentPreviewCoverGenerationInProgress,
+  logImageGenerationSkipAlreadyGeneratingRecent,
   logPreviewCoverSkipAlreadyGeneratingRecent,
 } from "@/lib/freeImages";
-import { getPreviewCoverGenerationStatus } from "@/lib/imageGenerationTimestamps";
+import { getPageGenerationStatus, getPreviewCoverGenerationStatus } from "@/lib/imageGenerationTimestamps";
 
 export async function retryMissingImages(accessToken: string) {
   let storedBook = await getBookByAccessToken(accessToken);
@@ -75,12 +77,20 @@ export async function retryMissingImages(accessToken: string) {
       if (freeMissingStoryPages.includes(1)) {
         const image = getImageForPage(imagesInput, 1);
         if (!isIllustrationReady(image)) {
-          await generateAndStoreFreeImageForPage({
-            accessToken,
-            bookId: storedBook.id,
-            book: sourceBook,
-            pageNumber: 1,
-          });
+          if (isRecentFreePageImageGenerationInProgress(storedBook, 1)) {
+            logImageGenerationSkipAlreadyGeneratingRecent(
+              storedBook.id,
+              1,
+              getPageGenerationStatus(storedBook, 1).ageMs,
+            );
+          } else {
+            await generateAndStoreFreeImageForPage({
+              accessToken,
+              bookId: storedBook.id,
+              book: sourceBook,
+              pageNumber: 1,
+            });
+          }
         }
       }
 
@@ -106,14 +116,22 @@ export async function retryMissingImages(accessToken: string) {
         const parallelTasks: Array<Promise<unknown>> = [];
 
         if (!isIllustrationReady(getImageForPage(refreshedInput, 2))) {
-          parallelTasks.push(
-            generateAndStoreFreeImageForPage({
-              accessToken,
-              bookId: refreshedBook.id,
-              book: refreshedSource,
-              pageNumber: 2,
-            }),
-          );
+          if (isRecentFreePageImageGenerationInProgress(refreshedBook, 2)) {
+            logImageGenerationSkipAlreadyGeneratingRecent(
+              refreshedBook.id,
+              2,
+              getPageGenerationStatus(refreshedBook, 2).ageMs,
+            );
+          } else {
+            parallelTasks.push(
+              generateAndStoreFreeImageForPage({
+                accessToken,
+                bookId: refreshedBook.id,
+                book: refreshedSource,
+                pageNumber: 2,
+              }),
+            );
+          }
         }
 
         if (!isPreviewPosterReady(refreshedBook)) {

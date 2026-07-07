@@ -1141,20 +1141,6 @@ export async function claimPageImageGeneration(
   bookId: string,
   pageNumber: number,
 ): Promise<PageImageGenerationClaim | null> {
-  const claimId = crypto.randomUUID();
-
-  console.log("[IMAGE_GENERATION_CLAIM_CREATED]", {
-    bookId,
-    pageNumber,
-    claimId,
-  });
-
-  console.log("[IMAGE_GENERATION_CLAIM_START]", {
-    bookId,
-    pageNumber,
-    claimId,
-  });
-
   const supabase = requireSupabase();
   let storedBook = await getBookById(bookId);
   if (!storedBook) {
@@ -1185,6 +1171,20 @@ export async function claimPageImageGeneration(
       });
     }
   }
+
+  const claimId = crypto.randomUUID();
+
+  console.log("[IMAGE_GENERATION_CLAIM_CREATED]", {
+    bookId,
+    pageNumber,
+    claimId,
+  });
+
+  console.log("[IMAGE_GENERATION_CLAIM_START]", {
+    bookId,
+    pageNumber,
+    claimId,
+  });
 
   const now = new Date().toISOString();
   const normalized = normalizeStoredBookImages(storedBook);

@@ -8,14 +8,15 @@ import {
   getFreeImagePagesInput,
   getFreePreviewReadiness,
   isFreePage1Ready,
+  isRecentFreePageImageGenerationInProgress,
   isRecentPreviewCoverGenerationInProgress,
+  logImageGenerationSkipAlreadyGeneratingRecent,
   recoverStaleFreePreviewAssets,
   type FreePreviewReadiness,
 } from "@/lib/freeImages";
 import {
   getPageGenerationStatus,
   getPreviewCoverGenerationStatus,
-  isImageFreshlyGenerating,
 } from "@/lib/imageGenerationTimestamps";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 
@@ -122,7 +123,7 @@ export async function resumeFreePreviewGeneration(
     const input = getFreeImagePagesInput(book);
     const page1Image = getImageForPage(input, 1);
 
-    if (page1Image?.status === "generating" && isImageFreshlyGenerating(book, 1, input)) {
+    if (isRecentFreePageImageGenerationInProgress(book, 1)) {
       logSkipAlreadyGenerating(book.id, "page_1");
     } else if (!isIllustrationReady(page1Image)) {
       await generateNextFreeImage(accessToken, 1);
@@ -166,9 +167,10 @@ export async function resumeFreePreviewGeneration(
 
     if (!readiness.page2Ready) {
       const page2Image = getImageForPage(input, 2);
-      if (page2Image?.status === "generating" && isImageFreshlyGenerating(book, 2, input)) {
+      if (isRecentFreePageImageGenerationInProgress(book, 2)) {
         logSkipAlreadyGenerating(book.id, "page_2");
       } else if (!isIllustrationReady(page2Image)) {
+        console.log("[PREVIEW_NOTIFY_BACKGROUND_RESUME_START_PAGE_2]", { bookId: book.id });
         parallelTasks.push(generateNextFreeImage(accessToken, { pageNumber: 2 }));
         progressMade = true;
       }

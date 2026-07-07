@@ -296,6 +296,52 @@ export function logPreviewCoverSkipAlreadyGeneratingRecent(bookId: string, ageMs
   });
 }
 
+export function isRecentFreePageImageGenerationInProgress(storedBook: StoredBook, pageNumber: number) {
+  const state = getPageGenerationStatus(storedBook, pageNumber);
+  return (
+    state.status === "generating" &&
+    !state.isReady &&
+    Boolean(state.generationStartedAt ?? state.timestamp) &&
+    state.ageMs !== null &&
+    state.ageMs < FREE_PREVIEW_ASSET_STALE_AFTER_MS
+  );
+}
+
+export function logImageGenerationSkipAlreadyGeneratingRecent(
+  bookId: string,
+  pageNumber: number,
+  ageMs: number | null,
+) {
+  console.log("[IMAGE_GENERATION_SKIP_ALREADY_GENERATING_RECENT]", {
+    bookId,
+    pageNumber,
+    ageMs,
+  });
+}
+
+export function triggerMissingFreePreviewPage2IfNeeded(accessToken: string, storedBook: StoredBook) {
+  const readiness = getFreePreviewReadiness(storedBook);
+  if (readiness.freePreviewReady || !readiness.page1Ready || readiness.page2Ready) {
+    return;
+  }
+
+  if (isRecentFreePageImageGenerationInProgress(storedBook, 2)) {
+    return;
+  }
+
+  const page2State = getPageGenerationStatus(storedBook, 2);
+  if (page2State.status === "generating") {
+    return;
+  }
+
+  void generateNextFreeImage(accessToken, { pageNumber: 2 }).catch((error) => {
+    console.error("[FREE_PREVIEW_PAGE_2_ORCHESTRATION_ERROR]", {
+      bookId: storedBook.id,
+      error,
+    });
+  });
+}
+
 function shouldThrottleFreePreviewStatusLog(
   bookId: string,
   cache: Map<string, number>,
@@ -648,6 +694,15 @@ export async function generateAndStoreFreeImageForPage({
     return { book: latestBeforeClaim, generated: false, claimLost: false };
   }
 
+  if (latestBeforeClaim && isRecentFreePageImageGenerationInProgress(latestBeforeClaim, pageNumber)) {
+    logImageGenerationSkipAlreadyGeneratingRecent(
+      bookId,
+      pageNumber,
+      getPageGenerationStatus(latestBeforeClaim, pageNumber).ageMs,
+    );
+    return { book: latestBeforeClaim, generated: false, claimLost: false };
+  }
+
   const claim = await claimPageImageGeneration(bookId, pageNumber);
   if (!claim) {
     const refreshedBook = await getBookById(bookId);
@@ -656,15 +711,13 @@ export async function generateAndStoreFreeImageForPage({
       return { book: refreshedBook, generated: false, claimLost: false };
     }
 
-    if (refreshedBook && isImageFreshlyGenerating(refreshedBook, pageNumber)) {
-      const state = getPageGenerationStatus(refreshedBook, pageNumber);
-      console.log("[IMAGE_GENERATION_SKIP_ALREADY_GENERATING]", {
+    if (refreshedBook && isRecentFreePageImageGenerationInProgress(refreshedBook, pageNumber)) {
+      logImageGenerationSkipAlreadyGeneratingRecent(
         bookId,
         pageNumber,
-        startedAt: state.startedAt,
-        updatedAt: state.updatedAt,
-        ageMs: state.ageMs,
-      });
+        getPageGenerationStatus(refreshedBook, pageNumber).ageMs,
+      );
+      return { book: refreshedBook, generated: false, claimLost: false };
     }
 
     logClaimLostSkipOpenAi(bookId, { pageNumber });
