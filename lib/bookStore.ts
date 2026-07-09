@@ -2198,26 +2198,27 @@ export async function findFreeBooksNeedingPreviewResume(limit = 1) {
     const { data, error } = await supabase
       .from(BOOKS_TABLE)
       .select("*")
-      .eq("preview_notify_requested", true)
       .in("status", ["free", "checkout_started"])
-      .neq("preview_ready_email_status", "sent")
-      .is("preview_ready_email_sent_at", null)
+      .eq("generation_status", "generating_images")
       .order("updated_at", { ascending: true })
-      .limit(Math.max(limit * 5, 5));
+      .limit(Math.max(limit * 10, 10));
 
     if (error) {
       throw new Error(error.message);
     }
 
-    const { getFreePreviewReadiness } = await import("@/lib/freeImages");
+    const {
+      getFreePreviewReadiness,
+      isFreePreviewGenerationIncompleteAfterPage1,
+    } = await import("@/lib/freeImages");
     const results: StoredBook[] = [];
 
     for (const row of data || []) {
       const book = await repairPreviewCoverFromStorage(mapRow(row));
       const readiness = getFreePreviewReadiness(book);
-      const emailPending = !isPreviewReadyEmailAlreadySent(book);
+      const emailPending = book.preview_notify_requested && !isPreviewReadyEmailAlreadySent(book);
 
-      if (!readiness.freePreviewReady || emailPending) {
+      if (isFreePreviewGenerationIncompleteAfterPage1(book) || (!readiness.freePreviewReady && emailPending)) {
         results.push(book);
         if (results.length >= limit) {
           break;

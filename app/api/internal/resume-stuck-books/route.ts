@@ -17,6 +17,7 @@ import {
 } from "@/lib/premiumImages";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { resumeFreePreviewGeneration } from "@/lib/resumeFreePreviewGeneration";
+import { isFreePreviewGenerationIncompleteAfterPage1 } from "@/lib/freeImages";
 import { triggerPdfGenerationIfReady } from "@/lib/triggerPdfGeneration";
 
 export const runtime = "nodejs";
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
       }
 
       if (!hasPremiumAccess(storedBook.status)) {
-        if (storedBook.preview_notify_requested) {
+        if (storedBook.preview_notify_requested || isFreePreviewGenerationIncompleteAfterPage1(storedBook)) {
           const result = await resumeFreePreviewGeneration(storedBook.access_token);
           return NextResponse.json({
             resumed: result.resumed || result.freePreviewReady,

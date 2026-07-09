@@ -8,6 +8,7 @@ import {
   getFreeImagePagesInput,
   getFreePreviewReadiness,
   isFreePage1Ready,
+  isFreePreviewGenerationIncompleteAfterPage1,
   isRecentFreePageImageGenerationInProgress,
   isRecentPreviewCoverGenerationInProgress,
   logImageGenerationSkipAlreadyGeneratingRecent,
@@ -162,6 +163,17 @@ export async function resumeFreePreviewGeneration(
   }
 
   if (isFreePage1Ready(book)) {
+    const page2State = getPageGenerationStatus(book, 2);
+    const previewCoverState = getPreviewCoverGenerationStatus(book);
+    if (isFreePreviewGenerationIncompleteAfterPage1(book)) {
+      console.log("[WATCHDOG_RESUME_FREE_PREVIEW_INCOMPLETE]", {
+        bookId: book.id,
+        page1Ready: true,
+        page2Status: page2State.status,
+        previewCoverStatus: previewCoverState.status,
+      });
+    }
+
     const input = getFreeImagePagesInput(book);
     const parallelTasks: Array<Promise<unknown>> = [];
 

@@ -319,27 +319,85 @@ export function logImageGenerationSkipAlreadyGeneratingRecent(
   });
 }
 
-export function triggerMissingFreePreviewPage2IfNeeded(accessToken: string, storedBook: StoredBook) {
-  const readiness = getFreePreviewReadiness(storedBook);
-  if (readiness.freePreviewReady || !readiness.page1Ready || readiness.page2Ready) {
-    return;
+export function isFreePreviewGenerationIncompleteAfterPage1(storedBook: StoredBook) {
+  if (storedBook.status !== "free" && storedBook.status !== "checkout_started") {
+    return false;
   }
 
-  if (isRecentFreePageImageGenerationInProgress(storedBook, 2)) {
-    return;
+  if (storedBook.generation_status !== "generating_images") {
+    return false;
+  }
+
+  const readiness = getFreePreviewReadiness(storedBook);
+  if (!readiness.page1Ready || readiness.freePreviewReady) {
+    return false;
   }
 
   const page2State = getPageGenerationStatus(storedBook, 2);
-  if (page2State.status === "generating") {
+  const previewCoverState = getPreviewCoverGenerationStatus(storedBook);
+
+  return page2State.status === "not_started" || previewCoverState.status === "not_started";
+}
+
+export function triggerFreePreviewContinuationAfterPage1(accessToken: string, storedBook: StoredBook) {
+  const readiness = getFreePreviewReadiness(storedBook);
+  if (readiness.freePreviewReady || !readiness.page1Ready) {
     return;
   }
 
-  void generateNextFreeImage(accessToken, { pageNumber: 2 }).catch((error) => {
-    console.error("[FREE_PREVIEW_PAGE_2_ORCHESTRATION_ERROR]", {
-      bookId: storedBook.id,
-      error,
-    });
+  console.log("[FREE_PREVIEW_PAGE_1_READY_START_PARALLEL_2_POSTER]", {
+    bookId: storedBook.id,
   });
+
+  const input = getFreeImagePagesInput(storedBook);
+  const parallelTasks: Array<Promise<unknown>> = [];
+
+  if (!readiness.page2Ready) {
+    if (isFreePageEligibleForGeneration(storedBook, 2, input)) {
+      console.log("[FREE_PREVIEW_PAGE_2_START_AFTER_PAGE_1]", { bookId: storedBook.id });
+      parallelTasks.push(
+        generateNextFreeImage(accessToken, { pageNumber: 2 }).catch((error) => {
+          console.error("[FREE_PREVIEW_PAGE_2_ORCHESTRATION_ERROR]", {
+            bookId: storedBook.id,
+            error,
+          });
+        }),
+      );
+    } else if (isRecentFreePageImageGenerationInProgress(storedBook, 2)) {
+      logImageGenerationSkipAlreadyGeneratingRecent(
+        storedBook.id,
+        2,
+        getPageGenerationStatus(storedBook, 2, input).ageMs,
+      );
+    }
+  }
+
+  if (!readiness.previewCoverReady) {
+    if (isPreviewCoverEligibleForGeneration(storedBook)) {
+      console.log("[FREE_PREVIEW_POSTER_START_AFTER_PAGE_1]", { bookId: storedBook.id });
+      parallelTasks.push(
+        generateNextFreeImage(accessToken, { previewCover: true }).catch((error) => {
+          console.error("[FREE_PREVIEW_POSTER_ORCHESTRATION_ERROR]", {
+            bookId: storedBook.id,
+            error,
+          });
+        }),
+      );
+    } else if (isRecentPreviewCoverGenerationInProgress(storedBook)) {
+      logPreviewCoverSkipAlreadyGeneratingRecent(
+        storedBook.id,
+        getPreviewCoverGenerationStatus(storedBook).ageMs,
+      );
+    }
+  }
+
+  if (parallelTasks.length > 0) {
+    void Promise.allSettled(parallelTasks);
+  }
+}
+
+export function triggerMissingFreePreviewPage2IfNeeded(accessToken: string, storedBook: StoredBook) {
+  triggerFreePreviewContinuationAfterPage1(accessToken, storedBook);
 }
 
 function shouldThrottleFreePreviewStatusLog(
@@ -1263,11 +1321,13 @@ export async function generateNextFreeImage(
     generated: generationResult.generated,
   });
 
-  if (pageNumber === 1 && generationResult.generated) {
-    console.log("[FREE_PREVIEW_PAGE_1_READY_START_PARALLEL_2_POSTER]");
+  const result = await buildFreePreviewGenerationResult(accessToken, latestBook, pageNumber, generationResult);
+
+  if (pageNumber === 1 && isFreePage1Ready(result.storedBook)) {
+    triggerFreePreviewContinuationAfterPage1(accessToken, result.storedBook);
   }
 
-  return buildFreePreviewGenerationResult(accessToken, latestBook, pageNumber, generationResult);
+  return result;
 }
 
 export async function generateFreeBookImages(accessToken: string, book: LoreBook): Promise<StoredBook> {
