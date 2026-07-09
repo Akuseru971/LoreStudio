@@ -8,10 +8,13 @@ import {
   markPreviewReadyEmailFailed,
   markPreviewReadyEmailSent,
 } from "@/lib/bookStore";
-import { areFreeIllustrationsReady } from "@/lib/freeImages";
+import { areFreeIllustrationsReady, getFreePreviewReadiness } from "@/lib/freeImages";
 import { buildBookUnlockedEmailUrls, sendFreePreviewReadyEmail } from "@/lib/email";
+import { toPreviewNotifyAnalyticsProps } from "@/lib/previewNotifyAnalytics";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { isSupabaseSchemaError } from "@/lib/supabaseErrors";
+import { safeTrackServer } from "@/lib/safe-analytics-server";
+import type { StoredBook } from "@/lib/types";
 
 function safeErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -19,6 +22,27 @@ function safeErrorMessage(error: unknown) {
   }
 
   return String(error).slice(0, 500);
+}
+
+function trackPreviewReadyEmailEvent(
+  book: StoredBook,
+  eventName: string,
+  extra?: { reason?: string },
+) {
+  const readiness = getFreePreviewReadiness(book);
+  safeTrackServer(
+    eventName,
+    toPreviewNotifyAnalyticsProps({
+      bookId: book.id,
+      generationStatus: book.generation_status,
+      freePreviewReady: readiness.freePreviewReady,
+      hasPreviewNotificationEmail: Boolean(book.preview_notification_email),
+      page1Ready: readiness.page1Ready,
+      page2Ready: readiness.page2Ready,
+      previewCoverReady: readiness.previewCoverReady,
+      reason: extra?.reason ?? null,
+    }),
+  );
 }
 
 export type FreePreviewReadyEmailResult = {
@@ -44,6 +68,7 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
 
     if (isPreviewReadyEmailAlreadySent(book)) {
       console.log("[PREVIEW_READY_EMAIL_SKIPPED_ALREADY_SENT]", { bookId });
+      trackPreviewReadyEmailEvent(book, "preview_ready_email_skipped_already_sent");
       return { sent: false, reason: "already_sent" };
     }
 
@@ -73,6 +98,7 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
       book = await getBookById(bookId);
       if (book && isPreviewReadyEmailAlreadySent(book)) {
         console.log("[PREVIEW_READY_EMAIL_SKIPPED_ALREADY_SENT]", { bookId });
+        trackPreviewReadyEmailEvent(book, "preview_ready_email_skipped_already_sent");
         return { sent: false, reason: "already_sent" };
       }
 
@@ -86,6 +112,7 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
 
     if (isPreviewReadyEmailAlreadySent(book)) {
       console.log("[PREVIEW_READY_EMAIL_SKIPPED_ALREADY_SENT]", { bookId });
+      trackPreviewReadyEmailEvent(book, "preview_ready_email_skipped_already_sent");
       return { sent: false, reason: "already_sent" };
     }
 
@@ -101,11 +128,13 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
       await markPreviewReadyEmailFailed(claimedBook.id, errorMessage).catch((error) => {
         console.error("[PREVIEW_READY_EMAIL_FAILED]", { bookId, error });
       });
+      trackPreviewReadyEmailEvent(claimedBook, "preview_ready_email_failed", { reason: "send_failed" });
       return { sent: false, reason: "send_failed", error: errorMessage };
     }
 
     await markPreviewReadyEmailSent(claimedBook.id);
     console.log("[PREVIEW_READY_EMAIL_SENT]", { bookId, email: recipient });
+    trackPreviewReadyEmailEvent(claimedBook, "preview_ready_email_sent");
     return { sent: true, reason: "sent" };
   } catch (error) {
     const message = safeErrorMessage(error);
@@ -114,6 +143,7 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
     const latestBook = await getBookById(bookId);
     if (latestBook && isPreviewReadyEmailAlreadySent(latestBook)) {
       console.log("[PREVIEW_READY_EMAIL_SKIPPED_ALREADY_SENT]", { bookId });
+      trackPreviewReadyEmailEvent(latestBook, "preview_ready_email_skipped_already_sent");
       return { sent: false, reason: "already_sent" };
     }
 
@@ -124,6 +154,12 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
     await markPreviewReadyEmailFailed(bookId, message).catch((markError) => {
       console.error("[PREVIEW_READY_EMAIL_FAILED]", { bookId, error: markError });
     });
+
+    if (latestBook) {
+      trackPreviewReadyEmailEvent(latestBook, "preview_ready_email_failed", {
+        reason: isSupabaseSchemaError(error) ? "schema_error" : "unexpected_error",
+      });
+    }
 
     if (isSupabaseSchemaError(error)) {
       const fallbackBook = await getBookById(bookId);
@@ -146,8 +182,11 @@ export async function maybeSendFreePreviewReadyEmail(bookId: string): Promise<Fr
         });
         if (result.sent) {
           console.log("[PREVIEW_READY_EMAIL_SENT]", { bookId, email: recipient, schemaFallback: true });
+          trackPreviewReadyEmailEvent(fallbackBook, "preview_ready_email_sent");
           return { sent: true, reason: "sent" };
         }
+
+        trackPreviewReadyEmailEvent(fallbackBook, "preview_ready_email_failed", { reason: "send_failed" });
       }
     }
 

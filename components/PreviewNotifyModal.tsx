@@ -1,12 +1,19 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import {
+  classifyPreviewNotifyEmailFailureReason,
+  toPreviewNotifyAnalyticsProps,
+  type PreviewNotifyAnalyticsContext,
+} from "@/lib/previewNotifyAnalytics";
+import { safeTrackClient } from "@/lib/safe-analytics-client";
 
 type PreviewNotifyModalProps = {
   accessToken: string;
   isOpen: boolean;
   existingEmail?: string | null;
+  getAnalyticsContext?: () => PreviewNotifyAnalyticsContext;
   onClose: () => void;
   onDismiss: () => void;
   onNotifyRequested: () => void;
@@ -20,6 +27,7 @@ export default function PreviewNotifyModal({
   accessToken,
   isOpen,
   existingEmail,
+  getAnalyticsContext,
   onClose,
   onDismiss,
   onNotifyRequested,
@@ -28,6 +36,27 @@ export default function PreviewNotifyModal({
   const [email, setEmail] = useState(existingEmail?.trim() || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const emailStartedTrackedRef = useRef(false);
+  const waitClickedTrackedRef = useRef(false);
+
+  const trackPreviewNotifyEvent = useCallback(
+    (eventName: string, extra?: PreviewNotifyAnalyticsContext) => {
+      safeTrackClient(eventName, toPreviewNotifyAnalyticsProps({
+        ...(getAnalyticsContext?.() ?? {}),
+        ...extra,
+      }));
+    },
+    [getAnalyticsContext],
+  );
+
+  const trackEmailStartedOnce = useCallback(() => {
+    if (emailStartedTrackedRef.current) {
+      return;
+    }
+
+    emailStartedTrackedRef.current = true;
+    trackPreviewNotifyEvent("preview_notify_email_started");
+  }, [trackPreviewNotifyEvent]);
 
   const submitNotification = useCallback(
     async (emailToUse: string) => {
@@ -50,17 +79,27 @@ export default function PreviewNotifyModal({
         }
 
         setStep("confirmed");
+        trackPreviewNotifyEvent("preview_notify_email_submitted", {
+          hasPreviewNotificationEmail: true,
+        });
         onNotifyRequested();
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to save your notification request.");
+        const message =
+          submitError instanceof Error ? submitError.message : "Unable to save your notification request.";
+        setError(message);
+        trackPreviewNotifyEvent("preview_notify_email_failed", {
+          reason: classifyPreviewNotifyEmailFailureReason(message),
+        });
       } finally {
         setIsSubmitting(false);
       }
     },
-    [accessToken, onNotifyRequested],
+    [accessToken, onNotifyRequested, trackPreviewNotifyEvent],
   );
 
   const handleNotifyClick = useCallback(() => {
+    trackEmailStartedOnce();
+
     const trimmedEmail = (email || existingEmail || "").trim();
     if (trimmedEmail && isValidEmail(trimmedEmail)) {
       void submitNotification(trimmedEmail);
@@ -68,22 +107,30 @@ export default function PreviewNotifyModal({
     }
 
     setStep("email");
-  }, [email, existingEmail, submitNotification]);
+  }, [email, existingEmail, submitNotification, trackEmailStartedOnce]);
 
   const handleEmailSubmit = useCallback(() => {
+    trackEmailStartedOnce();
+
     const trimmedEmail = email.trim();
     if (!isValidEmail(trimmedEmail)) {
       setError("Please enter a valid email address.");
+      trackPreviewNotifyEvent("preview_notify_email_failed", { reason: "invalid_email" });
       return;
     }
 
     void submitNotification(trimmedEmail);
-  }, [email, submitNotification]);
+  }, [email, submitNotification, trackEmailStartedOnce, trackPreviewNotifyEvent]);
 
   const handleDismiss = useCallback(() => {
+    if (!waitClickedTrackedRef.current) {
+      waitClickedTrackedRef.current = true;
+      trackPreviewNotifyEvent("preview_notify_wait_clicked");
+    }
+
     onDismiss();
     onClose();
-  }, [onClose, onDismiss]);
+  }, [onClose, onDismiss, trackPreviewNotifyEvent]);
 
   const handleConfirmedClose = useCallback(() => {
     onClose();
@@ -155,6 +202,7 @@ export default function PreviewNotifyModal({
                         type="email"
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
+                        onFocus={trackEmailStartedOnce}
                         placeholder="you@example.com"
                         autoComplete="email"
                         className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-[#f7ebce] outline-none transition focus:border-[#d9bd78]/40"

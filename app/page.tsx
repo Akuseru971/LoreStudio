@@ -35,6 +35,7 @@ import {
   isGenerationStale,
 } from "@/lib/generation-progress";
 import { normalizeBook } from "@/lib/normalizeBook";
+import { toPreviewNotifyAnalyticsProps, type PreviewNotifyAnalyticsContext } from "@/lib/previewNotifyAnalytics";
 import { safeTrackClient } from "@/lib/safe-analytics-client";
 import type { ApprovedSynopsis, BookFormInput, LoreBook } from "@/lib/types";
 
@@ -82,6 +83,8 @@ type BookStatusResponse = {
   readyPreviewAssetsCount?: number;
   readyFreeImageCount?: number;
   previewNotifyRequested?: boolean;
+  page1Ready?: boolean;
+  page2Ready?: boolean;
 };
 
 function shouldStopFreePreviewLoop(data: FreePreviewImageResponse | null | undefined) {
@@ -154,6 +157,8 @@ export default function Home() {
   const freePreviewGenerationInFlightRef = useRef<Promise<void> | null>(null);
   const freePreviewParallelStartedRunRef = useRef<number | null>(null);
   const previewNotifyHandledRunRef = useRef<number | null>(null);
+  const previewNotifyPopupTrackedRunRef = useRef<number | null>(null);
+  const previewNotifyAnalyticsRef = useRef<PreviewNotifyAnalyticsContext>({});
   const loadingScreenEnteredAtRef = useRef<number | null>(null);
   const generationStatusRef = useRef<GenerationStatus>(generationStatus);
   const synopsisRequestRef = useRef(0);
@@ -238,6 +243,37 @@ export default function Home() {
       window.clearTimeout(timeoutId);
     };
   }, [accessToken, generationStatus, step]);
+
+  useEffect(() => {
+    if (!showPreviewNotifyModal) {
+      return;
+    }
+
+    const runId = generationRunRef.current;
+    if (previewNotifyPopupTrackedRunRef.current === runId) {
+      return;
+    }
+
+    previewNotifyPopupTrackedRunRef.current = runId;
+    safeTrackClient(
+      "preview_notify_popup_shown",
+      toPreviewNotifyAnalyticsProps({
+        ...previewNotifyAnalyticsRef.current,
+        elapsedSecondsSinceGenerationStart: generationStartedAtClient
+          ? Math.floor((Date.now() - generationStartedAtClient) / 1000)
+          : null,
+      }),
+    );
+  }, [generationStartedAtClient, showPreviewNotifyModal]);
+
+  const getPreviewNotifyAnalyticsContext = useCallback((): PreviewNotifyAnalyticsContext => {
+    return {
+      ...previewNotifyAnalyticsRef.current,
+      elapsedSecondsSinceGenerationStart: generationStartedAtClient
+        ? Math.floor((Date.now() - generationStartedAtClient) / 1000)
+        : null,
+    };
+  }, [generationStartedAtClient]);
 
   const fetchSynopsis = useCallback(async (input: BookFormInput, regenerationAttempt = 0) => {
     synopsisRequestRef.current += 1;
@@ -440,6 +476,15 @@ export default function Home() {
             }),
         );
 
+        previewNotifyAnalyticsRef.current = {
+          generationStatus: status.generationStatus ?? null,
+          freePreviewReady,
+          hasPreviewNotificationEmail: Boolean(status.previewNotifyRequested),
+          page1Ready: Boolean(status.page1Ready),
+          page2Ready: Boolean(status.page2Ready),
+          previewCoverReady: Boolean(status.previewCoverReady),
+        };
+
         if (status.previewNotifyRequested) {
           previewNotifyHandledRunRef.current = runId;
           setShowPreviewNotifyModal(false);
@@ -610,6 +655,8 @@ export default function Home() {
     generationRunRef.current += 1;
     freePreviewParallelStartedRunRef.current = null;
     previewNotifyHandledRunRef.current = null;
+    previewNotifyPopupTrackedRunRef.current = null;
+    previewNotifyAnalyticsRef.current = {};
     loadingScreenEnteredAtRef.current = null;
     synopsisRequestRef.current += 1;
     setShowPreviewNotifyModal(false);
@@ -706,6 +753,7 @@ export default function Home() {
           <PreviewNotifyModal
             accessToken={accessToken}
             isOpen={showPreviewNotifyModal}
+            getAnalyticsContext={getPreviewNotifyAnalyticsContext}
             onClose={() => setShowPreviewNotifyModal(false)}
             onDismiss={() => {
               previewNotifyHandledRunRef.current = generationRunRef.current;
