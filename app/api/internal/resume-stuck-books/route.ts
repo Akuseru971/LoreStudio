@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  findFreeBooksNeedingPhase2TextRetry,
   findFreeBooksNeedingPreviewResume,
   findPaidBooksNeedingPdfOrFinalEmail,
   findPaidBooksWithIncompletePremiumGeneration,
@@ -15,9 +16,10 @@ import {
   getPremiumGenerationStatus,
   recoverStalePremiumImages,
 } from "@/lib/premiumImages";
+import { continueBookTextPhase2FromStoredBook } from "@/lib/loreGeneration";
 import { hasPremiumAccess } from "@/lib/paymentVerification";
 import { resumeFreePreviewGeneration } from "@/lib/resumeFreePreviewGeneration";
-import { isFreePreviewGenerationIncompleteAfterPage1 } from "@/lib/freeImages";
+import { isFreePreviewResumeNeeded } from "@/lib/freeImages";
 import { triggerPdfGenerationIfReady } from "@/lib/triggerPdfGeneration";
 
 export const runtime = "nodejs";
@@ -89,7 +91,7 @@ export async function POST(request: Request) {
       }
 
       if (!hasPremiumAccess(storedBook.status)) {
-        if (storedBook.preview_notify_requested || isFreePreviewGenerationIncompleteAfterPage1(storedBook)) {
+        if (storedBook.preview_notify_requested || isFreePreviewResumeNeeded(storedBook)) {
           const result = await resumeFreePreviewGeneration(storedBook.access_token);
           return NextResponse.json({
             resumed: result.resumed || result.freePreviewReady,
@@ -120,6 +122,17 @@ export async function POST(request: Request) {
       const pdfEmailCandidates = await findPaidBooksNeedingPdfOrFinalEmail(1);
       if (pdfEmailCandidates.length > 0) {
         return resumePdfOrFinalEmail(pdfEmailCandidates[0]!);
+      }
+
+      const phase2Candidates = await findFreeBooksNeedingPhase2TextRetry(1);
+      if (phase2Candidates.length > 0) {
+        const candidate = phase2Candidates[0]!;
+        await continueBookTextPhase2FromStoredBook(candidate);
+        return NextResponse.json({
+          resumed: true,
+          reason: "phase_2_text_retry",
+          bookId: candidate.id,
+        });
       }
 
       const freePreviewCandidates = await findFreeBooksNeedingPreviewResume(1);

@@ -1,7 +1,14 @@
 import "server-only";
 
 import { buildFallbackLoreBook } from "@/lib/fallback-lore";
-import { updateFreeBook } from "@/lib/bookStore";
+import { updateFreeBook, updateGenerationProgress } from "@/lib/bookStore";
+import {
+  attemptPhase2PartialRepair,
+  buildOrderedPhase2Pages,
+  isPhase2TextIncomplete,
+  Phase2RetryableError,
+  validateLorePhase2Pages,
+} from "@/lib/phase2TextRepair";
 import { openai } from "@/lib/server/openai";
 import { BOOK_TEXT_MODEL } from "@/lib/server/ai-config";
 import { MAX_TEXT_REPAIR_ATTEMPTS, TEXT_GENERATION_TIMEOUT_MS, withTimeout } from "@/lib/server/generation-timeouts";
@@ -12,7 +19,7 @@ import {
 } from "@/lib/page5Cliffhanger";
 import { buildLorePhase1Prompt, buildLorePhase2Prompt, buildLorePrompt } from "@/lib/prompts";
 import { validateGeneratedStory } from "@/lib/story-engine";
-import type { ApprovedSynopsis, BookFormInput, BookPage, LoreBook } from "@/lib/types";
+import type { ApprovedSynopsis, BookFormInput, BookPage, LoreBook, StoredBook } from "@/lib/types";
 import { normalizeLoreBook } from "@/lib/utils";
 
 const IMMERSION_BANNED_PATTERN =
@@ -205,38 +212,6 @@ function validateLorePhase1Structure(book: Partial<LoreBook>) {
   return errors;
 }
 
-function validateLorePhase2Pages(pages: BookPage[], championName?: string) {
-  const errors: string[] = [];
-
-  if (pages.length !== 6) {
-    errors.push("Phase 2 must contain exactly 6 pages (3 through 8).");
-  }
-
-  pages.forEach((page, index) => {
-    const pageNumber = page.pageNumber ?? index + 3;
-    if (pageNumber < 3 || pageNumber > 8) {
-      errors.push(`Phase 2 page ${pageNumber} is out of range.`);
-    }
-
-    if (!page.title?.trim() || !page.text?.trim() || !page.imagePrompt?.trim()) {
-      errors.push(`Page ${pageNumber} is missing title, text, or imagePrompt.`);
-    }
-
-    if (IMMERSION_BANNED_PATTERN.test(page.text || "") || IMMERSION_BANNED_PATTERN.test(page.title || "")) {
-      errors.push(`Page ${pageNumber} contains immersion-breaking meta text.`);
-    }
-  });
-
-  const pageFive = pages.find((page) => (page.pageNumber ?? 0) === 5) ?? pages[2];
-  if (pageFive && championName && !pageFive.text?.toLowerCase().includes(championName.toLowerCase())) {
-    errors.push("Page 5 must reference the chosen champion connection.");
-  }
-
-  errors.push(...validatePage5Cliffhanger(pageFive));
-
-  return errors;
-}
-
 export function mergeLoreBookPhases(phase1Book: LoreBook, phase2Pages: BookPage[]): Partial<LoreBook> {
   const normalizedPhase2Pages = phase2Pages.map((page, index) => ({
     ...page,
@@ -393,7 +368,12 @@ async function parseLoreBookPhase1(rawText: string, input: BookFormInput) {
   return finalizeLoreBookPhase1(parsed, input);
 }
 
-async function parseLoreBookPhase2(rawText: string, phase1Book: LoreBook, input: BookFormInput) {
+async function parseLoreBookPhase2(
+  rawText: string,
+  phase1Book: LoreBook,
+  input: BookFormInput,
+  options: { bookId?: string; approvedSynopsis?: ApprovedSynopsis | null } = {},
+) {
   let parsed: { pages?: BookPage[] };
 
   try {
@@ -408,13 +388,31 @@ async function parseLoreBookPhase2(rawText: string, phase1Book: LoreBook, input:
   }
 
   const pages = Array.isArray(parsed.pages) ? parsed.pages : [];
-  const structureErrors = validateLorePhase2Pages(pages, phase1Book.championConnection?.championName);
+  const championName = phase1Book.championConnection?.championName;
+  const structureErrors = validateLorePhase2Pages(pages, championName);
+
+  let orderedPages = buildOrderedPhase2Pages(pages);
   if (structureErrors.length > 0) {
-    throw new Error(`Generated lore phase 2 failed validation: ${structureErrors.join(" ")}`);
+    orderedPages = await attemptPhase2PartialRepair({
+      bookId: options.bookId,
+      input,
+      phase1Book,
+      pages,
+      approvedSynopsis: options.approvedSynopsis,
+    });
   }
 
-  return finalizeMergedLoreBook(phase1Book, pages, input);
+  return finalizeMergedLoreBook(phase1Book, orderedPages, input);
 }
+
+export function extractPhase1LoreBook(book: LoreBook): LoreBook {
+  return {
+    ...book,
+    pages: book.pages.slice(0, 2),
+  };
+}
+
+export { isPhase2TextIncomplete };
 
 export async function generateLoreBookPhase1(
   input: BookFormInput,
@@ -483,6 +481,7 @@ export async function generateLoreBookPhase2(
   phase1Book: LoreBook,
   input: BookFormInput,
   approvedSynopsis?: ApprovedSynopsis | null,
+  options: { bookId?: string } = {},
 ): Promise<GenerateLoreResult> {
   requireOpenAiKey();
 
@@ -491,7 +490,10 @@ export async function generateLoreBookPhase2(
 
   try {
     lastRawText = await requestRawLoreTextPhase2(input, phase1Book, approvedSynopsis);
-    const book = await parseLoreBookPhase2(lastRawText, phase1Book, input);
+    const book = await parseLoreBookPhase2(lastRawText, phase1Book, input, {
+      bookId: options.bookId,
+      approvedSynopsis,
+    });
     console.log("[TEXT_PHASE_2_DONE_CHAPTERS_3_8]", {
       pageCount: book.pages.length,
     });
@@ -510,7 +512,10 @@ export async function generateLoreBookPhase2(
 
       try {
         const repairedText = await repairLoreJson(lastRawText, input);
-        const book = await parseLoreBookPhase2(repairedText, phase1Book, input);
+        const book = await parseLoreBookPhase2(repairedText, phase1Book, input, {
+          bookId: options.bookId,
+          approvedSynopsis,
+        });
         console.log("[TEXT_PHASE_2_DONE_CHAPTERS_3_8]", {
           pageCount: book.pages.length,
           repaired: true,
@@ -521,6 +526,42 @@ export async function generateLoreBookPhase2(
         logLoreGenerationError(repairError);
       }
     }
+  }
+
+  if (lastRawText) {
+    try {
+      const parsed = JSON.parse(extractJson(lastRawText)) as { pages?: BookPage[] };
+      const pages = Array.isArray(parsed.pages) ? parsed.pages : [];
+      const orderedPages = await attemptPhase2PartialRepair({
+        bookId: options.bookId,
+        input,
+        phase1Book,
+        pages,
+        approvedSynopsis,
+      });
+      const book = await finalizeMergedLoreBook(phase1Book, orderedPages, input);
+      console.log("[TEXT_PHASE_2_DONE_CHAPTERS_3_8]", {
+        pageCount: book.pages.length,
+        repaired: true,
+        partial: true,
+      });
+      return { book, fallback: false };
+    } catch (repairError) {
+      lastError = repairError;
+      if (repairError instanceof Phase2RetryableError) {
+        console.error("[TEXT_PHASE_2_REPAIR_FAILED_RETRYABLE]", {
+          bookId: options.bookId ?? null,
+          invalidPages: repairError.invalidPages,
+          reason: repairError.message,
+        });
+        throw repairError;
+      }
+      logLoreGenerationError(repairError);
+    }
+  }
+
+  if (lastError instanceof Phase2RetryableError) {
+    throw lastError;
   }
 
   if (isFallbackLoreEnabled()) {
@@ -544,16 +585,43 @@ export async function continueBookTextPhase2(
   console.log("[TEXT_PHASE_2_START_CHAPTERS_3_8]", { bookId });
 
   try {
-    const phase2Result = await generateLoreBookPhase2(phase1Book, input, approvedSynopsis);
+    const phase2Result = await generateLoreBookPhase2(phase1Book, input, approvedSynopsis, { bookId });
     await updateFreeBook(bookId, phase2Result.book);
+    await updateGenerationProgress(bookId, "generating_images", { generationError: null });
     console.log("[TEXT_PHASE_2_DONE_CHAPTERS_3_8]", {
       bookId,
       pageCount: phase2Result.book.pages.length,
       fallback: phase2Result.fallback,
     });
   } catch (error) {
+    if (error instanceof Phase2RetryableError) {
+      await updateGenerationProgress(bookId, "generating_images", {
+        generationError: `phase_2_text_retryable:${error.invalidPages.join(",")}`,
+      });
+      console.error("[TEXT_PHASE_2_REPAIR_FAILED_RETRYABLE]", {
+        bookId,
+        invalidPages: error.invalidPages,
+        reason: error.message,
+      });
+      return;
+    }
+
     console.error("[TEXT_PHASE_2_ERROR]", { bookId, error });
   }
+}
+
+export async function continueBookTextPhase2FromStoredBook(storedBook: StoredBook) {
+  if (!storedBook.free_book || !storedBook.form_input) {
+    return;
+  }
+
+  const phase1Book = extractPhase1LoreBook(storedBook.free_book);
+  await continueBookTextPhase2(
+    storedBook.id,
+    phase1Book,
+    storedBook.form_input,
+    storedBook.approved_synopsis,
+  );
 }
 
 export async function generateLoreBook(

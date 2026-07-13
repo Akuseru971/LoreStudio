@@ -87,6 +87,18 @@ export async function findPreviewPosterStoragePath(bookId: string) {
   return null;
 }
 
+export async function findPageImageStoragePath(bookId: string, pageNumber: number) {
+  for (const extension of PREVIEW_POSTER_EXTENSIONS) {
+    const storagePath = `books/${bookId}/page-${pageNumber}-image.${extension}`;
+    const buffer = await downloadAssetBuffer(storagePath);
+    if (buffer) {
+      return storagePath;
+    }
+  }
+
+  return null;
+}
+
 export function buildPreviewCoverAsset(
   storagePath: string,
   options: {

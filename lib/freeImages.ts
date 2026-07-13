@@ -18,6 +18,8 @@ import {
   reloadAndVerifyPageImageClaim,
   reloadAndVerifyPreviewCoverClaim,
   repairPreviewCoverFromStorage,
+  repairFreePreviewAssetsFromStorage,
+  repairFreePreviewPageImageFromStorage,
   resetStalePageImageGeneration,
   resetStalePreviewCoverGeneration,
   saveBookAsset,
@@ -289,11 +291,98 @@ export function isRecentPreviewCoverGenerationInProgress(storedBook: StoredBook)
   );
 }
 
-export function logPreviewCoverSkipAlreadyGeneratingRecent(bookId: string, ageMs: number | null) {
-  console.log("[PREVIEW_COVER_SKIP_ALREADY_GENERATING_RECENT]", {
+export function logFreePreviewAssetSkipAlreadyGeneratingRecent(
+  bookId: string,
+  asset: "page_1" | "page_2" | "preview_cover",
+  ageMs: number | null,
+) {
+  console.log("[FREE_PREVIEW_ASSET_SKIP_ALREADY_GENERATING_RECENT]", {
     bookId,
+    asset,
     ageMs,
   });
+}
+
+export function logImageGenerationSkipAlreadyGeneratingRecent(
+  bookId: string,
+  pageNumber: number,
+  ageMs: number | null,
+) {
+  logFreePreviewAssetSkipAlreadyGeneratingRecent(
+    bookId,
+    pageNumber === 1 ? "page_1" : "page_2",
+    ageMs,
+  );
+}
+
+export function logPreviewCoverSkipAlreadyGeneratingRecent(bookId: string, ageMs: number | null) {
+  logFreePreviewAssetSkipAlreadyGeneratingRecent(bookId, "preview_cover", ageMs);
+}
+
+export function isFreePreviewResumeNeeded(storedBook: StoredBook) {
+  if (storedBook.status !== "free" && storedBook.status !== "checkout_started") {
+    return false;
+  }
+
+  if (!storedBook.free_book) {
+    return false;
+  }
+
+  const allowedGenerationStatuses = new Set([
+    "generating_images",
+    "generating_text",
+    "preparing",
+    "ready_free",
+  ]);
+
+  if (!allowedGenerationStatuses.has(storedBook.generation_status)) {
+    return false;
+  }
+
+  const readiness = getFreePreviewReadiness(storedBook);
+  if (readiness.freePreviewReady) {
+    return false;
+  }
+
+  const page1State = getPageGenerationStatus(storedBook, 1);
+  const page2State = getPageGenerationStatus(storedBook, 2);
+  const previewCoverState = getPreviewCoverGenerationStatus(storedBook);
+
+  if (!readiness.page1Ready) {
+    return (
+      page1State.status === "not_started" ||
+      page1State.status === "failed" ||
+      page1State.status === "generating"
+    );
+  }
+
+  if (!isFreePreviewStoryTextReady(storedBook)) {
+    return false;
+  }
+
+  if (
+    !readiness.page2Ready &&
+    (page2State.status === "not_started" ||
+      page2State.status === "failed" ||
+      page2State.status === "generating")
+  ) {
+    return true;
+  }
+
+  if (
+    !readiness.previewCoverReady &&
+    (previewCoverState.status === "not_started" ||
+      previewCoverState.status === "failed" ||
+      previewCoverState.status === "generating")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isFreePreviewGenerationIncompleteAfterPage1(storedBook: StoredBook) {
+  return isFreePreviewResumeNeeded(storedBook);
 }
 
 export function isRecentFreePageImageGenerationInProgress(storedBook: StoredBook, pageNumber: number) {
@@ -307,45 +396,13 @@ export function isRecentFreePageImageGenerationInProgress(storedBook: StoredBook
   );
 }
 
-export function logImageGenerationSkipAlreadyGeneratingRecent(
-  bookId: string,
-  pageNumber: number,
-  ageMs: number | null,
-) {
-  console.log("[IMAGE_GENERATION_SKIP_ALREADY_GENERATING_RECENT]", {
-    bookId,
-    pageNumber,
-    ageMs,
-  });
-}
-
-export function isFreePreviewGenerationIncompleteAfterPage1(storedBook: StoredBook) {
-  if (storedBook.status !== "free" && storedBook.status !== "checkout_started") {
-    return false;
-  }
-
-  if (storedBook.generation_status !== "generating_images") {
-    return false;
-  }
-
-  const readiness = getFreePreviewReadiness(storedBook);
-  if (!readiness.page1Ready || readiness.freePreviewReady) {
-    return false;
-  }
-
-  const page2State = getPageGenerationStatus(storedBook, 2);
-  const previewCoverState = getPreviewCoverGenerationStatus(storedBook);
-
-  return page2State.status === "not_started" || previewCoverState.status === "not_started";
-}
-
 export function triggerFreePreviewContinuationAfterPage1(accessToken: string, storedBook: StoredBook) {
   const readiness = getFreePreviewReadiness(storedBook);
   if (readiness.freePreviewReady || !readiness.page1Ready) {
     return;
   }
 
-  console.log("[FREE_PREVIEW_PAGE_1_READY_START_PARALLEL_2_POSTER]", {
+  console.log("[FREE_PREVIEW_PAGE_1_READY_BACKEND_CONTINUE]", {
     bookId: storedBook.id,
   });
 
@@ -354,7 +411,7 @@ export function triggerFreePreviewContinuationAfterPage1(accessToken: string, st
 
   if (!readiness.page2Ready) {
     if (isFreePageEligibleForGeneration(storedBook, 2, input)) {
-      console.log("[FREE_PREVIEW_PAGE_2_START_AFTER_PAGE_1]", { bookId: storedBook.id });
+      console.log("[FREE_PREVIEW_PAGE_2_BACKEND_START]", { bookId: storedBook.id });
       parallelTasks.push(
         generateNextFreeImage(accessToken, { pageNumber: 2 }).catch((error) => {
           console.error("[FREE_PREVIEW_PAGE_2_ORCHESTRATION_ERROR]", {
@@ -374,7 +431,7 @@ export function triggerFreePreviewContinuationAfterPage1(accessToken: string, st
 
   if (!readiness.previewCoverReady) {
     if (isPreviewCoverEligibleForGeneration(storedBook)) {
-      console.log("[FREE_PREVIEW_POSTER_START_AFTER_PAGE_1]", { bookId: storedBook.id });
+      console.log("[FREE_PREVIEW_POSTER_BACKEND_START]", { bookId: storedBook.id });
       parallelTasks.push(
         generateNextFreeImage(accessToken, { previewCover: true }).catch((error) => {
           console.error("[FREE_PREVIEW_POSTER_ORCHESTRATION_ERROR]", {
@@ -747,18 +804,22 @@ export async function generateAndStoreFreeImageForPage({
   }
 
   const latestBeforeClaim = await getBookById(bookId);
-  if (latestBeforeClaim && isFreePreviewStoryPageAlreadyReady(latestBeforeClaim, pageNumber)) {
+  let repairedBeforeClaim = latestBeforeClaim
+    ? await repairFreePreviewPageImageFromStorage(latestBeforeClaim, pageNumber)
+    : null;
+
+  if (repairedBeforeClaim && isFreePreviewStoryPageAlreadyReady(repairedBeforeClaim, pageNumber)) {
     console.log("[FREE_IMAGE_SKIP_ALREADY_READY]", { pageNumber });
-    return { book: latestBeforeClaim, generated: false, claimLost: false };
+    return { book: repairedBeforeClaim, generated: false, claimLost: false };
   }
 
-  if (latestBeforeClaim && isRecentFreePageImageGenerationInProgress(latestBeforeClaim, pageNumber)) {
+  if (repairedBeforeClaim && isRecentFreePageImageGenerationInProgress(repairedBeforeClaim, pageNumber)) {
     logImageGenerationSkipAlreadyGeneratingRecent(
       bookId,
       pageNumber,
-      getPageGenerationStatus(latestBeforeClaim, pageNumber).ageMs,
+      getPageGenerationStatus(repairedBeforeClaim, pageNumber).ageMs,
     );
-    return { book: latestBeforeClaim, generated: false, claimLost: false };
+    return { book: repairedBeforeClaim, generated: false, claimLost: false };
   }
 
   const claim = await claimPageImageGeneration(bookId, pageNumber);
@@ -1127,7 +1188,7 @@ export async function generateNextFreeImage(
     throw new Error("Book not found.");
   }
 
-  const activeBook = await repairPreviewCoverFromStorage(storedBook);
+  const activeBook = await repairFreePreviewAssetsFromStorage(storedBook);
 
   console.log("[GENERATE_NEXT_FREE_IMAGE_START]", {
     nextAsset: peekNextFreePreviewAsset(activeBook, normalizedOptions),

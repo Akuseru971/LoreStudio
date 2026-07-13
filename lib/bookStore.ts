@@ -9,6 +9,7 @@ import {
 } from "@/lib/image-config";
 import {
   buildPreviewCoverAsset,
+  findPageImageStoragePath,
   findPreviewPosterStoragePath,
   getImageForPage,
   getReadyIllustrationCount,
@@ -259,6 +260,88 @@ export async function saveNormalizedBookImages(
   }
 
   return mapRow(data);
+}
+
+export async function repairFreePreviewPageImageFromStorage(
+  storedBook: StoredBook,
+  pageNumber: number,
+): Promise<StoredBook> {
+  if (!(FREE_PREVIEW_STORY_IMAGE_PAGES as readonly number[]).includes(pageNumber)) {
+    return storedBook;
+  }
+
+  const pageInput = {
+    images: storedBook.images,
+    imageStatus: storedBook.image_status,
+    pages: storedBook.free_book?.pages,
+  };
+  const existingImage = getImageForPage(pageInput, pageNumber);
+  if (isIllustrationReady(existingImage)) {
+    return storedBook;
+  }
+
+  const existingStoragePath = getImageStoragePath(existingImage);
+  const storagePath =
+    existingStoragePath?.includes(`/page-${pageNumber}-image.`) && existingStoragePath
+      ? existingStoragePath
+      : await findPageImageStoragePath(storedBook.id, pageNumber);
+
+  if (!storagePath) {
+    return storedBook;
+  }
+
+  console.log("[FREE_PREVIEW_IMAGE_REPAIRED_FROM_STORAGE]", {
+    bookId: storedBook.id,
+    pageNumber,
+    storagePath,
+  });
+
+  const signedUrl = await createSignedAssetUrl(storagePath, 3600);
+  const normalized = normalizeStoredBookImages(storedBook);
+  const updatedImages = mergeUpdatedImage(normalized.images, pageNumber, {
+    pageNumber,
+    status: "ready",
+    url: signedUrl,
+    storagePath,
+    generatedAt: new Date().toISOString(),
+    generationClaimId: null,
+    startedAt: null,
+    updatedAt: new Date().toISOString(),
+    generationStartedAt: null,
+  });
+  const nextImageStatus = {
+    ...normalized.imageStatus,
+    [String(pageNumber)]: "ready" as ImagePageStatus,
+  };
+
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .update({
+      images: mergeStoredFreePreviewStoryImages(storedBook, updatedImages),
+      image_status: nextImageStatus,
+    })
+    .eq("id", storedBook.id)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    console.warn("[FREE_PREVIEW_IMAGE_REPAIR_FAILED]", { bookId: storedBook.id, pageNumber, error });
+    return storedBook;
+  }
+
+  return mapRow(data);
+}
+
+export async function repairFreePreviewAssetsFromStorage(storedBook: StoredBook) {
+  let latestBook = storedBook;
+
+  for (const pageNumber of FREE_PREVIEW_STORY_IMAGE_PAGES) {
+    latestBook = await repairFreePreviewPageImageFromStorage(latestBook, pageNumber);
+  }
+
+  latestBook = await repairPreviewCoverFromStorage(latestBook);
+  return latestBook;
 }
 
 export async function saveBookAsset(
@@ -2191,6 +2274,36 @@ export async function markPreviewReadyEmailFailed(bookId: string, errorMessage?:
   }
 }
 
+export async function findFreeBooksNeedingPhase2TextRetry(limit = 1) {
+  const supabase = requireSupabase();
+
+  const { data, error } = await supabase
+    .from(BOOKS_TABLE)
+    .select("*")
+    .in("status", ["free", "checkout_started"])
+    .order("updated_at", { ascending: true })
+    .limit(Math.max(limit * 10, 10));
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { isPhase2TextIncomplete } = await import("@/lib/phase2TextRepair");
+  const results: StoredBook[] = [];
+
+  for (const row of data || []) {
+    const book = mapRow(row);
+    if (isPhase2TextIncomplete(book)) {
+      results.push(book);
+      if (results.length >= limit) {
+        break;
+      }
+    }
+  }
+
+  return results;
+}
+
 export async function findFreeBooksNeedingPreviewResume(limit = 1) {
   const supabase = requireSupabase();
 
@@ -2199,7 +2312,7 @@ export async function findFreeBooksNeedingPreviewResume(limit = 1) {
       .from(BOOKS_TABLE)
       .select("*")
       .in("status", ["free", "checkout_started"])
-      .eq("generation_status", "generating_images")
+      .in("generation_status", ["generating_images", "generating_text", "preparing", "ready_free"])
       .order("updated_at", { ascending: true })
       .limit(Math.max(limit * 10, 10));
 
@@ -2209,16 +2322,16 @@ export async function findFreeBooksNeedingPreviewResume(limit = 1) {
 
     const {
       getFreePreviewReadiness,
-      isFreePreviewGenerationIncompleteAfterPage1,
+      isFreePreviewResumeNeeded,
     } = await import("@/lib/freeImages");
     const results: StoredBook[] = [];
 
     for (const row of data || []) {
-      const book = await repairPreviewCoverFromStorage(mapRow(row));
+      const book = await repairFreePreviewAssetsFromStorage(mapRow(row));
       const readiness = getFreePreviewReadiness(book);
       const emailPending = book.preview_notify_requested && !isPreviewReadyEmailAlreadySent(book);
 
-      if (isFreePreviewGenerationIncompleteAfterPage1(book) || (!readiness.freePreviewReady && emailPending)) {
+      if (isFreePreviewResumeNeeded(book) || (!readiness.freePreviewReady && emailPending)) {
         results.push(book);
         if (results.length >= limit) {
           break;

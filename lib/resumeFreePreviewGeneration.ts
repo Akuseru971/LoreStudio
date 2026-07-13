@@ -1,14 +1,14 @@
 import "server-only";
 
 import { getImageForPage, isIllustrationReady } from "@/lib/book-images";
-import { getBookByAccessToken, repairPreviewCoverFromStorage } from "@/lib/bookStore";
+import { getBookByAccessToken, repairFreePreviewAssetsFromStorage } from "@/lib/bookStore";
 import { triggerFreePreviewReadyEmailCheck } from "@/lib/freePreviewReadyEmail";
 import {
   generateNextFreeImage,
   getFreeImagePagesInput,
   getFreePreviewReadiness,
   isFreePage1Ready,
-  isFreePreviewGenerationIncompleteAfterPage1,
+  isFreePreviewResumeNeeded,
   isRecentFreePageImageGenerationInProgress,
   isRecentPreviewCoverGenerationInProgress,
   logImageGenerationSkipAlreadyGeneratingRecent,
@@ -54,7 +54,7 @@ async function refreshBook(accessToken: string) {
     return null;
   }
 
-  return repairPreviewCoverFromStorage(storedBook);
+  return repairFreePreviewAssetsFromStorage(storedBook);
 }
 
 export async function resumeFreePreviewGeneration(
@@ -87,7 +87,7 @@ export async function resumeFreePreviewGeneration(
     };
   }
 
-  book = await repairPreviewCoverFromStorage(book);
+  book = await repairFreePreviewAssetsFromStorage(book);
   book = (await recoverStaleFreePreviewAssets(book)) || book;
 
   let readiness = getFreePreviewReadiness(book);
@@ -162,18 +162,19 @@ export async function resumeFreePreviewGeneration(
     }
   }
 
-  if (isFreePage1Ready(book)) {
+  if (isFreePreviewResumeNeeded(book)) {
+    const page1State = getPageGenerationStatus(book, 1);
     const page2State = getPageGenerationStatus(book, 2);
     const previewCoverState = getPreviewCoverGenerationStatus(book);
-    if (isFreePreviewGenerationIncompleteAfterPage1(book)) {
-      console.log("[WATCHDOG_RESUME_FREE_PREVIEW_INCOMPLETE]", {
-        bookId: book.id,
-        page1Ready: true,
-        page2Status: page2State.status,
-        previewCoverStatus: previewCoverState.status,
-      });
-    }
+    console.log("[WATCHDOG_RESUME_INCOMPLETE_FREE_PREVIEW]", {
+      bookId: book.id,
+      page1Status: page1State.status,
+      page2Status: page2State.status,
+      previewCoverStatus: previewCoverState.status,
+    });
+  }
 
+  if (isFreePage1Ready(book)) {
     const input = getFreeImagePagesInput(book);
     const parallelTasks: Array<Promise<unknown>> = [];
 

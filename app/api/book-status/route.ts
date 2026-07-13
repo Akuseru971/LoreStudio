@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getBookByAccessToken, repairPreviewCoverFromStorage } from "@/lib/bookStore";
+import { getBookByAccessToken, repairFreePreviewAssetsFromStorage, repairPreviewCoverFromStorage } from "@/lib/bookStore";
 import { FULL_BOOK_PAGE_COUNT } from "@/lib/book-config";
 import { countReadyFreeImages, getFreePreviewReadiness, logFreePreviewWaitingStatus, recoverStaleFreePreviewAssets, triggerMissingFreePreviewPage2IfNeeded } from "@/lib/freeImages";
 import { getClientProgressMessage, isGenerationPreparing } from "@/lib/generation-progress";
@@ -63,7 +63,9 @@ export async function GET(request: Request) {
     }
 
     const isPremium = hasPremiumAccess(storedBook.status);
-    let activeBook = await repairPreviewCoverFromStorage(storedBook);
+    let activeBook = isPremium
+      ? await repairPreviewCoverFromStorage(storedBook)
+      : await repairFreePreviewAssetsFromStorage(storedBook);
     if (isPremium) {
       activeBook = (await recoverStalePremiumImages(activeBook)) || activeBook;
       activeBook = await repairPreviewCoverFromStorage(activeBook);
