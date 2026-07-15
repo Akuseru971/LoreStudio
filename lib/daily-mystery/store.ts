@@ -1,7 +1,12 @@
 import "server-only";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { normalizeLocale, localesMatch } from "@/lib/daily-mystery/locale";
+import { isScheduleEligibleItem } from "@/lib/daily-mystery/eligibility";
 import { getTodayScheduleDate } from "@/lib/daily-mystery/schedule-date";
+import { hashSourceText } from "@/lib/daily-mystery/tokenize";
+import type { ManualManifestEntry } from "@/lib/daily-mystery/importer/ddragon";
+import { isOfficialDomain } from "@/lib/daily-mystery/official-source";
 import type {
   MysteryContentItem,
   MysteryDailySchedule,
@@ -70,19 +75,61 @@ function mapSessionRow(row: Record<string, unknown>): MysteryPlayerSession {
   };
 }
 
-export async function getApprovedContentItems() {
+export async function getMysteryContentDiagnostics() {
   const supabase = requireSupabase();
+  const { data, error } = await supabase.from(CONTENT_TABLE).select("review_status, locale, retired_at");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rows = data || [];
+  const byStatus: Record<string, number> = {};
+  const byLocale: Record<string, number> = {};
+  let eligibleForScheduling = 0;
+
+  for (const row of rows) {
+    const status = String(row.review_status ?? "unknown");
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+
+    const locale = normalizeLocale(String(row.locale ?? "en_US"));
+    byLocale[locale] = (byLocale[locale] ?? 0) + 1;
+
+    if (status === "approved" && row.retired_at == null) {
+      eligibleForScheduling += 1;
+    }
+  }
+
+  return {
+    totalContent: rows.length,
+    byStatus,
+    byLocale,
+    eligibleForScheduling,
+  };
+}
+
+export async function getApprovedContentItems(locale = "en_US") {
+  const supabase = requireSupabase();
+  const normalizedLocale = normalizeLocale(locale);
   const { data, error } = await supabase
     .from(CONTENT_TABLE)
     .select("*")
     .eq("review_status", "approved")
+    .is("retired_at", null)
     .order("canonical_title", { ascending: true });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (data || []).map((row) => mapContentRow(row));
+  return (data || [])
+    .map((row) => mapContentRow(row))
+    .filter((item) => isScheduleEligibleItem(item));
+}
+
+export async function getScheduleEligibleContentItems(locale = "en_US") {
+  const items = await getApprovedContentItems(locale);
+  return items.filter((item) => localesMatch(item.locale, locale));
 }
 
 export async function getContentItemById(id: string) {
@@ -105,15 +152,21 @@ export async function getContentItemBySlug(slug: string) {
 
 export async function upsertContentItem(item: Omit<MysteryContentItem, "id" | "imported_at" | "approved_at" | "retired_at"> & { id?: string }) {
   const supabase = requireSupabase();
+  const now = new Date().toISOString();
+  const reviewStatus = item.review_status;
+  const payload: Record<string, unknown> = {
+    ...item,
+    locale: normalizeLocale(item.locale),
+    updated_at: now,
+  };
+
+  if (reviewStatus === "approved") {
+    payload.approved_at = now;
+  }
+
   const { data, error } = await supabase
     .from(CONTENT_TABLE)
-    .upsert(
-      {
-        ...item,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "slug" },
-    )
+    .upsert(payload, { onConflict: "slug" })
     .select("*")
     .single();
 
@@ -122,6 +175,66 @@ export async function upsertContentItem(item: Omit<MysteryContentItem, "id" | "i
   }
 
   return mapContentRow(data);
+}
+
+export async function insertSeedContentIfMissing(entry: ManualManifestEntry) {
+  const existing = await getContentItemBySlug(entry.slug);
+  if (existing) {
+    return { status: "skipped" as const, item: existing };
+  }
+
+  if (!entry.source_url || !entry.source_text?.trim()) {
+    throw new Error(`Seed entry ${entry.slug} is missing official source text.`);
+  }
+
+  if (!isOfficialDomain(entry.source_url)) {
+    throw new Error(`Rejected non-official source URL for ${entry.slug}`);
+  }
+
+  const supabase = requireSupabase();
+  const now = new Date().toISOString();
+  const reviewStatus = entry.review_status ?? "needs_review";
+  const sourceDomain = (() => {
+    try {
+      return new URL(entry.source_url).hostname.replace(/^www\./, "");
+    } catch {
+      throw new Error(`Invalid source URL for ${entry.slug}`);
+    }
+  })();
+
+  const { data, error } = await supabase
+    .from(CONTENT_TABLE)
+    .insert({
+      slug: entry.slug,
+      locale: normalizeLocale(entry.locale ?? "en_US"),
+      target_type: entry.target_type,
+      canonical_title: entry.canonical_title,
+      protected_terms: entry.protected_terms,
+      accepted_solution_aliases: entry.accepted_solution_aliases ?? [],
+      source_text: entry.source_text,
+      source_url: entry.source_url,
+      source_domain: sourceDomain,
+      source_type: entry.source_type,
+      source_hash: hashSourceText(entry.source_text),
+      riot_content_version: entry.riot_content_version ?? null,
+      ddragon_version: entry.ddragon_version ?? null,
+      difficulty: entry.difficulty ?? 3,
+      region_tags: entry.region_tags ?? [],
+      related_champion_ids: entry.related_champion_ids ?? [],
+      hint_metadata: entry.hint_metadata ?? {},
+      review_status: reviewStatus,
+      approved_at: reviewStatus === "approved" ? now : null,
+      imported_at: now,
+      updated_at: now,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || `Unable to insert seed content for ${entry.slug}.`);
+  }
+
+  return { status: "inserted" as const, item: mapContentRow(data) };
 }
 
 export async function getScheduleForDate(scheduleDate: string) {
@@ -156,24 +269,34 @@ export async function saveDailySchedule(schedule: {
   difficulty: number;
   admin_override?: boolean;
 }) {
+  const existing = await getScheduleForDate(schedule.schedule_date);
+  if (existing) {
+    return existing;
+  }
+
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from(SCHEDULE_TABLE)
-    .upsert(
-      {
-        schedule_date: schedule.schedule_date,
-        content_item_id: schedule.content_item_id,
-        difficulty: schedule.difficulty,
-        admin_override: schedule.admin_override ?? false,
-        locked_at: new Date().toISOString(),
-      },
-      { onConflict: "schedule_date" },
-    )
+    .insert({
+      schedule_date: schedule.schedule_date,
+      content_item_id: schedule.content_item_id,
+      difficulty: schedule.difficulty,
+      admin_override: schedule.admin_override ?? false,
+      locked_at: new Date().toISOString(),
+    })
     .select("*")
     .single();
 
-  if (error || !data) {
-    throw new Error(error?.message || "Unable to save daily schedule.");
+  if (error) {
+    const raced = await getScheduleForDate(schedule.schedule_date);
+    if (raced) {
+      return raced;
+    }
+    throw new Error(error.message || "Unable to save daily schedule.");
+  }
+
+  if (!data) {
+    throw new Error("Unable to save daily schedule.");
   }
 
   return {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { MysteryContentItem, MysteryDailySchedule } from "@/lib/daily-mystery/types";
+import { MysteryServiceError, MYSTERY_PUBLIC_UNAVAILABLE } from "@/lib/daily-mystery/errors";
 import { buildPublicPuzzleView } from "@/lib/daily-mystery/puzzle";
 import {
   ensureDailySchedule,
@@ -18,8 +19,12 @@ import {
 export async function resolveDailyPuzzle() {
   const schedule = await ensureDailySchedule();
   const content = await getContentItemById(schedule.content_item_id);
-  if (!content || content.review_status !== "approved") {
-    throw new Error("Today's Chronicle is unavailable.");
+  if (!content || content.review_status !== "approved" || content.retired_at) {
+    throw new MysteryServiceError(
+      "MYSTERY_SCHEDULE_UNAVAILABLE",
+      "Today's Chronicle is unavailable.",
+      MYSTERY_PUBLIC_UNAVAILABLE,
+    );
   }
   return { schedule, content, mode: "daily" as const };
 }

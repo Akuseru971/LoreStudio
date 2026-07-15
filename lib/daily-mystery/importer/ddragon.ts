@@ -1,6 +1,5 @@
 import { createHash } from "crypto";
 import type { MysteryContentItem, MysterySourceType, MysteryTargetType } from "@/lib/daily-mystery/types";
-import { OFFICIAL_SOURCE_DOMAINS } from "@/lib/daily-mystery/types";
 import { hashSourceText } from "@/lib/daily-mystery/tokenize";
 import { upsertContentItem } from "@/lib/daily-mystery/store";
 import { precomputeContentEmbeddings } from "@/lib/daily-mystery/semantic";
@@ -54,21 +53,10 @@ export async function fetchDDragonChampionDetail(
   return Object.values(payload.data)[0]!;
 }
 
-export function isOfficialDomain(url: string) {
-  try {
-    const hostname = new URL(url).hostname.replace(/^www\./, "");
-    return OFFICIAL_SOURCE_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
-  } catch {
-    return false;
-  }
-}
 
-export function buildChampionProtectedTerms(name: string, aliases: string[] = []) {
-  const terms = new Set<string>([name, ...aliases]);
-  terms.add(`${name}'s`);
-  terms.add(`the ${name}`);
-  return [...terms];
-}
+export { isOfficialDomain } from "@/lib/daily-mystery/official-source";
+export { buildChampionProtectedTerms } from "@/lib/daily-mystery/champion-terms";
+import { buildChampionProtectedTerms } from "@/lib/daily-mystery/champion-terms";
 
 export async function importChampionFromDDragon({
   championId,
@@ -194,46 +182,29 @@ export type ManualManifestEntry = {
   source_text: string;
   source_url: string;
   source_type: MysterySourceType;
+  locale?: string;
   difficulty?: number;
   region_tags?: string[];
   related_champion_ids?: string[];
   hint_metadata?: MysteryContentItem["hint_metadata"];
   review_status?: MysteryContentItem["review_status"];
+  riot_content_version?: string | null;
+  ddragon_version?: string | null;
 };
 
 export async function importFromManualManifest(entries: ManualManifestEntry[]) {
+  const { importVerifiedSeedManifest } = await import("@/lib/daily-mystery/bootstrap");
+  const report = await importVerifiedSeedManifest(entries);
   const results = [];
-  for (const entry of entries) {
-    if (!isOfficialDomain(entry.source_url)) {
-      throw new Error(`Rejected non-official source URL: ${entry.source_url}`);
+  for (const slug of [...report.inserted, ...report.skipped]) {
+    const { getContentItemBySlug } = await import("@/lib/daily-mystery/store");
+    const item = await getContentItemBySlug(slug);
+    if (item) {
+      results.push(item);
     }
-
-    const sourceDomain = new URL(entry.source_url).hostname.replace(/^www\./, "");
-    const item = await upsertContentItem({
-      slug: entry.slug,
-      locale: "en_US",
-      target_type: entry.target_type,
-      canonical_title: entry.canonical_title,
-      protected_terms: entry.protected_terms,
-      accepted_solution_aliases: entry.accepted_solution_aliases ?? [],
-      source_text: entry.source_text,
-      source_url: entry.source_url,
-      source_domain: sourceDomain,
-      source_type: entry.source_type,
-      source_hash: hashSourceText(entry.source_text),
-      riot_content_version: null,
-      ddragon_version: null,
-      difficulty: entry.difficulty ?? 3,
-      region_tags: entry.region_tags ?? [],
-      related_champion_ids: entry.related_champion_ids ?? [],
-      hint_metadata: entry.hint_metadata ?? {},
-      review_status: entry.review_status ?? "needs_review",
-    });
-
-    const { tokens } = tokenizePassage(item.source_text, item.protected_terms);
-    await precomputeContentEmbeddings(item.id, getUniqueLemmas(tokens));
-    results.push(item);
   }
-
+  if (report.rejected.length > 0) {
+    throw new Error(report.rejected.join("; "));
+  }
   return results;
 }

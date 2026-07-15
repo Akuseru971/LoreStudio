@@ -9,7 +9,13 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "mystery:seed:verified": "tsx scripts/mystery-cli.mts seed:verified",
+    "mystery:import:champions": "tsx scripts/mystery-cli.mts import:champions",
+    "mystery:schedule:today": "tsx scripts/mystery-cli.mts schedule:today",
+    "mystery:coverage": "tsx scripts/mystery-cli.mts coverage",
+    "mystery:bootstrap": "tsx scripts/mystery-cli.mts bootstrap",
+    "mystery:diagnostics": "tsx scripts/mystery-cli.mts diagnostics"
   },
   "repository": {
     "type": "git",
@@ -44,10 +50,12 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "autoprefixer": "^10.5.0",
+    "dotenv": "^17.4.2",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.7",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.3.0",
+    "tsx": "^4.23.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   }

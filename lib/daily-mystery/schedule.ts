@@ -3,8 +3,11 @@ import "server-only";
 import { createHash } from "crypto";
 import type { MysteryContentItem, MysteryTargetType } from "@/lib/daily-mystery/types";
 import { CATEGORY_WEIGHTS, MYSTERY_MIN_REPEAT_DAYS } from "@/lib/daily-mystery/types";
+import { ensureVerifiedSeedContent } from "@/lib/daily-mystery/bootstrap";
+import { collectMysteryDiagnostics, logMysteryDiagnostics } from "@/lib/daily-mystery/diagnostics";
+import { MysteryServiceError, MYSTERY_PUBLIC_UNAVAILABLE } from "@/lib/daily-mystery/errors";
 import {
-  getApprovedContentItems,
+  getScheduleEligibleContentItems,
   getScheduleForDate,
   listRecentScheduleContentIds,
   saveDailySchedule,
@@ -62,9 +65,17 @@ export async function ensureDailySchedule(date = new Date()) {
     return existing;
   }
 
-  const approved = await getApprovedContentItems();
+  await ensureVerifiedSeedContent();
+
+  const approved = await getScheduleEligibleContentItems();
   if (approved.length === 0) {
-    throw new Error("No approved mystery content is available for scheduling.");
+    const diagnostics = await collectMysteryDiagnostics();
+    logMysteryDiagnostics(diagnostics, "ensureDailySchedule");
+    throw new MysteryServiceError(
+      "MYSTERY_NO_APPROVED_CONTENT",
+      "No approved mystery content is available for scheduling.",
+      MYSTERY_PUBLIC_UNAVAILABLE,
+    );
   }
 
   const recent = await listRecentScheduleContentIds(MYSTERY_MIN_REPEAT_DAYS);

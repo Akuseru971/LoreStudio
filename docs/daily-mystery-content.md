@@ -112,6 +112,50 @@ Store every form that must not appear before victory:
 
 Multi-word phrases are masked as complete phrases. Other champion names in the passage are **not** protected unless listed.
 
+## Production deployment commands
+
+Run against the **same Supabase project** configured in Vercel (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
+
+### Local development
+
+```bash
+# 1. Apply SQL migration in Supabase SQL Editor (014_daily_mystery.sql)
+# 2. Load verified official seed + schedule today
+npm run mystery:bootstrap
+# 3. Verify
+npm run mystery:diagnostics
+curl http://localhost:3000/api/daily-mystery/today
+```
+
+### Vercel Preview / Production
+
+Use either CLI (with production env vars loaded) or the internal API:
+
+```bash
+# CLI (recommended first deploy)
+export $(grep -v '^#' .env.production.local | xargs)
+npm run mystery:bootstrap
+
+# Or HTTP bootstrap
+curl -X POST "$APP_URL/api/internal/daily-mystery/import" \
+  -H "x-internal-fulfillment-secret: $INTERNAL_FULFILLMENT_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"bootstrap"}'
+```
+
+### Package commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run mystery:seed:verified` | Idempotent verified seed only |
+| `npm run mystery:import:champions` | Import champions from Data Dragon |
+| `npm run mystery:schedule:today` | Lock today's schedule |
+| `npm run mystery:coverage` | Coverage report |
+| `npm run mystery:bootstrap` | Seed + schedule (first deploy) |
+| `npm run mystery:diagnostics` | Safe DB/content diagnostics |
+
+The API also auto-runs the verified seed idempotently when scheduling if no approved content exists (`MYSTERY_DISABLE_AUTO_BOOTSTRAP=false` by default).
+
 ## Refreshing content
 
 1. Run Data Dragon import after major patches.

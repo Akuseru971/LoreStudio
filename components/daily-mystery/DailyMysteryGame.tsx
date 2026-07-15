@@ -86,7 +86,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Unable to load Chronicle.");
+        throw new Error(data.error || "The Chronicle is being prepared. Please return shortly.");
       }
 
       setPuzzle(data);
@@ -94,7 +94,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
         await loadResult(data.puzzlePublicId);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load Chronicle.");
+      setError(loadError instanceof Error ? loadError.message : "The Chronicle is being prepared. Please return shortly.");
     } finally {
       setLoading(false);
     }
@@ -135,7 +135,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Unable to load Chronicle.");
+          setError(loadError instanceof Error ? loadError.message : "The Chronicle is being prepared. Please return shortly.");
         }
       } finally {
         if (!cancelled) {
@@ -268,7 +268,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
   if (error || !puzzle) {
     return (
       <div className="daily-mystery-shell daily-mystery-error">
-        <p>{error || "Chronicle unavailable."}</p>
+        <p>{error || "The Chronicle is being prepared. Please return shortly."}</p>
         <button type="button" className="gold-button mt-4 rounded-2xl px-5 py-3" onClick={() => void loadPuzzle()}>
           Retry
         </button>
