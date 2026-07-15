@@ -3,11 +3,10 @@ import "server-only";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { normalizeLocale, localesMatch } from "@/lib/daily-mystery/locale";
 import { isScheduleEligibleItem } from "@/lib/daily-mystery/eligibility";
-import { isDailyMysterySchedulable, isDailyMysterySeedEntry } from "@/lib/daily-mystery/content-policy";
+import { isDailyMysterySchedulable, isDailyMysterySeedEntry, isOfficialChampionBiographyUrl } from "@/lib/daily-mystery/content-policy";
 import { getTodayScheduleDate } from "@/lib/daily-mystery/schedule-date";
 import { hashSourceText } from "@/lib/daily-mystery/tokenize";
 import type { ManualManifestEntry } from "@/lib/daily-mystery/importer/ddragon";
-import { isOfficialDomain } from "@/lib/daily-mystery/official-source";
 import type {
   MysteryContentItem,
   MysteryDailySchedule,
@@ -80,7 +79,7 @@ export async function getMysteryContentDiagnostics() {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from(CONTENT_TABLE)
-    .select("review_status, locale, retired_at, target_type, source_type, source_url, source_text");
+    .select("review_status, locale, retired_at, target_type, source_type, source_url, source_text, source_hash, hint_metadata");
 
   if (error) {
     throw new Error(error.message);
@@ -107,6 +106,8 @@ export async function getMysteryContentDiagnostics() {
         source_type: row.source_type as MysteryContentItem["source_type"],
         source_url: String(row.source_url ?? ""),
         source_text: String(row.source_text ?? ""),
+        source_hash: String(row.source_hash ?? ""),
+        hint_metadata: (row.hint_metadata as MysteryContentItem["hint_metadata"]) ?? {},
       })
     ) {
       eligibleForScheduling += 1;
@@ -178,10 +179,12 @@ export async function upsertContentItem(item: Omit<MysteryContentItem, "id" | "i
       source_type: item.source_type,
       source_url: item.source_url,
       source_text: item.source_text,
+      source_hash: item.source_hash,
+      hint_metadata: item.hint_metadata,
     })
   ) {
     throw new Error(
-      "Only approved official English champion biographies and location pages are eligible for Daily Mystery.",
+      "Only approved official English champion biography pages from leagueoflegends.com are eligible for Daily Mystery.",
     );
   }
 
@@ -218,8 +221,8 @@ export async function insertSeedContentIfMissing(entry: ManualManifestEntry) {
     throw new Error(`Seed entry ${entry.slug} is missing official source text.`);
   }
 
-  if (!isOfficialDomain(entry.source_url)) {
-    throw new Error(`Rejected non-official source URL for ${entry.slug}`);
+  if (!isOfficialChampionBiographyUrl(entry.source_url)) {
+    throw new Error(`Rejected non-official champion page URL for ${entry.slug}`);
   }
 
   const seedCandidate = {
@@ -230,9 +233,10 @@ export async function insertSeedContentIfMissing(entry: ManualManifestEntry) {
     source_text: entry.source_text,
   };
   if (!isDailyMysterySeedEntry(seedCandidate)) {
-    throw new Error(`Seed entry ${entry.slug} is not an official English champion biography or location page.`);
+    throw new Error(`Seed entry ${entry.slug} is not an official English champion biography page.`);
   }
 
+  const sourceHash = hashSourceText(entry.source_text);
   const supabase = requireSupabase();
   const now = new Date().toISOString();
   const reviewStatus = entry.review_status ?? "needs_review";
@@ -257,7 +261,7 @@ export async function insertSeedContentIfMissing(entry: ManualManifestEntry) {
       source_url: entry.source_url,
       source_domain: sourceDomain,
       source_type: entry.source_type,
-      source_hash: hashSourceText(entry.source_text),
+      source_hash: sourceHash,
       riot_content_version: entry.riot_content_version ?? null,
       ddragon_version: entry.ddragon_version ?? null,
       difficulty: entry.difficulty ?? 3,
@@ -303,6 +307,14 @@ export async function getScheduleForDate(scheduleDate: string) {
     admin_override: Boolean(data.admin_override),
     locked_at: String(data.locked_at),
   } satisfies MysteryDailySchedule;
+}
+
+export async function deleteScheduleForDate(scheduleDate: string) {
+  const supabase = requireSupabase();
+  const { error } = await supabase.from(SCHEDULE_TABLE).delete().eq("schedule_date", scheduleDate);
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function saveDailySchedule(schedule: {

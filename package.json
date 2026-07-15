@@ -15,7 +15,9 @@
     "mystery:schedule:today": "tsx scripts/mystery-cli.mts schedule:today",
     "mystery:coverage": "tsx scripts/mystery-cli.mts coverage",
     "mystery:bootstrap": "tsx scripts/mystery-cli.mts bootstrap",
-    "mystery:diagnostics": "tsx scripts/mystery-cli.mts diagnostics"
+    "mystery:diagnostics": "tsx scripts/mystery-cli.mts diagnostics",
+    "audit:daily-mystery-sources": "tsx scripts/mystery-cli.mts audit:sources",
+    "clean:daily-mystery-sources": "tsx scripts/mystery-cli.mts clean:sources"
   },
   "repository": {
     "type": "git",

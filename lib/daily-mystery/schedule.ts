@@ -1,13 +1,15 @@
 import "server-only";
 
 import { createHash } from "crypto";
-import type { MysteryContentItem, MysteryTargetType } from "@/lib/daily-mystery/types";
+import type { MysteryContentItem } from "@/lib/daily-mystery/types";
 import { MYSTERY_MIN_REPEAT_DAYS } from "@/lib/daily-mystery/types";
-import { DAILY_MYSTERY_SCHEDULABLE_TYPES } from "@/lib/daily-mystery/content-policy";
+import { isDailyMysterySchedulable } from "@/lib/daily-mystery/content-policy";
 import { ensureVerifiedSeedContent } from "@/lib/daily-mystery/bootstrap";
 import { collectMysteryDiagnostics, logMysteryDiagnostics } from "@/lib/daily-mystery/diagnostics";
 import { MysteryServiceError, MYSTERY_PUBLIC_UNAVAILABLE } from "@/lib/daily-mystery/errors";
 import {
+  deleteScheduleForDate,
+  getContentItemById,
   getScheduleEligibleContentItems,
   getScheduleForDate,
   listRecentScheduleContentIds,
@@ -22,70 +24,33 @@ function seededUnit(seed: string) {
   return hash.readUInt32BE(0) / 0xffffffff;
 }
 
-const SCHEDULE_CATEGORY_WEIGHTS: Record<MysteryTargetType, number> = {
-  champion: 60,
-  region: 25,
-  place: 15,
-  event: 0,
-  faction: 0,
-  artifact: 0,
-  species: 0,
-  legendary_npc: 0,
-  other: 0,
-};
-
-function pickWeightedCategory(seed: string) {
-  const entries = DAILY_MYSTERY_SCHEDULABLE_TYPES.map((category) => [
-    category,
-    SCHEDULE_CATEGORY_WEIGHTS[category],
-  ]) as Array<[MysteryTargetType, number]>;
-  const weighted = entries.filter(([, weight]) => weight > 0);
-  const total = weighted.reduce((sum, [, weight]) => sum + weight, 0);
-  let cursor = seededUnit(`${seed}:category`) * total;
-  for (const [category, weight] of weighted) {
-    cursor -= weight;
-    if (cursor <= 0) {
-      return category;
-    }
-  }
-  return weighted[0]![0];
-}
-
-function avoidConsecutiveCategory(
-  candidates: MysteryContentItem[],
-  recentContentIds: string[],
-  preferredCategory: MysteryTargetType,
-) {
-  if (recentContentIds.length === 0) {
-    return candidates;
+async function ensureValidScheduleForDate(scheduleDate: string) {
+  const existing = await getScheduleForDate(scheduleDate);
+  if (!existing) {
+    return null;
   }
 
-  const lastId = recentContentIds[recentContentIds.length - 1];
-  const lastItem = candidates.find((item) => item.id === lastId);
-  if (!lastItem) {
-    return candidates;
+  const content = await getContentItemById(existing.content_item_id);
+  if (content && isDailyMysterySchedulable(content)) {
+    return existing;
   }
 
-  const filtered = candidates.filter((item) => item.target_type !== lastItem.target_type);
-  if (filtered.length === 0) {
-    return candidates;
-  }
-
-  const preferred = filtered.filter((item) => item.target_type === preferredCategory);
-  return preferred.length > 0 ? preferred : filtered;
+  await deleteScheduleForDate(scheduleDate);
+  return null;
 }
 
 export async function ensureDailySchedule(date = new Date()) {
   const { scheduleDate } = getZonedDateParts(date);
-  const existing = await getScheduleForDate(scheduleDate);
-  if (existing) {
-    return existing;
+  const validExisting = await ensureValidScheduleForDate(scheduleDate);
+  if (validExisting) {
+    return validExisting;
   }
 
   await ensureVerifiedSeedContent();
 
   const approved = await getScheduleEligibleContentItems();
   if (approved.length === 0) {
+    console.info("[DAILY_MYSTERY_NO_ELIGIBLE_OFFICIAL_BIOGRAPHY]");
     const diagnostics = await collectMysteryDiagnostics();
     logMysteryDiagnostics(diagnostics, "ensureDailySchedule");
     throw new MysteryServiceError(
@@ -97,21 +62,14 @@ export async function ensureDailySchedule(date = new Date()) {
 
   const recent = await listRecentScheduleContentIds(MYSTERY_MIN_REPEAT_DAYS);
   const recentIds = new Set(recent.map((entry) => entry.content_item_id));
-  const recentOrderedIds = recent
-    .sort((a, b) => a.schedule_date.localeCompare(b.schedule_date))
-    .map((entry) => entry.content_item_id);
 
-  const preferredCategory = pickWeightedCategory(scheduleDate);
   let candidates = approved.filter((item) => !recentIds.has(item.id));
   if (candidates.length === 0) {
     candidates = approved;
   }
 
-  candidates = avoidConsecutiveCategory(candidates, recentOrderedIds, preferredCategory);
-  const categoryMatches = candidates.filter((item) => item.target_type === preferredCategory);
-  const pool = categoryMatches.length > 0 ? categoryMatches : candidates;
-  const index = Math.floor(seededUnit(`${scheduleDate}:item`) * pool.length);
-  const selected = pool[index]!;
+  const index = Math.floor(seededUnit(`${scheduleDate}:item`) * candidates.length);
+  const selected = candidates[index]!;
 
   return saveDailySchedule({
     schedule_date: scheduleDate,

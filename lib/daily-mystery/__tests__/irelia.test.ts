@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluateGuess } from "@/lib/daily-mystery/match";
 import { tokenizePassage, toPublicTokens } from "@/lib/daily-mystery/tokenize";
-import { IRELIA_PROTECTED_TERMS } from "@/lib/daily-mystery/__tests__/fixtures";
-import { IRELIA_TEST_PASSAGE } from "@/content/daily-mystery/seed-manifest";
+import { IRELIA_PROTECTED_TERMS, IRELIA_TEST_PASSAGE } from "@/lib/daily-mystery/__tests__/fixtures";
 
 function evaluate(guess: string, revealed: Set<string> = new Set()) {
   const { tokens } = tokenizePassage(IRELIA_TEST_PASSAGE, IRELIA_PROTECTED_TERMS);

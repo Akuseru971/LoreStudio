@@ -3,7 +3,7 @@ import "server-only";
 import { verifiedSeedManifest } from "@/content/daily-mystery/seed-manifest";
 import { collectMysteryDiagnostics, logMysteryDiagnostics } from "@/lib/daily-mystery/diagnostics";
 import type { ManualManifestEntry } from "@/lib/daily-mystery/importer/ddragon";
-import { importChampionCatalog } from "@/lib/daily-mystery/importer/ddragon";
+import { importOfficialChampionCatalog } from "@/lib/daily-mystery/importer/official-champion-page";
 import { precomputeContentEmbeddings } from "@/lib/daily-mystery/semantic";
 import { getUniqueLemmas, tokenizePassage } from "@/lib/daily-mystery/tokenize";
 import { insertSeedContentIfMissing } from "@/lib/daily-mystery/store";
@@ -65,7 +65,7 @@ export async function bootstrapMysteryProduction({
   }
 
   if (typeof importChampions === "number" && importChampions > 0) {
-    results.champions = await importChampionCatalog({
+    results.champions = await importOfficialChampionCatalog({
       limit: importChampions,
       autoApprove: autoApproveChampions,
     });

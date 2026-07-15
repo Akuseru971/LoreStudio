@@ -11,7 +11,12 @@ export type MysteryTargetType =
 
 export type MysteryReviewStatus = "draft" | "needs_review" | "approved" | "retired";
 
-export type MysterySourceType = "full_biography" | "official_blurb" | "official_page" | "manual_manifest";
+export type MysterySourceType =
+  | "full_biography"
+  | "official_blurb"
+  | "official_page"
+  | "manual_manifest"
+  | "official_champion_biography";
 
 export type MysteryProximityLevel = "close" | "warm" | "very_close" | null;
 
@@ -54,6 +59,7 @@ export type MysteryHintMetadata = {
   region_label?: string;
   period_label?: string;
   multiple_choice_options?: string[];
+  daily_mystery_ineligible?: boolean;
 };
 
 export type MysteryPuzzleToken = {

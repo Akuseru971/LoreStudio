@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { verifiedSeedManifest } from "@/content/daily-mystery/seed-manifest";
 import { isScheduleEligibleItem, filterScheduleEligibleItems } from "@/lib/daily-mystery/eligibility";
 import { normalizeLocale, localesMatch } from "@/lib/daily-mystery/locale";
-import { isOfficialDomain } from "@/lib/daily-mystery/official-source";
+import { isOfficialChampionBiographyUrl } from "@/lib/daily-mystery/content-policy";
 
 describe("locale normalization", () => {
   it("normalizes common locale aliases to en_US", () => {
@@ -42,20 +42,16 @@ describe("schedule eligibility", () => {
 });
 
 describe("verified seed manifest", () => {
-  it("contains at least 10 champions and 2 official location pages", () => {
+  it("contains at least 10 official champion biography seed entries", () => {
     const champions = verifiedSeedManifest.filter((entry) => entry.target_type === "champion");
-    const locations = verifiedSeedManifest.filter(
-      (entry) => entry.target_type === "region" || entry.target_type === "place",
-    );
     expect(champions.length).toBeGreaterThanOrEqual(10);
-    expect(locations.length).toBeGreaterThanOrEqual(2);
   });
 
   it("marks every seed entry as approved with official sources", () => {
     for (const entry of verifiedSeedManifest) {
       expect(entry.review_status).toBe("approved");
       expect(entry.source_text.trim().length).toBeGreaterThan(20);
-      expect(isOfficialDomain(entry.source_url)).toBe(true);
+      expect(isOfficialChampionBiographyUrl(entry.source_url)).toBe(true);
       expect(entry.protected_terms.length).toBeGreaterThan(0);
     }
   });

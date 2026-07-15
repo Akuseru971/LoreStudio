@@ -1,5 +1,6 @@
-import { IRELIA_TEST_PASSAGE } from "@/content/daily-mystery/seed-manifest";
 import type { MysteryContentItem } from "@/lib/daily-mystery/types";
+
+export const IRELIA_TEST_PASSAGE = `In the wake of the Noxian invasion, Irelia forged a new path for the people of Ionia. Swain's legions had carved through the province, yet Karma's teachings still echoed among the survivors. The Blade Dancer refused to let Noxus claim the spirit of her homeland.`;
 
 export const IRELIA_PROTECTED_TERMS = ["Irelia", "Irelia's", "Xan Irelia", "The Blade Dancer"];
 
@@ -12,9 +13,9 @@ export const ireliaTestContent: MysteryContentItem = {
   protected_terms: IRELIA_PROTECTED_TERMS,
   accepted_solution_aliases: ["the blade dancer", "xan irelia"],
   source_text: IRELIA_TEST_PASSAGE,
-  source_url: "https://ddragon.leagueoflegends.com/cdn/manifest/irelia-test.json",
-  source_domain: "ddragon.leagueoflegends.com",
-  source_type: "manual_manifest",
+  source_url: "https://www.leagueoflegends.com/en-us/champions/irelia/",
+  source_domain: "leagueoflegends.com",
+  source_type: "official_champion_biography",
   source_hash: "test-hash",
   riot_content_version: null,
   ddragon_version: null,

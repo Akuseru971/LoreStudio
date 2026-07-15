@@ -1,3 +1,4 @@
+import { auditDailyMysterySources, cleanDailyMysterySources } from "@/lib/daily-mystery/source-audit";
 import { bootstrapMysteryProduction, importVerifiedSeedManifest } from "@/lib/daily-mystery/bootstrap";
 import { collectMysteryDiagnostics, logMysteryDiagnostics } from "@/lib/daily-mystery/diagnostics";
 import { buildCoverageReport } from "@/lib/daily-mystery/importer/coverage";
@@ -43,9 +44,19 @@ export async function runMysteryCli(command: string | undefined) {
       console.log(JSON.stringify({ command, diagnostics }, null, 2));
       return;
     }
+    case "audit:sources": {
+      const report = await auditDailyMysterySources();
+      console.log(JSON.stringify({ command, report }, null, 2));
+      return;
+    }
+    case "clean:sources": {
+      const result = await cleanDailyMysterySources();
+      console.log(JSON.stringify({ command, result }, null, 2));
+      return;
+    }
     default:
       console.error(
-        "Usage: mystery-cli <seed:verified|import:champions|schedule:today|coverage|bootstrap|diagnostics>",
+        "Usage: mystery-cli <seed:verified|import:champions|schedule:today|coverage|bootstrap|diagnostics|audit:sources|clean:sources>",
       );
       process.exitCode = 1;
   }
