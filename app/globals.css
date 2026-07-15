@@ -2496,3 +2496,209 @@ button {
     font-size: 0.82rem;
   }
 }
+
+/* The Hidden Chronicle — Daily Mystery */
+.daily-mystery-shell {
+  position: relative;
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 1.25rem 1rem 6.5rem;
+}
+
+@media (min-width: 640px) {
+  .daily-mystery-shell {
+    padding: 2rem 1.5rem 4rem;
+  }
+}
+
+.daily-mystery-loading,
+.daily-mystery-error {
+  min-height: 50vh;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: #9baabd;
+}
+
+.daily-mystery-hero {
+  margin-bottom: 1.5rem;
+}
+
+.daily-mystery-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .daily-mystery-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 0.8fr);
+    align-items: start;
+  }
+}
+
+.daily-mystery-panel {
+  padding: 1.25rem 1rem;
+  border-radius: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .daily-mystery-panel {
+    padding: 1.75rem 1.5rem;
+  }
+}
+
+.chronicle-board {
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: clamp(1.15rem, 3.8vw, 1.45rem);
+  line-height: 1.85;
+  color: #f4ecd8;
+}
+
+.chronicle-paragraph {
+  margin: 0 0 1.1rem;
+}
+
+.chronicle-word {
+  margin-inline: 0.08em;
+}
+
+.chronicle-word.revealed {
+  color: #f7ebce;
+  text-shadow: 0 0 18px rgba(217, 189, 120, 0.12);
+}
+
+.chronicle-punctuation {
+  color: #d9c599;
+}
+
+.chronicle-placeholder {
+  display: inline-block;
+  vertical-align: baseline;
+  margin-inline: 0.12em;
+  min-width: 2ch;
+  height: 1.1em;
+  position: relative;
+}
+
+.chronicle-placeholder-bar {
+  display: block;
+  width: 100%;
+  height: 0.72em;
+  margin-top: 0.28em;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(217, 189, 120, 0.18), rgba(255, 255, 255, 0.08));
+}
+
+.chronicle-proximity-close .chronicle-placeholder-bar {
+  box-shadow: 0 0 0 1px rgba(217, 189, 120, 0.18);
+}
+
+.chronicle-proximity-warm .chronicle-placeholder-bar {
+  box-shadow: 0 0 0 1px rgba(217, 189, 120, 0.32), 0 0 12px rgba(217, 189, 120, 0.12);
+}
+
+.chronicle-proximity-very-close .chronicle-placeholder-bar {
+  box-shadow: 0 0 0 1px rgba(217, 189, 120, 0.5), 0 0 16px rgba(217, 189, 120, 0.2);
+}
+
+.daily-mystery-sidebar {
+  display: grid;
+  gap: 1rem;
+}
+
+.daily-mystery-input-wrap {
+  position: sticky;
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  padding: 1rem;
+  border-radius: 1.25rem;
+  z-index: 20;
+}
+
+.daily-mystery-input {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.28);
+  color: #f7ebce;
+  padding: 0.9rem 1rem;
+  outline: none;
+}
+
+.daily-mystery-input:focus {
+  border-color: rgba(217, 189, 120, 0.4);
+}
+
+.daily-mystery-submit {
+  margin-top: 0.75rem;
+  width: 100%;
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.daily-mystery-feedback {
+  min-height: 1.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: #b8c2d0;
+}
+
+.daily-mystery-hint-button,
+.daily-mystery-secondary-link,
+.daily-mystery-select {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.22);
+  color: #9baabd;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.daily-mystery-hint-button {
+  margin-top: 0.75rem;
+}
+
+.daily-mystery-secondary-link:hover,
+.daily-mystery-hint-button:hover {
+  color: #f7ebce;
+  border-color: rgba(217, 189, 120, 0.25);
+}
+
+.daily-mystery-victory {
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+}
+
+.daily-mystery-archive-card {
+  display: block;
+  padding: 1rem 1.1rem;
+  border-radius: 1.1rem;
+  text-decoration: none;
+}
+
+.daily-mystery-legal {
+  margin-top: 2rem;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: #6f7d92;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chronicle-placeholder-bar {
+    transition: none;
+  }
+}

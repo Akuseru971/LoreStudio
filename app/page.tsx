@@ -1,5 +1,6 @@
 "use client";
 
+import SiteHeader from "@/components/SiteHeader";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AmbientMusicPlayer from "@/components/AmbientMusicPlayer";
@@ -677,6 +678,7 @@ export default function Home() {
 
   return (
     <>
+      <SiteHeader />
       <AmbientMusicPlayer shouldPlay={shouldPlayAmbientMusic} normalVolume={ambientMusicVolume} />
       {step === "form" ? <RitualVideoPreloader /> : null}
 
