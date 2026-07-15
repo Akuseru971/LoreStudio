@@ -17,7 +17,12 @@
     "mystery:bootstrap": "tsx scripts/mystery-cli.mts bootstrap",
     "mystery:diagnostics": "tsx scripts/mystery-cli.mts diagnostics",
     "audit:daily-mystery-sources": "tsx scripts/mystery-cli.mts audit:sources",
-    "clean:daily-mystery-sources": "tsx scripts/mystery-cli.mts clean:sources"
+    "clean:daily-mystery-sources": "tsx scripts/mystery-cli.mts clean:sources",
+    "audit:daily-mystery-official-sources": "tsx scripts/mystery-cli.mts audit:official-sources",
+    "clean:daily-mystery-official-sources": "tsx scripts/mystery-cli.mts clean:official-sources",
+    "import:official-champion-biographies": "tsx scripts/mystery-cli.mts import:official-champion-biographies",
+    "schedule:daily-mystery": "tsx scripts/mystery-cli.mts schedule:daily-mystery",
+    "refresh:daily-mystery-official-sources": "tsx scripts/mystery-cli.mts refresh:official-sources"
   },
   "repository": {
     "type": "git",

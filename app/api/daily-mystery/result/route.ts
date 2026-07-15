@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getValidatedVictorySource } from "@/lib/daily-mystery/content-serving";
 import { getOrCreatePlayerId } from "@/lib/daily-mystery/player";
 import { resolvePuzzleByPublicId } from "@/lib/daily-mystery/service";
 import { getOrCreateSession, getPlayerStreak } from "@/lib/daily-mystery/store";
@@ -32,12 +33,14 @@ export async function GET(request: Request) {
       },
     ]);
 
+    const validatedSource = getValidatedVictorySource(content);
+
     return NextResponse.json({
       canonicalTitle: content.canonical_title,
       targetType: content.target_type,
       sourceText: content.source_text,
-      sourceUrl: content.source_url,
-      sourceDomain: content.source_domain,
+      sourceUrl: validatedSource.sourceUrl,
+      sourceDomain: validatedSource.sourceDomain,
       difficulty: content.difficulty,
       guessCount: session.guess_count,
       completionTimeMs: session.completion_time_ms,

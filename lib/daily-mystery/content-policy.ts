@@ -4,7 +4,7 @@ import { hashSourceText } from "@/lib/daily-mystery/tokenize";
 
 export const DAILY_MYSTERY_SCHEDULABLE_TYPES = ["champion"] as const;
 
-export const OFFICIAL_CHAMPION_PAGE_HOST = "leagueoflegends.com";
+export const OFFICIAL_CHAMPION_PAGE_HOST = "www.leagueoflegends.com";
 
 const DISALLOWED_SOURCE_HOST_PATTERNS = [
   /^ddragon\.leagueoflegends\.com$/i,
@@ -24,7 +24,15 @@ const DISALLOWED_SOURCE_URL_PATTERNS = [
 const OFFICIAL_CHAMPION_PAGE_PATH = /^\/en-us\/champions\/[a-z0-9]+\/?$/i;
 
 export function normalizeOfficialChampionHostname(hostname: string) {
-  return hostname.replace(/^www\./, "").toLowerCase();
+  return hostname.toLowerCase();
+}
+
+export function getSafeSourceHost(url: string) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "invalid";
+  }
 }
 
 export function isDisallowedDailyMysterySourceUrl(url: string) {
@@ -66,6 +74,9 @@ export function isOfficialChampionBiographyUrl(url: string) {
     }
     const host = normalizeOfficialChampionHostname(parsed.hostname);
     if (host !== OFFICIAL_CHAMPION_PAGE_HOST) {
+      return false;
+    }
+    if (parsed.search || parsed.hash) {
       return false;
     }
     return OFFICIAL_CHAMPION_PAGE_PATH.test(parsed.pathname) && parseOfficialChampionSlug(url) != null;

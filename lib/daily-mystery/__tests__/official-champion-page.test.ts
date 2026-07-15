@@ -6,6 +6,7 @@ describe("official champion page importer", () => {
   it("accepts only strict leagueoflegends.com champion biography URLs", () => {
     expect(isOfficialChampionBiographyUrl(buildOfficialChampionPageUrl("ahri"))).toBe(true);
     expect(parseOfficialChampionSlug("https://www.leagueoflegends.com/en-us/champions/ahri/")).toBe("ahri");
+    expect(isOfficialChampionBiographyUrl("https://leagueoflegends.com/en-us/champions/ahri/")).toBe(false);
     expect(isOfficialChampionBiographyUrl("https://ddragon.leagueoflegends.com/cdn/data/champion/Ahri.json")).toBe(
       false,
     );

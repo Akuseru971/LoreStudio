@@ -196,6 +196,7 @@ export async function upsertContentItem(item: Omit<MysteryContentItem, "id" | "i
 
   if (reviewStatus === "approved") {
     payload.approved_at = now;
+    payload.retired_at = null;
   }
 
   const { data, error } = await supabase

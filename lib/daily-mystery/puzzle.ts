@@ -12,6 +12,10 @@ export type BuiltPuzzle = {
 
 const puzzleCache = new Map<string, ReturnType<typeof tokenizePassage>>();
 
+export function clearDailyMysteryPuzzleCache() {
+  puzzleCache.clear();
+}
+
 export function buildPuzzleFromContent(content: MysteryContentItem) {
   const cacheKey = `${content.id}:${content.source_hash}`;
   let tokenized = puzzleCache.get(cacheKey);

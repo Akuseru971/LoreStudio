@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { MysteryContentItem, MysteryDailySchedule } from "@/lib/daily-mystery/types";
+import { assertDailyMysteryContentServable } from "@/lib/daily-mystery/content-serving";
 import { MysteryServiceError, MYSTERY_PUBLIC_UNAVAILABLE } from "@/lib/daily-mystery/errors";
 import { buildPublicPuzzleView } from "@/lib/daily-mystery/puzzle";
 import { getPuzzleNumber } from "@/lib/daily-mystery/schedule";
@@ -31,6 +32,7 @@ export async function resolveDailyPuzzle() {
       MYSTERY_PUBLIC_UNAVAILABLE,
     );
   }
+  assertDailyMysteryContentServable(content, schedule.puzzle_public_id);
   return { schedule, content, mode: "daily" as const };
 }
 
@@ -49,6 +51,7 @@ export async function resolveArchivePuzzle(slug: string) {
     locked_at: content.approved_at || content.imported_at,
   };
 
+  assertDailyMysteryContentServable(content, schedule.puzzle_public_id);
   return { schedule, content, mode: "archive" as const };
 }
 
@@ -68,6 +71,7 @@ export async function resolvePuzzleByPublicId(puzzlePublicId: string) {
     throw new Error("Chronicle content unavailable.");
   }
 
+  assertDailyMysteryContentServable(content, schedule.puzzle_public_id);
   return { schedule, content, mode: "daily" as const };
 }
 

@@ -71,6 +71,9 @@ export async function fetchOfficialChampionBiography(championSlug: string) {
   if (!extracted) {
     throw new Error(`Official biography text missing for ${championSlug}.`);
   }
+  if (extracted.sourceText.length < 120) {
+    throw new Error(`Official biography text too short for ${championSlug}.`);
+  }
 
   if (!isOfficialChampionBiographyUrl(sourceUrl)) {
     throw new Error(`Rejected non-allowlisted champion source URL for ${championSlug}.`);
@@ -117,7 +120,7 @@ export async function importChampionFromOfficialPage({
     accepted_solution_aliases: aliases,
     source_text: biography.sourceText,
     source_url: biography.sourceUrl,
-    source_domain: biography.sourceHost,
+    source_domain: "www.leagueoflegends.com",
     source_type: sourceType,
     source_hash: hashSourceText(biography.sourceText),
     riot_content_version: null,
@@ -129,6 +132,7 @@ export async function importChampionFromOfficialPage({
       category_label: "champion",
       region_label: regionTags[0],
       period_label: "A defining chapter in Runeterra's history.",
+      daily_mystery_ineligible: false,
     },
     review_status: reviewStatus,
   });
@@ -136,10 +140,9 @@ export async function importChampionFromOfficialPage({
   const { tokens } = tokenizePassage(item.source_text, item.protected_terms);
   await precomputeContentEmbeddings(item.id, getUniqueLemmas(tokens));
 
-  console.info("[DAILY_MYSTERY_OFFICIAL_BIO_IMPORTED]", {
-    championId: biography.championKey,
-    sourceHost: biography.sourceHost,
-    language: "en",
+  console.info("[OFFICIAL_CHAMPION_BIO_IMPORTED]", {
+    championSlug: biography.championSlug,
+    sourceHost: "www.leagueoflegends.com",
     sourceValidated: true,
   });
 
@@ -177,9 +180,9 @@ export async function importOfficialChampionCatalog({
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       report.rejected.push(`${champion.slug}: ${reason}`);
-      console.info("[DAILY_MYSTERY_OFFICIAL_BIO_SKIPPED]", {
-        championId: champion.slug,
-        reason,
+      console.info("[OFFICIAL_CHAMPION_BIO_SKIPPED]", {
+        championSlug: champion.slug,
+        safeReason: reason,
       });
     }
   }
