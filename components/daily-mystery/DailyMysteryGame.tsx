@@ -80,8 +80,10 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     async (options?: { isRetry?: boolean }) => {
       const requestId = ++requestIdRef.current;
       const startedAt = performance.now();
-      setLoadState(options?.isRetry ? "retrying" : "loading");
-      setError(null);
+      if (options?.isRetry) {
+        setLoadState("retrying");
+        setError(null);
+      }
       console.info("[DAILY_MYSTERY_CLIENT_LOAD_START]");
 
       const controller = new AbortController();
