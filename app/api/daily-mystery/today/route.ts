@@ -7,11 +7,25 @@ import { safeTrackServer } from "@/lib/safe-analytics-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const SLOW_TODAY_MS = 1000;
+
 export async function GET() {
+  const startedAt = Date.now();
+  let scheduleLookupMs = 0;
+  let puzzleLoadMs = 0;
+  let publicPayloadBuildMs = 0;
+
   try {
     const playerId = await getOrCreatePlayerId();
+
+    const scheduleStartedAt = Date.now();
     const { schedule, content, mode } = await resolveDailyPuzzle();
+    scheduleLookupMs = Date.now() - scheduleStartedAt;
+
+    const payloadStartedAt = Date.now();
     const payload = await buildPuzzlePayload({ playerId, schedule, content, mode });
+    publicPayloadBuildMs = Date.now() - payloadStartedAt;
+    puzzleLoadMs = scheduleLookupMs + publicPayloadBuildMs;
 
     safeTrackServer("daily_mystery_viewed", {
       mode,
@@ -23,14 +37,37 @@ export async function GET() {
       safeTrackServer("daily_mystery_started", { mode });
     }
 
+    const totalMs = Date.now() - startedAt;
+    console.info("[DAILY_MYSTERY_TODAY_TIMING]", {
+      totalMs,
+      scheduleLookupMs,
+      puzzleLoadMs,
+      publicPayloadBuildMs,
+    });
+    if (totalMs >= SLOW_TODAY_MS) {
+      console.warn("[DAILY_MYSTERY_TODAY_SLOW]", { totalMs });
+    }
+
     return NextResponse.json(payload);
   } catch (error) {
+    const totalMs = Date.now() - startedAt;
+    console.info("[DAILY_MYSTERY_TODAY_TIMING]", {
+      totalMs,
+      scheduleLookupMs,
+      puzzleLoadMs,
+      publicPayloadBuildMs,
+      failed: true,
+    });
+    if (totalMs >= SLOW_TODAY_MS) {
+      console.warn("[DAILY_MYSTERY_TODAY_SLOW]", { totalMs });
+    }
+
     if (error instanceof MysteryServiceError) {
       return NextResponse.json(
         {
           error: error.publicMessage,
           code: error.code,
-          retryable: error.code === "MYSTERY_NO_APPROVED_CONTENT",
+          retryable: error.code === "MYSTERY_NO_APPROVED_CONTENT" || error.code === "MYSTERY_SCHEDULE_UNAVAILABLE",
         },
         { status: 503 },
       );

@@ -5,6 +5,7 @@ import { checkGuessRateLimit } from "@/lib/daily-mystery/rate-limit";
 import { buildPublicPuzzleView, buildPuzzleFromContent } from "@/lib/daily-mystery/puzzle";
 import { resolvePuzzleByPublicId } from "@/lib/daily-mystery/service";
 import { computeSemanticProximity } from "@/lib/daily-mystery/semantic";
+import type { MysteryProximityLevel } from "@/lib/daily-mystery/types";
 import {
   getOrCreateSession,
   getPlayerStreak,
@@ -18,12 +19,45 @@ import { safeTrackServer } from "@/lib/safe-analytics-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const SEMANTIC_TIMEOUT_MS = 250;
+
 type GuessBody = {
   puzzlePublicId?: string;
   guess?: string;
 };
 
+function highestProximityLevel(updates: Record<string, MysteryProximityLevel>) {
+  const rank = { close: 1, warm: 2, very_close: 3 } as const;
+  let best: MysteryProximityLevel = null;
+  for (const level of Object.values(updates)) {
+    if (!level) {
+      continue;
+    }
+    if (!best || rank[level] > rank[best]) {
+      best = level;
+    }
+  }
+  return best ?? "none";
+}
+
+async function computeSemanticProximityWithTimeout(
+  params: Parameters<typeof computeSemanticProximity>[0],
+) {
+  try {
+    return await Promise.race([
+      computeSemanticProximity(params),
+      new Promise<Record<string, MysteryProximityLevel>>((resolve) => {
+        setTimeout(() => resolve({}), SEMANTIC_TIMEOUT_MS);
+      }),
+    ]);
+  } catch {
+    return {};
+  }
+}
+
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+
   try {
     const playerId = await getOrCreatePlayerId();
     if (!checkGuessRateLimit(playerId, MYSTERY_MAX_GUESSES_PER_MINUTE)) {
@@ -41,7 +75,12 @@ export async function POST(request: Request) {
     const { schedule, content, mode } = await resolvePuzzleByPublicId(puzzlePublicId);
     const session = await getOrCreateSession(playerId, puzzlePublicId, mode);
     if (session.is_solved) {
-      return NextResponse.json({ isSolved: true, feedback: "This Chronicle has already been solved." });
+      return NextResponse.json({
+        status: "won",
+        isCorrectAnswer: true,
+        isSolved: true,
+        feedback: "This Chronicle has already been solved.",
+      });
     }
 
     const { tokens } = buildPuzzleFromContent(content);
@@ -58,7 +97,7 @@ export async function POST(request: Request) {
 
     let proximityUpdates = result.proximityUpdates;
     if (result.isAbsent && !result.isCorrect) {
-      const semanticUpdates = await computeSemanticProximity({
+      const semanticUpdates = await computeSemanticProximityWithTimeout({
         contentItemId: content.id,
         guessLemma: guess.toLowerCase(),
         tokens,
@@ -75,8 +114,9 @@ export async function POST(request: Request) {
     }
 
     const nextGuessCount = session.guess_count + 1;
-    const completedAt = result.isCorrect ? new Date().toISOString() : session.completed_at;
-    const completionTimeMs = result.isCorrect
+    const isVictory = result.isCorrect;
+    const completedAt = isVictory ? new Date().toISOString() : session.completed_at;
+    const completionTimeMs = isVictory
       ? Date.now() - new Date(session.started_at).getTime()
       : session.completion_time_ms;
 
@@ -85,14 +125,35 @@ export async function POST(request: Request) {
       revealed_token_ids: [...revealed],
       token_proximity: proximityUpdates,
       guess_count: nextGuessCount,
-      is_solved: result.isCorrect,
+      is_solved: isVictory,
       completed_at: completedAt,
       completion_time_ms: completionTimeMs,
     });
 
+    const processingMs = Date.now() - startedAt;
+    const semanticLevel = highestProximityLevel(proximityUpdates);
+
+    console.info("[DAILY_MYSTERY_GUESS_PROCESSED]", {
+      puzzleId: puzzlePublicId,
+      normalizedGuessLength: guess.trim().length,
+      exactAnswerMatch: isVictory,
+      revealedCount: result.revealedTokenIds.length,
+      semanticLevel,
+      gameStatus: isVictory ? "won" : "playing",
+      processingMs,
+    });
+
+    if (isVictory) {
+      console.info("[DAILY_MYSTERY_VICTORY_CONFIRMED]", {
+        puzzleId: puzzlePublicId,
+        guessCount: nextGuessCount,
+        processingMs,
+      });
+    }
+
     safeTrackServer("mystery_guess_submitted", {
       mode,
-      isCorrect: result.isCorrect,
+      isCorrect: isVictory,
       revealedCount: result.revealedTokenIds.length,
       guessCount: nextGuessCount,
     });
@@ -104,7 +165,7 @@ export async function POST(request: Request) {
       });
     }
 
-    if (result.isCorrect) {
+    if (isVictory) {
       safeTrackServer("mystery_solved", {
         mode,
         guessCount: nextGuessCount,
@@ -125,7 +186,9 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json({
-      isCorrect: result.isCorrect,
+      status: isVictory ? "won" : "playing",
+      isCorrectAnswer: isVictory,
+      isCorrect: isVictory,
       isAbsent: result.isAbsent,
       feedback: result.feedback,
       revealedTokenIds: result.revealedTokenIds,
@@ -136,6 +199,7 @@ export async function POST(request: Request) {
         return acc;
       }, {}),
       proximityUpdates,
+      semanticProximity: semanticLevel,
       guessCount: updated.guess_count,
       isSolved: updated.is_solved,
       tokens: publicTokens,

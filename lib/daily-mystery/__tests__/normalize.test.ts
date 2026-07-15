@@ -45,12 +45,11 @@ describe("stripPossessive", () => {
 });
 
 describe("isSolutionGuess", () => {
-  it("accepts canonical title and aliases", () => {
-    expect(
-      isSolutionGuess("irelia", "Irelia", ["the blade dancer"], ["Irelia", "The Blade Dancer"]),
-    ).toBe(true);
-    expect(
-      isSolutionGuess("the blade dancer", "Irelia", ["the blade dancer"], ["The Blade Dancer"]),
-    ).toBe(true);
+  it("accepts canonical title and explicit aliases only", () => {
+    expect(isSolutionGuess("irelia", "Irelia", ["the blade dancer"])).toBe(true);
+    expect(isSolutionGuess("the blade dancer", "Irelia", ["the blade dancer"])).toBe(true);
+    expect(isSolutionGuess("blade", "Irelia", ["the blade dancer"])).toBe(false);
+    expect(isSolutionGuess("dancer", "Irelia", ["the blade dancer"])).toBe(false);
+    expect(isSolutionGuess("swain", "Irelia", ["the blade dancer"])).toBe(false);
   });
 });

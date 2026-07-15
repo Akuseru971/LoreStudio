@@ -222,34 +222,34 @@ export function buildProtectedTermSet(terms: string[]) {
   return set;
 }
 
+export function buildAcceptedAnswerSet(canonicalTitle: string, aliases: string[]) {
+  const terms = new Set<string>();
+  for (const value of [canonicalTitle, ...aliases]) {
+    const normalized = normalizeGuessToken(value);
+    if (!normalized) {
+      continue;
+    }
+    terms.add(normalized);
+    terms.add(stripPossessive(normalized));
+  }
+  return terms;
+}
+
+/** @deprecated Use buildAcceptedAnswerSet */
 export function buildSolutionAliasSet(
   canonicalTitle: string,
   aliases: string[],
-  protectedTerms: string[],
+  _protectedTerms?: string[],
 ) {
-  const terms = new Set<string>();
-  for (const value of [canonicalTitle, ...aliases, ...protectedTerms]) {
-    const normalized = normalizeGuessToken(value);
-    if (normalized) {
-      terms.add(normalized);
-      terms.add(stripPossessive(normalized));
-    }
-  }
-  return terms;
+  return buildAcceptedAnswerSet(canonicalTitle, aliases);
 }
 
 export function isSolutionGuess(
   guessNormalized: string,
   canonicalTitle: string,
   aliases: string[],
-  protectedTerms: string[],
 ) {
-  const solutionSet = buildSolutionAliasSet(canonicalTitle, aliases, protectedTerms);
+  const acceptedAnswers = buildAcceptedAnswerSet(canonicalTitle, aliases);
   const stripped = stripPossessive(guessNormalized);
-  return solutionSet.has(guessNormalized) || solutionSet.has(stripped);
-}
-
-export function isProtectedTermGuess(guessNormalized: string, protectedSet: Set<string>) {
-  const stripped = stripPossessive(guessNormalized);
-  return protectedSet.has(guessNormalized) || protectedSet.has(stripped);
+  return acceptedAnswers.has(guessNormalized) || acceptedAnswers.has(stripped);
 }

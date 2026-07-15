@@ -104,24 +104,20 @@ export async function ensureDailySchedule(date = new Date()) {
 }
 
 export async function getPuzzleNumber(scheduleDate: string) {
-  const { data, error } = await (async () => {
-    const { getSupabaseServerClient } = await import("@/lib/supabase/server");
-    const supabase = getSupabaseServerClient();
-    if (!supabase) {
-      return { data: null, error: new Error("Supabase is not configured.") };
-    }
-    return supabase
-      .from("mystery_daily_schedule")
-      .select("schedule_date")
-      .lte("schedule_date", scheduleDate)
-      .order("schedule_date", { ascending: true });
-  })();
+  const { getSupabaseServerClient } = await import("@/lib/supabase/server");
+  const supabase = getSupabaseServerClient();
+  if (!supabase) {
+    return 1;
+  }
+
+  const { count, error } = await supabase
+    .from("mystery_daily_schedule")
+    .select("schedule_date", { count: "exact", head: true })
+    .lte("schedule_date", scheduleDate);
 
   if (error) {
     throw error;
   }
 
-  const rows = data || [];
-  const index = rows.findIndex((row) => String(row.schedule_date) === scheduleDate);
-  return index >= 0 ? index + 1 : rows.length + 1;
+  return count && count > 0 ? count : 1;
 }

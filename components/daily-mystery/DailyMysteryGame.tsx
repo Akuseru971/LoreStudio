@@ -7,6 +7,8 @@ import ChronicleBoard from "@/components/daily-mystery/ChronicleBoard";
 import type { MysteryPublicToken } from "@/lib/daily-mystery/types";
 import { safeTrackClient } from "@/lib/safe-analytics-client";
 
+type LoadState = "loading" | "ready" | "empty" | "error" | "retrying";
+
 type PuzzlePayload = {
   puzzlePublicId: string;
   scheduleDate: string;
@@ -50,14 +52,17 @@ type DailyMysteryGameProps = {
   archiveSlug?: string;
 };
 
+const CLIENT_LOAD_TIMEOUT_MS = 10_000;
+
 export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }: DailyMysteryGameProps) {
   const reduceMotion = useReducedMotion();
   const inputRef = useRef<HTMLInputElement>(null);
+  const requestIdRef = useRef(0);
   const [puzzle, setPuzzle] = useState<PuzzlePayload | null>(null);
   const [result, setResult] = useState<ResultPayload | null>(null);
   const [guess, setGuess] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
   const [submitting, setSubmitting] = useState(false);
   const [newlyRevealedIds, setNewlyRevealedIds] = useState<string[]>([]);
   const [hintMessage, setHintMessage] = useState<string | null>(null);
@@ -71,40 +76,17 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     }
   }, []);
 
-  const loadPuzzle = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response =
-        initialMode === "archive" && archiveSlug
-          ? await fetch("/api/daily-mystery/archive/start", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ slug: archiveSlug }),
-            })
-          : await fetch("/api/daily-mystery/today");
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "The Chronicle is being prepared. Please return shortly.");
-      }
-
-      setPuzzle(data);
-      if (data.session.isSolved) {
-        await loadResult(data.puzzlePublicId);
-      }
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "The Chronicle is being prepared. Please return shortly.");
-    } finally {
-      setLoading(false);
-    }
-  }, [archiveSlug, initialMode, loadResult]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function bootstrap() {
+  const fetchPuzzle = useCallback(
+    async (options?: { isRetry?: boolean }) => {
+      const requestId = ++requestIdRef.current;
+      const startedAt = performance.now();
+      setLoadState(options?.isRetry ? "retrying" : "loading");
       setError(null);
+      console.info("[DAILY_MYSTERY_CLIENT_LOAD_START]");
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), CLIENT_LOAD_TIMEOUT_MS);
+
       try {
         const response =
           initialMode === "archive" && archiveSlug
@@ -112,43 +94,58 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ slug: archiveSlug }),
+                signal: controller.signal,
               })
-            : await fetch("/api/daily-mystery/today");
+            : await fetch("/api/daily-mystery/today", { signal: controller.signal });
 
         const data = await response.json();
-        if (cancelled) {
+        if (requestId !== requestIdRef.current) {
           return;
         }
+
         if (!response.ok) {
-          throw new Error(data.error || "Unable to load Chronicle.");
+          throw new Error(data.error || "The Chronicle is being prepared. Please return shortly.");
         }
 
         setPuzzle(data);
-        if (data.session.isSolved) {
-          const resultResponse = await fetch(
-            `/api/daily-mystery/result?puzzlePublicId=${encodeURIComponent(data.puzzlePublicId)}`,
-          );
-          const resultData = await resultResponse.json();
-          if (!cancelled && resultResponse.ok) {
-            setResult(resultData);
-          }
+        setLoadState("ready");
+        console.info("[DAILY_MYSTERY_CLIENT_LOAD_READY]", {
+          elapsedMs: Math.round(performance.now() - startedAt),
+        });
+
+        if (data.session?.isSolved) {
+          await loadResult(data.puzzlePublicId);
         }
       } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "The Chronicle is being prepared. Please return shortly.");
+        if (requestId !== requestIdRef.current) {
+          return;
         }
+        const safeReason =
+          loadError instanceof DOMException && loadError.name === "AbortError"
+            ? "timeout"
+            : loadError instanceof Error
+              ? loadError.message
+              : "unknown";
+        console.info("[DAILY_MYSTERY_CLIENT_LOAD_FAILED]", {
+          elapsedMs: Math.round(performance.now() - startedAt),
+          safeReason,
+        });
+        setError(
+          safeReason === "timeout"
+            ? "The Chronicle is taking longer than expected. Please try again."
+            : safeReason,
+        );
+        setLoadState("error");
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        window.clearTimeout(timeoutId);
       }
-    }
+    },
+    [archiveSlug, initialMode, loadResult],
+  );
 
-    void bootstrap();
-    return () => {
-      cancelled = true;
-    };
-  }, [archiveSlug, initialMode]);
+  useEffect(() => {
+    void fetchPuzzle();
+  }, [fetchPuzzle]);
 
   const submitGuess = useCallback(async () => {
     if (!puzzle || !guess.trim() || submitting) {
@@ -174,6 +171,8 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
         throw new Error(data.error || "Guess failed.");
       }
 
+      const isVictory = data.status === "won" && data.isCorrectAnswer === true;
+
       setPuzzle((current) =>
         current
           ? {
@@ -183,7 +182,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
               session: {
                 ...current.session,
                 guessCount: data.guessCount,
-                isSolved: data.isSolved,
+                isSolved: isVictory,
                 completionTimeMs: data.completionTimeMs,
               },
             }
@@ -194,7 +193,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       setFeedback(data.feedback);
       setGuess("");
 
-      if (data.isSolved) {
+      if (isVictory) {
         await loadResult(puzzle.puzzlePublicId);
       }
     } catch (submitError) {
@@ -261,15 +260,19 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     }
   }, [puzzle?.mode, result]);
 
-  if (loading) {
-    return <div className="daily-mystery-shell daily-mystery-loading">Summoning today&apos;s Chronicle...</div>;
+  if (loadState === "loading" || loadState === "retrying") {
+    return (
+      <div className="daily-mystery-shell daily-mystery-loading">
+        {loadState === "retrying" ? "Returning to today&apos;s Chronicle..." : "Summoning today&apos;s Chronicle..."}
+      </div>
+    );
   }
 
-  if (error || !puzzle) {
+  if (loadState === "error" || !puzzle) {
     return (
       <div className="daily-mystery-shell daily-mystery-error">
         <p>{error || "The Chronicle is being prepared. Please return shortly."}</p>
-        <button type="button" className="gold-button mt-4 rounded-2xl px-5 py-3" onClick={() => void loadPuzzle()}>
+        <button type="button" className="gold-button mt-4 rounded-2xl px-5 py-3" onClick={() => void fetchPuzzle({ isRetry: true })}>
           Retry
         </button>
       </div>
@@ -348,7 +351,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
           ) : null}
 
           <AnimatePresence>
-            {result ? (
+            {result && puzzle.session.isSolved ? (
               <motion.div
                 className="glass-panel daily-mystery-victory"
                 initial={reduceMotion ? false : { opacity: 0, y: 16 }}

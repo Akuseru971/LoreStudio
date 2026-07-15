@@ -1,7 +1,5 @@
 import type { MysteryPuzzleToken, MysteryProximityLevel } from "@/lib/daily-mystery/types";
 import {
-  buildProtectedTermSet,
-  isProtectedTermGuess,
   isSolutionGuess,
   lemmatizeEnglish,
   normalizeGuessToken,
@@ -110,31 +108,11 @@ export function evaluateGuess({
     };
   }
 
-  const protectedSet = buildProtectedTermSet(protectedTerms);
-
-  if (isSolutionGuess(normalized, canonicalTitle, acceptedAliases, protectedTerms)) {
+  if (isSolutionGuess(normalized, canonicalTitle, acceptedAliases)) {
     const protectedTokenIds = tokens.filter((token) => token.isProtected).map((token) => token.id);
     const revealedTexts: Record<string, string> = {};
     for (const token of tokens) {
       if (token.type === "word" && token.wordText) {
-        revealedTexts[token.id] = token.wordText;
-      }
-    }
-    return {
-      isCorrect: true,
-      isAbsent: false,
-      revealedTokenIds: protectedTokenIds,
-      revealedTexts,
-      proximityUpdates: {},
-      feedback: "The Chronicle yields its hidden subject.",
-    };
-  }
-
-  if (isProtectedTermGuess(normalized, protectedSet)) {
-    const protectedTokenIds = tokens.filter((token) => token.isProtected).map((token) => token.id);
-    const revealedTexts: Record<string, string> = {};
-    for (const token of tokens) {
-      if (token.isProtected && token.wordText) {
         revealedTexts[token.id] = token.wordText;
       }
     }

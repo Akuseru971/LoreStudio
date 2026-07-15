@@ -3,10 +3,7 @@ import "server-only";
 import type { MysteryContentItem, MysteryDailySchedule } from "@/lib/daily-mystery/types";
 import { MysteryServiceError, MYSTERY_PUBLIC_UNAVAILABLE } from "@/lib/daily-mystery/errors";
 import { buildPublicPuzzleView } from "@/lib/daily-mystery/puzzle";
-import {
-  ensureDailySchedule,
-  getPuzzleNumber,
-} from "@/lib/daily-mystery/schedule";
+import { getPuzzleNumber } from "@/lib/daily-mystery/schedule";
 import { getTodayScheduleDate } from "@/lib/daily-mystery/schedule-date";
 import {
   getContentItemById,
@@ -14,10 +11,18 @@ import {
   getOrCreateSession,
   getPlayerStreak,
   getScheduleByPublicId,
+  getScheduleForDate,
 } from "@/lib/daily-mystery/store";
 
 export async function resolveDailyPuzzle() {
-  const schedule = await ensureDailySchedule();
+  const schedule = await getScheduleForDate(getTodayScheduleDate());
+  if (!schedule) {
+    throw new MysteryServiceError(
+      "MYSTERY_SCHEDULE_UNAVAILABLE",
+      "No daily schedule exists for today.",
+      MYSTERY_PUBLIC_UNAVAILABLE,
+    );
+  }
   const content = await getContentItemById(schedule.content_item_id);
   if (!content || content.review_status !== "approved" || content.retired_at) {
     throw new MysteryServiceError(
@@ -77,16 +82,17 @@ export async function buildPuzzlePayload({
   content: MysteryContentItem;
   mode: "daily" | "archive";
 }) {
-  const session = await getOrCreateSession(playerId, schedule.puzzle_public_id, mode);
-  const streak = mode === "daily" ? await getPlayerStreak(playerId) : null;
+  const [session, streak, puzzleNumber] = await Promise.all([
+    getOrCreateSession(playerId, schedule.puzzle_public_id, mode),
+    mode === "daily" ? getPlayerStreak(playerId) : Promise.resolve(null),
+    mode === "daily" ? getPuzzleNumber(schedule.schedule_date) : Promise.resolve(null),
+  ]);
+
   const { paragraphTokenIds, publicTokens } = buildPublicPuzzleView(
     content,
     session.revealed_token_ids,
     session.token_proximity,
   );
-
-  const puzzleNumber =
-    mode === "daily" ? await getPuzzleNumber(schedule.schedule_date) : null;
 
   const categoryRevealed = session.hints_used.includes("category");
 
