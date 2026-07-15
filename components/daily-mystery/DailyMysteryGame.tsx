@@ -76,6 +76,27 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     }
   }, []);
 
+  const performPuzzleFetch = useCallback(
+    async (signal: AbortSignal) => {
+      const response =
+        initialMode === "archive" && archiveSlug
+          ? await fetch("/api/daily-mystery/archive/start", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ slug: archiveSlug }),
+              signal,
+            })
+          : await fetch("/api/daily-mystery/today", { signal });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "The Chronicle is being prepared. Please return shortly.");
+      }
+      return data as PuzzlePayload;
+    },
+    [archiveSlug, initialMode],
+  );
+
   const fetchPuzzle = useCallback(
     async (options?: { isRetry?: boolean }) => {
       const requestId = ++requestIdRef.current;
@@ -90,23 +111,9 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       const timeoutId = window.setTimeout(() => controller.abort(), CLIENT_LOAD_TIMEOUT_MS);
 
       try {
-        const response =
-          initialMode === "archive" && archiveSlug
-            ? await fetch("/api/daily-mystery/archive/start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ slug: archiveSlug }),
-                signal: controller.signal,
-              })
-            : await fetch("/api/daily-mystery/today", { signal: controller.signal });
-
-        const data = await response.json();
+        const data = await performPuzzleFetch(controller.signal);
         if (requestId !== requestIdRef.current) {
           return;
-        }
-
-        if (!response.ok) {
-          throw new Error(data.error || "The Chronicle is being prepared. Please return shortly.");
         }
 
         setPuzzle(data);
@@ -142,12 +149,62 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
         window.clearTimeout(timeoutId);
       }
     },
-    [archiveSlug, initialMode, loadResult],
+    [loadResult, performPuzzleFetch],
   );
 
   useEffect(() => {
-    void fetchPuzzle();
-  }, [fetchPuzzle]);
+    let cancelled = false;
+    const requestId = ++requestIdRef.current;
+    const startedAt = performance.now();
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), CLIENT_LOAD_TIMEOUT_MS);
+    console.info("[DAILY_MYSTERY_CLIENT_LOAD_START]");
+
+    void (async () => {
+      try {
+        const data = await performPuzzleFetch(controller.signal);
+        if (cancelled || requestId !== requestIdRef.current) {
+          return;
+        }
+        setPuzzle(data);
+        setLoadState("ready");
+        console.info("[DAILY_MYSTERY_CLIENT_LOAD_READY]", {
+          elapsedMs: Math.round(performance.now() - startedAt),
+        });
+        if (data.session?.isSolved) {
+          await loadResult(data.puzzlePublicId);
+        }
+      } catch (loadError) {
+        if (cancelled || requestId !== requestIdRef.current) {
+          return;
+        }
+        const safeReason =
+          loadError instanceof DOMException && loadError.name === "AbortError"
+            ? "timeout"
+            : loadError instanceof Error
+              ? loadError.message
+              : "unknown";
+        console.info("[DAILY_MYSTERY_CLIENT_LOAD_FAILED]", {
+          elapsedMs: Math.round(performance.now() - startedAt),
+          safeReason,
+        });
+        setError(
+          safeReason === "timeout"
+            ? "The Chronicle is taking longer than expected. Please try again."
+            : safeReason,
+        );
+        setLoadState("error");
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadResult, performPuzzleFetch]);
 
   const submitGuess = useCallback(async () => {
     if (!puzzle || !guess.trim() || submitting) {
