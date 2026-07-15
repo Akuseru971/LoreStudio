@@ -42,13 +42,13 @@ describe("schedule eligibility", () => {
 });
 
 describe("verified seed manifest", () => {
-  it("contains at least 10 champions, 2 regions and 2 events", () => {
+  it("contains at least 10 champions and 2 official location pages", () => {
     const champions = verifiedSeedManifest.filter((entry) => entry.target_type === "champion");
-    const regions = verifiedSeedManifest.filter((entry) => entry.target_type === "region");
-    const events = verifiedSeedManifest.filter((entry) => entry.target_type === "event");
+    const locations = verifiedSeedManifest.filter(
+      (entry) => entry.target_type === "region" || entry.target_type === "place",
+    );
     expect(champions.length).toBeGreaterThanOrEqual(10);
-    expect(regions.length).toBeGreaterThanOrEqual(2);
-    expect(events.length).toBeGreaterThanOrEqual(2);
+    expect(locations.length).toBeGreaterThanOrEqual(2);
   });
 
   it("marks every seed entry as approved with official sources", () => {

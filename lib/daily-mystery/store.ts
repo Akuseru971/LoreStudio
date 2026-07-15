@@ -3,6 +3,7 @@ import "server-only";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { normalizeLocale, localesMatch } from "@/lib/daily-mystery/locale";
 import { isScheduleEligibleItem } from "@/lib/daily-mystery/eligibility";
+import { isDailyMysterySchedulable, isDailyMysterySeedEntry } from "@/lib/daily-mystery/content-policy";
 import { getTodayScheduleDate } from "@/lib/daily-mystery/schedule-date";
 import { hashSourceText } from "@/lib/daily-mystery/tokenize";
 import type { ManualManifestEntry } from "@/lib/daily-mystery/importer/ddragon";
@@ -77,7 +78,9 @@ function mapSessionRow(row: Record<string, unknown>): MysteryPlayerSession {
 
 export async function getMysteryContentDiagnostics() {
   const supabase = requireSupabase();
-  const { data, error } = await supabase.from(CONTENT_TABLE).select("review_status, locale, retired_at");
+  const { data, error } = await supabase
+    .from(CONTENT_TABLE)
+    .select("review_status, locale, retired_at, target_type, source_type, source_url, source_text");
 
   if (error) {
     throw new Error(error.message);
@@ -95,7 +98,17 @@ export async function getMysteryContentDiagnostics() {
     const locale = normalizeLocale(String(row.locale ?? "en_US"));
     byLocale[locale] = (byLocale[locale] ?? 0) + 1;
 
-    if (status === "approved" && row.retired_at == null) {
+    if (
+      isDailyMysterySchedulable({
+        review_status: status as MysteryReviewStatus,
+        retired_at: row.retired_at ? String(row.retired_at) : null,
+        locale: String(row.locale ?? "en_US"),
+        target_type: row.target_type as MysteryContentItem["target_type"],
+        source_type: row.source_type as MysteryContentItem["source_type"],
+        source_url: String(row.source_url ?? ""),
+        source_text: String(row.source_text ?? ""),
+      })
+    ) {
       eligibleForScheduling += 1;
     }
   }
@@ -129,7 +142,7 @@ export async function getApprovedContentItems(locale = "en_US") {
 
 export async function getScheduleEligibleContentItems(locale = "en_US") {
   const items = await getApprovedContentItems(locale);
-  return items.filter((item) => localesMatch(item.locale, locale));
+  return items.filter((item) => localesMatch(item.locale, locale) && isDailyMysterySchedulable(item));
 }
 
 export async function getContentItemById(id: string) {
@@ -154,6 +167,24 @@ export async function upsertContentItem(item: Omit<MysteryContentItem, "id" | "i
   const supabase = requireSupabase();
   const now = new Date().toISOString();
   const reviewStatus = item.review_status;
+
+  if (
+    reviewStatus === "approved" &&
+    !isDailyMysterySchedulable({
+      review_status: reviewStatus,
+      retired_at: null,
+      locale: item.locale,
+      target_type: item.target_type,
+      source_type: item.source_type,
+      source_url: item.source_url,
+      source_text: item.source_text,
+    })
+  ) {
+    throw new Error(
+      "Only approved official English champion biographies and location pages are eligible for Daily Mystery.",
+    );
+  }
+
   const payload: Record<string, unknown> = {
     ...item,
     locale: normalizeLocale(item.locale),
@@ -189,6 +220,17 @@ export async function insertSeedContentIfMissing(entry: ManualManifestEntry) {
 
   if (!isOfficialDomain(entry.source_url)) {
     throw new Error(`Rejected non-official source URL for ${entry.slug}`);
+  }
+
+  const seedCandidate = {
+    target_type: entry.target_type,
+    source_type: entry.source_type,
+    source_url: entry.source_url,
+    locale: entry.locale ?? "en_US",
+    source_text: entry.source_text,
+  };
+  if (!isDailyMysterySeedEntry(seedCandidate)) {
+    throw new Error(`Seed entry ${entry.slug} is not an official English champion biography or location page.`);
   }
 
   const supabase = requireSupabase();

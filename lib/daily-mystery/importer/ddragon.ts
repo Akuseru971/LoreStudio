@@ -75,13 +75,13 @@ export async function importChampionFromDDragon({
 }) {
   const version = await fetchDDragonVersion();
   const champion = await fetchDDragonChampionDetail(version, championId, locale);
-  const sourceText = champion.lore?.trim() || champion.blurb?.trim();
+  const sourceText = champion.lore?.trim();
   if (!sourceText) {
-    throw new Error(`Champion ${championId} has no official lore or blurb.`);
+    throw new Error(`Champion ${championId} has no official English biography.`);
   }
 
   const sourceUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/data/${locale}/champion/${championId}.json`;
-  const sourceType: MysterySourceType = champion.lore?.trim() ? "full_biography" : "official_blurb";
+  const sourceType: MysterySourceType = "full_biography";
   const protectedTerms = buildChampionProtectedTerms(champion.name, aliases);
   const slug = `champion-${champion.id.toLowerCase()}`;
 
@@ -141,7 +141,7 @@ export async function importChampionCatalog({
   for (const champion of selected) {
     try {
       const detail = await fetchDDragonChampionDetail(version, champion.id);
-      const sourceText = detail.lore?.trim() || detail.blurb?.trim();
+      const sourceText = detail.lore?.trim();
       if (!sourceText) {
         report.missing.push(champion.id);
         continue;

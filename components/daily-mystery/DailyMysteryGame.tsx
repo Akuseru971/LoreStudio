@@ -67,6 +67,8 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
   const [newlyRevealedIds, setNewlyRevealedIds] = useState<string[]>([]);
   const [hintMessage, setHintMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [victoryAnimating, setVictoryAnimating] = useState(false);
+  const [victoryAnswer, setVictoryAnswer] = useState<string | null>(null);
 
   const loadResult = useCallback(async (puzzlePublicId: string) => {
     const response = await fetch(`/api/daily-mystery/result?puzzlePublicId=${encodeURIComponent(puzzlePublicId)}`);
@@ -214,6 +216,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     setSubmitting(true);
     setFeedback(null);
     setNewlyRevealedIds([]);
+    const submittedGuess = guess.trim();
 
     try {
       const response = await fetch("/api/daily-mystery/guess", {
@@ -253,7 +256,16 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       setGuess("");
 
       if (isVictory) {
-        await loadResult(puzzle.puzzlePublicId);
+        setVictoryAnswer(submittedGuess);
+        setVictoryAnimating(true);
+        const victoryDelay = reduceMotion ? 120 : 1600;
+        await Promise.all([
+          loadResult(puzzle.puzzlePublicId),
+          new Promise<void>((resolve) => {
+            window.setTimeout(resolve, victoryDelay);
+          }),
+        ]);
+        setVictoryAnimating(false);
       }
     } catch (submitError) {
       setFeedback(submitError instanceof Error ? submitError.message : "Guess failed.");
@@ -261,7 +273,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       setSubmitting(false);
       inputRef.current?.focus();
     }
-  }, [guess, loadResult, puzzle, submitting]);
+  }, [guess, loadResult, puzzle, reduceMotion, submitting]);
 
   const requestHint = useCallback(async () => {
     if (!puzzle || puzzle.session.isSolved) {
@@ -364,6 +376,8 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
             tokens={puzzle.tokens}
             paragraphTokenIds={puzzle.paragraphTokenIds}
             newlyRevealedIds={newlyRevealedIds}
+            victoryAnimating={victoryAnimating}
+            victoryAnswer={victoryAnswer}
           />
         </section>
 
@@ -410,7 +424,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
           ) : null}
 
           <AnimatePresence>
-            {result && puzzle.session.isSolved ? (
+            {result && puzzle.session.isSolved && !victoryAnimating ? (
               <motion.div
                 className="glass-panel daily-mystery-victory"
                 initial={reduceMotion ? false : { opacity: 0, y: 16 }}

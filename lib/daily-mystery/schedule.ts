@@ -2,7 +2,8 @@ import "server-only";
 
 import { createHash } from "crypto";
 import type { MysteryContentItem, MysteryTargetType } from "@/lib/daily-mystery/types";
-import { CATEGORY_WEIGHTS, MYSTERY_MIN_REPEAT_DAYS } from "@/lib/daily-mystery/types";
+import { MYSTERY_MIN_REPEAT_DAYS } from "@/lib/daily-mystery/types";
+import { DAILY_MYSTERY_SCHEDULABLE_TYPES } from "@/lib/daily-mystery/content-policy";
 import { ensureVerifiedSeedContent } from "@/lib/daily-mystery/bootstrap";
 import { collectMysteryDiagnostics, logMysteryDiagnostics } from "@/lib/daily-mystery/diagnostics";
 import { MysteryServiceError, MYSTERY_PUBLIC_UNAVAILABLE } from "@/lib/daily-mystery/errors";
@@ -21,17 +22,33 @@ function seededUnit(seed: string) {
   return hash.readUInt32BE(0) / 0xffffffff;
 }
 
+const SCHEDULE_CATEGORY_WEIGHTS: Record<MysteryTargetType, number> = {
+  champion: 60,
+  region: 25,
+  place: 15,
+  event: 0,
+  faction: 0,
+  artifact: 0,
+  species: 0,
+  legendary_npc: 0,
+  other: 0,
+};
+
 function pickWeightedCategory(seed: string) {
-  const entries = Object.entries(CATEGORY_WEIGHTS) as Array<[MysteryTargetType, number]>;
-  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  const entries = DAILY_MYSTERY_SCHEDULABLE_TYPES.map((category) => [
+    category,
+    SCHEDULE_CATEGORY_WEIGHTS[category],
+  ]) as Array<[MysteryTargetType, number]>;
+  const weighted = entries.filter(([, weight]) => weight > 0);
+  const total = weighted.reduce((sum, [, weight]) => sum + weight, 0);
   let cursor = seededUnit(`${seed}:category`) * total;
-  for (const [category, weight] of entries) {
+  for (const [category, weight] of weighted) {
     cursor -= weight;
     if (cursor <= 0) {
       return category;
     }
   }
-  return entries[0]![0];
+  return weighted[0]![0];
 }
 
 function avoidConsecutiveCategory(
