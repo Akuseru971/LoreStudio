@@ -2652,23 +2652,67 @@ button {
 
 .chronicle-proximity-close .chronicle-placeholder-bar {
   box-shadow:
-    0 0 0 1px rgba(118, 142, 172, 0.28),
-    0 0 10px rgba(90, 130, 180, 0.1);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(118, 148, 188, 0.16), rgba(255, 255, 255, 0.06));
+    0 0 0 1px rgba(118, 142, 172, 0.34),
+    0 0 12px rgba(90, 130, 180, 0.16);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(118, 148, 188, 0.2), rgba(255, 255, 255, 0.06));
+}
+
+.chronicle-proximity-close {
+  filter: drop-shadow(0 0 6px rgba(96, 126, 168, 0.12));
 }
 
 .chronicle-proximity-warm .chronicle-placeholder-bar {
   box-shadow:
-    0 0 0 1px rgba(196, 160, 90, 0.34),
-    0 0 12px rgba(196, 160, 90, 0.14);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(196, 160, 90, 0.22), rgba(255, 255, 255, 0.06));
+    0 0 0 1px rgba(196, 160, 90, 0.42),
+    0 0 14px rgba(196, 160, 90, 0.2);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(196, 160, 90, 0.26), rgba(255, 255, 255, 0.06));
+}
+
+.chronicle-proximity-warm {
+  filter: drop-shadow(0 0 8px rgba(196, 160, 90, 0.16));
 }
 
 .chronicle-proximity-very-close .chronicle-placeholder-bar {
   box-shadow:
-    0 0 0 1px rgba(210, 145, 75, 0.44),
-    0 0 16px rgba(210, 145, 75, 0.22);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(210, 145, 75, 0.28), rgba(255, 255, 255, 0.06));
+    0 0 0 1px rgba(210, 145, 75, 0.52),
+    0 0 18px rgba(210, 145, 75, 0.28);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(210, 145, 75, 0.34), rgba(255, 255, 255, 0.06));
+}
+
+.chronicle-proximity-very-close {
+  filter: drop-shadow(0 0 10px rgba(210, 145, 75, 0.22));
+}
+
+.chronicle-board--full-reveal .chronicle-placeholder--victory-dissolve .chronicle-placeholder-bar {
+  animation: chronicle-victory-dissolve 900ms ease-out forwards;
+}
+
+.chronicle-board--full-reveal .chronicle-word--victory-reveal {
+  animation: chronicle-victory-full-reveal 900ms ease-out forwards;
+}
+
+@keyframes chronicle-victory-dissolve {
+  0% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(0.92);
+  }
+}
+
+@keyframes chronicle-victory-full-reveal {
+  0% {
+    opacity: 0;
+    filter: blur(2px);
+  }
+
+  100% {
+    opacity: 1;
+    filter: none;
+  }
 }
 
 @keyframes chronicle-word-emerge {
@@ -2887,6 +2931,8 @@ button {
 
   .chronicle-word--victory-glow,
   .chronicle-board--victory .chronicle-placeholder--victory-illuminate .chronicle-placeholder-bar,
+  .chronicle-board--full-reveal .chronicle-placeholder--victory-dissolve .chronicle-placeholder-bar,
+  .chronicle-board--full-reveal .chronicle-word--victory-reveal,
   .chronicle-victory-answer {
     animation: none;
     opacity: 1;

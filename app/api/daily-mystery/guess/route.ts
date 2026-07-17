@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { evaluateGuess, mergeProximity } from "@/lib/daily-mystery/match";
+import { evaluateGuess, formatSemanticProximityArray, mergeProximity } from "@/lib/daily-mystery/match";
+import { lemmatizeEnglish } from "@/lib/daily-mystery/normalize";
 import { getOrCreatePlayerId } from "@/lib/daily-mystery/player";
 import { checkGuessRateLimit } from "@/lib/daily-mystery/rate-limit";
 import { buildPublicPuzzleView, buildPuzzleFromContent } from "@/lib/daily-mystery/puzzle";
@@ -96,16 +97,27 @@ export async function POST(request: Request) {
     });
 
     let proximityUpdates = result.proximityUpdates;
+    let semanticUnavailable = false;
     if (result.isAbsent && !result.isCorrect) {
-      const semanticUpdates = await computeSemanticProximityWithTimeout({
-        contentItemId: content.id,
-        guessLemma: guess.toLowerCase(),
-        tokens,
-        revealed,
-      });
-      proximityUpdates = mergeProximity(session.token_proximity, semanticUpdates);
-      if (Object.keys(semanticUpdates).length > 0) {
-        safeTrackServer("mystery_semantic_match", { mode });
+      try {
+        const semanticUpdates = await computeSemanticProximityWithTimeout({
+          contentItemId: content.id,
+          guessLemma: lemmatizeEnglish(guess.toLowerCase()),
+          tokens,
+          revealed,
+        });
+        if (Object.keys(semanticUpdates).length === 0) {
+          semanticUnavailable = true;
+        } else {
+          safeTrackServer("mystery_semantic_match", { mode });
+        }
+        proximityUpdates = mergeProximity(session.token_proximity, semanticUpdates);
+      } catch {
+        semanticUnavailable = true;
+      }
+
+      if (semanticUnavailable) {
+        console.info("[DAILY_MYSTERY_SEMANTIC_UNAVAILABLE_FALLBACK_EXACT_MATCH]");
       }
     }
 
@@ -113,8 +125,15 @@ export async function POST(request: Request) {
       revealed.add(tokenId);
     }
 
-    const nextGuessCount = session.guess_count + 1;
     const isVictory = result.isCorrect;
+    if (isVictory) {
+      for (const token of tokens) {
+        if (token.type === "word") {
+          revealed.add(token.id);
+        }
+      }
+    }
+    const nextGuessCount = session.guess_count + 1;
     const completedAt = isVictory ? new Date().toISOString() : session.completed_at;
     const completionTimeMs = isVictory
       ? Date.now() - new Date(session.started_at).getTime()
@@ -183,6 +202,7 @@ export async function POST(request: Request) {
       content,
       updated.revealed_token_ids,
       updated.token_proximity,
+      updated.is_solved,
     );
 
     return NextResponse.json({
@@ -191,7 +211,7 @@ export async function POST(request: Request) {
       isCorrect: isVictory,
       isAbsent: result.isAbsent,
       feedback: result.feedback,
-      revealedTokenIds: result.revealedTokenIds,
+      revealedTokenIds: isVictory ? [...revealed] : result.revealedTokenIds,
       revealedTexts: result.revealedTokenIds.reduce<Record<string, string>>((acc, tokenId) => {
         if (result.revealedTexts[tokenId]) {
           acc[tokenId] = result.revealedTexts[tokenId]!;
@@ -199,12 +219,13 @@ export async function POST(request: Request) {
         return acc;
       }, {}),
       proximityUpdates,
-      semanticProximity: semanticLevel,
+      semanticProximity: formatSemanticProximityArray(proximityUpdates),
       guessCount: updated.guess_count,
       isSolved: updated.is_solved,
       tokens: publicTokens,
       paragraphTokenIds,
       completionTimeMs: updated.completion_time_ms,
+      ...(isVictory ? { sourceText: content.source_text } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to process guess.";

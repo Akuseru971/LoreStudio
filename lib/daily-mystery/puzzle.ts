@@ -2,7 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import type { MysteryContentItem, MysteryPublicToken } from "@/lib/daily-mystery/types";
-import { tokenizePassage, toPublicTokens } from "@/lib/daily-mystery/tokenize";
+import { resolveDisplayRevealedIds, tokenizePassage, toPublicTokens } from "@/lib/daily-mystery/tokenize";
 
 export type BuiltPuzzle = {
   tokens: ReturnType<typeof tokenizePassage>["tokens"];
@@ -31,9 +31,10 @@ export function buildPublicPuzzleView(
   content: MysteryContentItem,
   revealedTokenIds: string[],
   tokenProximity: Record<string, MysteryPublicToken["proximity"]>,
+  isSolved = false,
 ) {
   const { tokens, paragraphTokenIds } = buildPuzzleFromContent(content);
-  const revealed = new Set(revealedTokenIds);
+  const revealed = resolveDisplayRevealedIds(tokens, revealedTokenIds, isSolved);
   const publicTokens = toPublicTokens(tokens, revealed, tokenProximity);
   return {
     tokens,

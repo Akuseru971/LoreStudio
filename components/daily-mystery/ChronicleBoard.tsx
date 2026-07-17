@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { MysteryProximityLevel, MysteryPublicToken } from "@/lib/daily-mystery/types";
 
 type ChronicleBoardProps = {
@@ -10,6 +10,7 @@ type ChronicleBoardProps = {
   newlyRevealedIds?: string[];
   victoryAnimating?: boolean;
   victoryAnswer?: string | null;
+  fullReveal?: boolean;
 };
 
 function proximityClass(level: MysteryProximityLevel | null | undefined) {
@@ -44,6 +45,7 @@ export default function ChronicleBoard({
   newlyRevealedIds = [],
   victoryAnimating = false,
   victoryAnswer = null,
+  fullReveal = false,
 }: ChronicleBoardProps) {
   const reduceMotion = useReducedMotion();
   const tokenMap = new Map(tokens.map((token) => [token.id, token]));
@@ -51,13 +53,13 @@ export default function ChronicleBoard({
   const revealOrder = useMemo(() => new Map(newlyRevealedIds.map((id, index) => [id, index])), [newlyRevealedIds]);
 
   return (
-    <div
-      className={`chronicle-board${victoryAnimating ? " chronicle-board--victory" : ""}${reduceMotion ? " chronicle-board--reduced-motion" : ""}`}
+    <motion.div
+      className={`chronicle-board${victoryAnimating ? " chronicle-board--victory" : ""}${fullReveal ? " chronicle-board--full-reveal" : ""}${reduceMotion ? " chronicle-board--reduced-motion" : ""}`}
       aria-label="Hidden Chronicle passage"
     >
       {victoryAnimating ? (
         <div className="chronicle-victory-atmosphere" aria-hidden="true">
-          <div className="chronicle-victory-mist" />
+          <motion.div className="chronicle-victory-mist" />
           {victoryAnswer ? <p className="chronicle-victory-answer">{victoryAnswer}</p> : null}
         </div>
       ) : null}
@@ -85,13 +87,13 @@ export default function ChronicleBoard({
             const proximity = proximityLabel(token.proximity);
             const isNew = revealSet.has(token.id);
             const revealIndex = revealOrder.get(token.id) ?? 0;
-            const revealDelayMs = reduceMotion ? 0 : Math.min(revealIndex, 5) * 45;
+            const revealDelayMs = reduceMotion ? 0 : Math.min(revealIndex, 8) * 35;
 
             if (token.revealed && token.text) {
               return (
                 <span
                   key={token.id}
-                  className={`chronicle-word revealed${isNew ? " chronicle-word--emerging" : ""}${victoryAnimating ? " chronicle-word--victory-glow" : ""}`}
+                  className={`chronicle-word revealed${isNew ? " chronicle-word--emerging" : ""}${victoryAnimating || fullReveal ? " chronicle-word--victory-glow" : ""}${fullReveal && isNew ? " chronicle-word--victory-reveal" : ""}`}
                   style={isNew && !reduceMotion ? { animationDelay: `${revealDelayMs}ms` } : undefined}
                 >
                   {token.text}
@@ -102,7 +104,7 @@ export default function ChronicleBoard({
             return (
               <span
                 key={token.id}
-                className={`chronicle-placeholder ${proximityClass(token.proximity)}${victoryAnimating ? " chronicle-placeholder--victory-illuminate" : ""}`}
+                className={`chronicle-placeholder ${proximityClass(token.proximity)}${victoryAnimating ? " chronicle-placeholder--victory-illuminate" : ""}${fullReveal && victoryAnimating ? " chronicle-placeholder--victory-dissolve" : ""}`}
                 style={{ width: `${token.placeholderWidth ?? 4}ch` }}
                 aria-label={proximity ? `${proximity} semantic match` : "Hidden word"}
                 title={proximity ?? undefined}
@@ -114,6 +116,6 @@ export default function ChronicleBoard({
           })}
         </p>
       ))}
-    </div>
+    </motion.div>
   );
 }

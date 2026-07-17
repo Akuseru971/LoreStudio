@@ -173,6 +173,12 @@ export function evaluateGuess({
   };
 }
 
+export function formatSemanticProximityArray(updates: Record<string, MysteryProximityLevel>) {
+  return Object.entries(updates)
+    .filter((entry): entry is [string, NonNullable<MysteryProximityLevel>] => Boolean(entry[1]))
+    .map(([tokenId, level]) => ({ tokenId, level }));
+}
+
 export function mergeProximity(
   current: Record<string, MysteryProximityLevel>,
   updates: Record<string, MysteryProximityLevel>,

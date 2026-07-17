@@ -148,6 +148,17 @@ export function tokenizePassage(sourceText: string, protectedTerms: string[]) {
   return { tokens, paragraphTokenIds };
 }
 
+export function resolveDisplayRevealedIds(
+  tokens: MysteryPuzzleToken[],
+  revealedTokenIds: string[],
+  isSolved: boolean,
+) {
+  if (isSolved) {
+    return new Set(tokens.filter((token) => token.type === "word").map((token) => token.id));
+  }
+  return new Set(revealedTokenIds);
+}
+
 export function toPublicTokens(
   tokens: MysteryPuzzleToken[],
   revealed: Set<string>,

@@ -96,6 +96,7 @@ export async function buildPuzzlePayload({
     content,
     session.revealed_token_ids,
     session.token_proximity,
+    session.is_solved,
   );
 
   const categoryRevealed = session.hints_used.includes("category");

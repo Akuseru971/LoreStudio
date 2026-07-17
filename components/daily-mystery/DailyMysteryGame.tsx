@@ -1,9 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import ChronicleBoard from "@/components/daily-mystery/ChronicleBoard";
+import {
+  applyLocalReplayGuess,
+  buildReplayPublicTokens,
+  createInitialReplayState,
+  type ReplayBoardState,
+} from "@/lib/daily-mystery/replay";
+import { tokenizePassage } from "@/lib/daily-mystery/tokenize";
 import type { MysteryPublicToken } from "@/lib/daily-mystery/types";
 import { safeTrackClient } from "@/lib/safe-analytics-client";
 
@@ -69,12 +76,27 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
   const [error, setError] = useState<string | null>(null);
   const [victoryAnimating, setVictoryAnimating] = useState(false);
   const [victoryAnswer, setVictoryAnswer] = useState<string | null>(null);
+  const initialPuzzleRef = useRef<PuzzlePayload | null>(null);
+  const replayTokensRef = useRef<ReturnType<typeof tokenizePassage> | null>(null);
+  const [isReplayMode, setIsReplayMode] = useState(false);
+  const [replayState, setReplayState] = useState<ReplayBoardState | null>(null);
+
+  const rememberInitialPuzzle = useCallback((data: PuzzlePayload) => {
+    if (!initialPuzzleRef.current) {
+      initialPuzzleRef.current = {
+        ...data,
+        tokens: data.tokens.map((token) => ({ ...token })),
+        paragraphTokenIds: data.paragraphTokenIds.map((paragraph) => [...paragraph]),
+      };
+    }
+  }, []);
 
   const loadResult = useCallback(async (puzzlePublicId: string) => {
     const response = await fetch(`/api/daily-mystery/result?puzzlePublicId=${encodeURIComponent(puzzlePublicId)}`);
     const data = await response.json();
     if (response.ok) {
       setResult(data);
+      replayTokensRef.current = tokenizePassage(data.sourceText, [data.canonicalTitle]);
     }
   }, []);
 
@@ -141,6 +163,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
         }
 
         setPuzzle(data);
+        rememberInitialPuzzle(data);
         setLoadState("ready");
         console.info("[DAILY_MYSTERY_CLIENT_LOAD_READY]", {
           elapsedMs: Math.round(performance.now() - startedAt),
@@ -183,7 +206,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
         window.clearTimeout(timeoutId);
       }
     },
-    [loadResult, performPuzzleFetch],
+    [loadResult, performPuzzleFetch, rememberInitialPuzzle],
   );
 
   useEffect(() => {
@@ -201,6 +224,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
           return;
         }
         setPuzzle(data);
+        rememberInitialPuzzle(data);
         setLoadState("ready");
         console.info("[DAILY_MYSTERY_CLIENT_LOAD_READY]", {
           elapsedMs: Math.round(performance.now() - startedAt),
@@ -248,10 +272,62 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [loadResult, performPuzzleFetch]);
+  }, [loadResult, performPuzzleFetch, rememberInitialPuzzle]);
+
+  const startReplay = useCallback(() => {
+    if (!initialPuzzleRef.current || !result) {
+      return;
+    }
+    if (!replayTokensRef.current) {
+      replayTokensRef.current = tokenizePassage(result.sourceText, [result.canonicalTitle]);
+    }
+    setIsReplayMode(true);
+    setReplayState(createInitialReplayState());
+    setFeedback(null);
+    setHintMessage(null);
+    setGuess("");
+    setNewlyRevealedIds([]);
+    setVictoryAnimating(false);
+    setVictoryAnswer(null);
+  }, [result]);
+
+  const exitReplay = useCallback(() => {
+    setIsReplayMode(false);
+    setReplayState(null);
+    setVictoryAnimating(false);
+    setVictoryAnswer(null);
+    setNewlyRevealedIds([]);
+    setFeedback(null);
+    setHintMessage(null);
+    setGuess("");
+  }, []);
+
+  const displayBoard = useMemo(() => {
+    if (!puzzle) {
+      return null;
+    }
+
+    if (isReplayMode && replayState && replayTokensRef.current) {
+      return {
+        tokens: buildReplayPublicTokens(replayTokensRef.current.tokens, replayState),
+        paragraphTokenIds: replayTokensRef.current.paragraphTokenIds,
+        guessCount: replayState.guessCount,
+        hintsUsed: replayState.hintsUsed,
+        isSolved: replayState.isLocallySolved,
+      };
+    }
+
+    return {
+      tokens: puzzle.tokens,
+      paragraphTokenIds: puzzle.paragraphTokenIds,
+      guessCount: puzzle.session.guessCount,
+      hintsUsed: puzzle.session.hintsUsed,
+      isSolved: puzzle.session.isSolved,
+    };
+  }, [isReplayMode, puzzle, replayState]);
 
   const submitGuess = useCallback(async () => {
-    if (!puzzle || !guess.trim() || submitting) {
+    if (!puzzle || !displayBoard || !guess.trim() || submitting) {
       return;
     }
 
@@ -261,12 +337,40 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     const submittedGuess = guess.trim();
 
     try {
+      if (isReplayMode && replayState && replayTokensRef.current && result) {
+        const { nextState, revealedTokenIds, isVictory } = applyLocalReplayGuess({
+          guess: submittedGuess,
+          internalTokens: replayTokensRef.current.tokens,
+          canonicalTitle: result.canonicalTitle,
+          protectedTerms: [result.canonicalTitle],
+          replayState,
+        });
+
+        setReplayState({
+          ...nextState,
+          revealedIds: nextState.revealedIds,
+        });
+        setNewlyRevealedIds(revealedTokenIds);
+        setFeedback(nextState.feedback);
+        setGuess("");
+
+        if (isVictory) {
+          setVictoryAnswer(submittedGuess);
+          setVictoryAnimating(true);
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, reduceMotion ? 120 : 1600);
+          });
+          setVictoryAnimating(false);
+        }
+        return;
+      }
+
       const response = await fetch("/api/daily-mystery/guess", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           puzzlePublicId: puzzle.puzzlePublicId,
-          guess: guess.trim(),
+          guess: submittedGuess,
         }),
       });
 
@@ -276,6 +380,9 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       }
 
       const isVictory = data.status === "won" && data.isCorrectAnswer === true;
+      const previouslyMasked = puzzle.tokens
+        .filter((token) => token.type === "word" && !token.revealed)
+        .map((token) => token.id);
 
       setPuzzle((current) =>
         current
@@ -286,14 +393,14 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
               session: {
                 ...current.session,
                 guessCount: data.guessCount,
-                isSolved: isVictory,
+                isSolved: isVictory || current.session.isSolved,
                 completionTimeMs: data.completionTimeMs,
               },
             }
           : current,
       );
 
-      setNewlyRevealedIds(data.revealedTokenIds ?? []);
+      setNewlyRevealedIds(isVictory ? previouslyMasked : (data.revealedTokenIds ?? []));
       setFeedback(data.feedback);
       setGuess("");
 
@@ -315,10 +422,10 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       setSubmitting(false);
       inputRef.current?.focus();
     }
-  }, [guess, loadResult, puzzle, reduceMotion, submitting]);
+  }, [displayBoard, guess, isReplayMode, loadResult, puzzle, reduceMotion, replayState, result, submitting]);
 
   const requestHint = useCallback(async () => {
-    if (!puzzle || puzzle.session.isSolved) {
+    if (!puzzle || puzzle.session.isSolved || isReplayMode) {
       return;
     }
 
@@ -354,7 +461,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     if (data.revealedTokenIds?.length) {
       setNewlyRevealedIds(data.revealedTokenIds);
     }
-  }, [puzzle]);
+  }, [isReplayMode, puzzle]);
 
   const copyShare = useCallback(async () => {
     if (!result?.shareText) {
@@ -381,7 +488,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     );
   }
 
-  if (loadState === "error" || loadState === "empty" || !puzzle) {
+  if (loadState === "error" || loadState === "empty" || !puzzle || !displayBoard) {
     return (
       <div className="daily-mystery-shell daily-mystery-error">
         <p>{error || "The Chronicle is being prepared. Please return shortly."}</p>
@@ -407,7 +514,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
           <span>{puzzle.scheduleDate}</span>
           <span>Difficulty {puzzle.difficulty}</span>
           {puzzle.streak ? <span>Streak {puzzle.streak.current} days</span> : null}
-          <span>{puzzle.session.guessCount} guesses</span>
+          <span>{displayBoard.guessCount} guesses</span>
         </div>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#b8c2d0]">{puzzle.metadata.tutorialCopy}</p>
       </motion.section>
@@ -415,16 +522,17 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
       <div className="daily-mystery-grid">
         <section className="glass-panel daily-mystery-panel">
           <ChronicleBoard
-            tokens={puzzle.tokens}
-            paragraphTokenIds={puzzle.paragraphTokenIds}
+            tokens={displayBoard.tokens}
+            paragraphTokenIds={displayBoard.paragraphTokenIds}
             newlyRevealedIds={newlyRevealedIds}
             victoryAnimating={victoryAnimating}
             victoryAnswer={victoryAnswer}
+            fullReveal={displayBoard.isSolved}
           />
         </section>
 
         <aside className="daily-mystery-sidebar">
-          {!puzzle.session.isSolved ? (
+          {!displayBoard.isSolved ? (
             <div className="daily-mystery-input-wrap glass-panel">
               <label htmlFor="mystery-guess" className="sr-only">
                 Enter a word or guess the answer
@@ -460,13 +568,19 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
                 {hintMessage ? <p className="mt-2 text-[#d9bd78]">{hintMessage}</p> : null}
               </div>
               <button type="button" className="daily-mystery-hint-button" onClick={() => void requestHint()}>
-                Request hint ({puzzle.session.hintsUsed} used)
+                Request hint ({displayBoard.hintsUsed} used)
               </button>
             </div>
           ) : null}
 
+          {isReplayMode ? (
+            <button type="button" className="daily-mystery-secondary-link text-left" onClick={exitReplay}>
+              Back to result
+            </button>
+          ) : null}
+
           <AnimatePresence>
-            {result && puzzle.session.isSolved && !victoryAnimating ? (
+            {result && puzzle.session.isSolved && !isReplayMode && !victoryAnimating ? (
               <motion.div
                 className="glass-panel daily-mystery-victory"
                 initial={reduceMotion ? false : { opacity: 0, y: 16 }}
@@ -493,9 +607,9 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
                   <button type="button" className="gold-button rounded-2xl px-5 py-3" onClick={() => void copyShare()}>
                     Share result
                   </button>
-                  <Link href="/daily-mystery/archive" className="daily-mystery-secondary-link">
-                    Explore the Chronicle Archive
-                  </Link>
+                  <button type="button" className="daily-mystery-secondary-link text-left" onClick={startReplay}>
+                    Replay
+                  </button>
                   <Link href="/" className="daily-mystery-secondary-link" onClick={() => safeTrackClient("create_legend_clicked_from_mystery", { source: "victory" })}>
                     Create Your Legend
                   </Link>
