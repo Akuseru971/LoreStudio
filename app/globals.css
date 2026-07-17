@@ -2903,6 +2903,69 @@ button {
   color: #6f7d92;
 }
 
+.replay-support-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    max(1rem, env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px))
+    max(1rem, env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+}
+
+.replay-support-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(126, 182, 255, 0.08), transparent 55%),
+    rgba(2, 4, 12, 0.78);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+
+.replay-support-modal {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 26rem);
+  max-height: min(88vh, 34rem);
+  overflow: auto;
+  padding: 1.35rem 1.25rem 1.5rem;
+  border-radius: 1.35rem;
+  border: 1px solid rgba(217, 189, 120, 0.18);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(126, 182, 255, 0.06) inset;
+}
+
+.replay-support-kofi-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.85rem;
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.replay-support-kofi-link:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.replay-support-kofi-link:focus-visible {
+  outline: 2px solid rgba(217, 189, 120, 0.55);
+  outline-offset: 3px;
+}
+
+.replay-support-kofi-image {
+  display: block;
+  width: min(100%, 13.5rem);
+  height: auto;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

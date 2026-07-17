@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import ChronicleBoard from "@/components/daily-mystery/ChronicleBoard";
+import ReplaySupportModal from "@/components/daily-mystery/ReplaySupportModal";
 import {
   applyLocalReplayGuess,
   buildReplayPublicTokens,
@@ -80,6 +81,8 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
   const replayTokensRef = useRef<ReturnType<typeof tokenizePassage> | null>(null);
   const [isReplayMode, setIsReplayMode] = useState(false);
   const [replayState, setReplayState] = useState<ReplayBoardState | null>(null);
+  const [replayModalOpen, setReplayModalOpen] = useState(false);
+  const replayButtonRef = useRef<HTMLButtonElement>(null);
 
   const rememberInitialPuzzle = useCallback((data: PuzzlePayload) => {
     if (!initialPuzzleRef.current) {
@@ -274,22 +277,16 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     };
   }, [loadResult, performPuzzleFetch, rememberInitialPuzzle]);
 
-  const startReplay = useCallback(() => {
-    if (!initialPuzzleRef.current || !result) {
-      return;
-    }
-    if (!replayTokensRef.current) {
-      replayTokensRef.current = tokenizePassage(result.sourceText, [result.canonicalTitle]);
-    }
-    setIsReplayMode(true);
-    setReplayState(createInitialReplayState());
-    setFeedback(null);
-    setHintMessage(null);
-    setGuess("");
-    setNewlyRevealedIds([]);
-    setVictoryAnimating(false);
-    setVictoryAnswer(null);
-  }, [result]);
+  const openReplayModal = useCallback(() => {
+    setReplayModalOpen(true);
+  }, []);
+
+  const closeReplayModal = useCallback(() => {
+    setReplayModalOpen(false);
+    window.requestAnimationFrame(() => {
+      replayButtonRef.current?.focus();
+    });
+  }, []);
 
   const exitReplay = useCallback(() => {
     setIsReplayMode(false);
@@ -607,7 +604,12 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
                   <button type="button" className="gold-button rounded-2xl px-5 py-3" onClick={() => void copyShare()}>
                     Share result
                   </button>
-                  <button type="button" className="daily-mystery-secondary-link text-left" onClick={startReplay}>
+                  <button
+                    ref={replayButtonRef}
+                    type="button"
+                    className="daily-mystery-secondary-link text-left"
+                    onClick={openReplayModal}
+                  >
                     Replay
                   </button>
                   <Link href="/" className="daily-mystery-secondary-link" onClick={() => safeTrackClient("create_legend_clicked_from_mystery", { source: "victory" })}>
@@ -619,6 +621,8 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
           </AnimatePresence>
         </aside>
       </div>
+
+      <ReplaySupportModal open={replayModalOpen} onClose={closeReplayModal} />
 
       <p className="daily-mystery-legal">
         Lore Studio is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone
