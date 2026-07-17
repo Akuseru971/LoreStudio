@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { logSupabaseSchemaError } from "@/lib/daily-mystery/supabase-diagnostics";
 import { normalizeLocale, localesMatch } from "@/lib/daily-mystery/locale";
 import { isScheduleEligibleItem } from "@/lib/daily-mystery/eligibility";
 import { isDailyMysterySchedulable, isDailyMysterySeedEntry, isOfficialChampionBiographyUrl } from "@/lib/daily-mystery/content-policy";
@@ -150,6 +151,7 @@ export async function getContentItemById(id: string) {
   const supabase = requireSupabase();
   const { data, error } = await supabase.from(CONTENT_TABLE).select("*").eq("id", id).maybeSingle();
   if (error) {
+    logSupabaseSchemaError(error, CONTENT_TABLE);
     throw new Error(error.message);
   }
   return data ? mapContentRow(data) : null;
@@ -293,6 +295,7 @@ export async function getScheduleForDate(scheduleDate: string) {
     .maybeSingle();
 
   if (error) {
+    logSupabaseSchemaError(error, SCHEDULE_TABLE);
     throw new Error(error.message);
   }
 

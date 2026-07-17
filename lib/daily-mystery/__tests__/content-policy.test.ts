@@ -42,6 +42,15 @@ describe("daily mystery content policy", () => {
 
     expect(
       classifyDisallowedDailyMysterySource({
+        target_type: "champion",
+        source_type: "full_biography",
+        source_url: "",
+        locale: "en_US",
+      }),
+    ).toBe("ddragon");
+
+    expect(
+      classifyDisallowedDailyMysterySource({
         target_type: "region",
         source_type: "official_page",
         source_url: "https://universe.leagueoflegends.com/en_US/region/ionia/",

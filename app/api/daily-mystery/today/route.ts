@@ -1,30 +1,119 @@
 import { NextResponse } from "next/server";
-import { buildPuzzlePayload, resolveDailyPuzzle } from "@/lib/daily-mystery/service";
+import { buildPuzzlePayload } from "@/lib/daily-mystery/service";
 import { getOrCreatePlayerId } from "@/lib/daily-mystery/player";
-import { MysteryServiceError, MYSTERY_PUBLIC_UNAVAILABLE } from "@/lib/daily-mystery/errors";
+import { MysteryServiceError } from "@/lib/daily-mystery/errors";
+import { getTodayScheduleDate } from "@/lib/daily-mystery/schedule-date";
 import { safeTrackServer } from "@/lib/safe-analytics-server";
+import {
+  assertDailyMysteryDatabaseConfig,
+  assertSupabaseClientReady,
+  getDailyMysteryDatabaseConfig,
+  isDatabaseConfigError,
+  isNoValidDailyMysteryError,
+  logDailyMysteryDatabaseConfig,
+  logTodayFailed,
+  resolveTodayScheduleAndContent,
+  type TodayRouteStage,
+} from "@/lib/daily-mystery/today-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SLOW_TODAY_MS = 1000;
 
+type TodayTiming = {
+  totalMs: number;
+  scheduleLookupMs: number;
+  puzzleLoadMs: number;
+  publicPayloadBuildMs: number;
+  failed?: boolean;
+  failedStage?: TodayRouteStage;
+};
+
+function logTodayTiming(timing: TodayTiming) {
+  console.info("[DAILY_MYSTERY_TODAY_TIMING]", timing);
+  if (timing.totalMs >= SLOW_TODAY_MS) {
+    console.warn("[DAILY_MYSTERY_TODAY_SLOW]", { totalMs: timing.totalMs, failedStage: timing.failedStage ?? null });
+  }
+}
+
+function databaseConfigResponse() {
+  return NextResponse.json(
+    {
+      status: "error",
+      code: "DAILY_MYSTERY_DATABASE_CONFIG_MISSING",
+      message: "Today's chronicle could not be loaded.",
+      error: "Today's chronicle could not be loaded.",
+      retryable: true,
+    },
+    { status: 500 },
+  );
+}
+
+function loadFailedResponse(message = "We could not summon today's chronicle.") {
+  return NextResponse.json(
+    {
+      status: "error",
+      code: "DAILY_MYSTERY_LOAD_FAILED",
+      message,
+      error: message,
+      retryable: true,
+    },
+    { status: 500 },
+  );
+}
+
+function noValidPuzzleResponse(message = "Today's chronicle is not available yet.") {
+  return NextResponse.json(
+    {
+      status: "empty",
+      code: "NO_VALID_DAILY_MYSTERY",
+      message,
+      error: message,
+      retryable: true,
+    },
+    { status: 503 },
+  );
+}
+
 export async function GET() {
-  const startedAt = Date.now();
+  const startedAt = performance.now();
+  let stage: TodayRouteStage = "initialization";
   let scheduleLookupMs = 0;
   let puzzleLoadMs = 0;
   let publicPayloadBuildMs = 0;
+  const databaseConfig = getDailyMysteryDatabaseConfig();
 
   try {
+    stage = "environment_validation";
+    assertDailyMysteryDatabaseConfig(databaseConfig);
+    logDailyMysteryDatabaseConfig(databaseConfig);
+
+    stage = "supabase_client_init";
+    assertSupabaseClientReady();
+
+    stage = "date_resolution";
+    getTodayScheduleDate();
+
+    stage = "player_identification";
     const playerId = await getOrCreatePlayerId();
 
-    const scheduleStartedAt = Date.now();
-    const { schedule, content, mode } = await resolveDailyPuzzle();
-    scheduleLookupMs = Date.now() - scheduleStartedAt;
+    stage = "schedule_lookup";
+    const scheduleStart = performance.now();
+    let schedule;
+    let content;
+    let mode: "daily";
+    try {
+      ({ schedule, content, mode } = await resolveTodayScheduleAndContent());
+    } finally {
+      scheduleLookupMs = performance.now() - scheduleStart;
+    }
 
-    const payloadStartedAt = Date.now();
+    stage = "puzzle_load";
+    stage = "public_payload_build";
+    const payloadStart = performance.now();
     const payload = await buildPuzzlePayload({ playerId, schedule, content, mode });
-    publicPayloadBuildMs = Date.now() - payloadStartedAt;
+    publicPayloadBuildMs = performance.now() - payloadStart;
     puzzleLoadMs = scheduleLookupMs + publicPayloadBuildMs;
 
     safeTrackServer("daily_mystery_viewed", {
@@ -37,51 +126,44 @@ export async function GET() {
       safeTrackServer("daily_mystery_started", { mode });
     }
 
-    const totalMs = Date.now() - startedAt;
-    console.info("[DAILY_MYSTERY_TODAY_TIMING]", {
-      totalMs,
-      scheduleLookupMs,
-      puzzleLoadMs,
-      publicPayloadBuildMs,
+    logTodayTiming({
+      totalMs: Math.round(performance.now() - startedAt),
+      scheduleLookupMs: Math.round(scheduleLookupMs),
+      puzzleLoadMs: Math.round(puzzleLoadMs),
+      publicPayloadBuildMs: Math.round(publicPayloadBuildMs),
     });
-    if (totalMs >= SLOW_TODAY_MS) {
-      console.warn("[DAILY_MYSTERY_TODAY_SLOW]", { totalMs });
-    }
 
     return NextResponse.json(payload);
   } catch (error) {
-    const totalMs = Date.now() - startedAt;
-    console.info("[DAILY_MYSTERY_TODAY_TIMING]", {
-      totalMs,
-      scheduleLookupMs,
-      puzzleLoadMs,
-      publicPayloadBuildMs,
+    logTodayFailed(stage, error, databaseConfig);
+    logTodayTiming({
+      totalMs: Math.round(performance.now() - startedAt),
+      scheduleLookupMs: Math.round(scheduleLookupMs),
+      puzzleLoadMs: Math.round(puzzleLoadMs),
+      publicPayloadBuildMs: Math.round(publicPayloadBuildMs),
       failed: true,
+      failedStage: stage,
     });
-    if (totalMs >= SLOW_TODAY_MS) {
-      console.warn("[DAILY_MYSTERY_TODAY_SLOW]", { totalMs });
+
+    if (isDatabaseConfigError(error)) {
+      return databaseConfigResponse();
     }
 
-    if (error instanceof MysteryServiceError) {
-      return NextResponse.json(
-        {
-          error: error.publicMessage,
-          code: error.code,
-          retryable: error.code === "MYSTERY_NO_APPROVED_CONTENT" || error.code === "MYSTERY_SCHEDULE_UNAVAILABLE",
-        },
-        { status: 503 },
+    if (isNoValidDailyMysteryError(error)) {
+      return noValidPuzzleResponse(
+        error instanceof MysteryServiceError ? error.publicMessage : "Today's chronicle is not available yet.",
       );
     }
 
+    if (error instanceof MysteryServiceError) {
+      return loadFailedResponse(error.publicMessage);
+    }
+
     const message = error instanceof Error ? error.message : "Unable to load today's Chronicle.";
-    const isPreparing = message.includes("Supabase is not configured");
-    return NextResponse.json(
-      {
-        error: isPreparing ? MYSTERY_PUBLIC_UNAVAILABLE : "The Chronicle is temporarily unavailable.",
-        code: isPreparing ? "MYSTERY_SUPABASE_NOT_CONFIGURED" : "MYSTERY_SCHEDULE_UNAVAILABLE",
-        retryable: isPreparing,
-      },
-      { status: 503 },
-    );
+    if (message.includes("Supabase is not configured")) {
+      return databaseConfigResponse();
+    }
+
+    return loadFailedResponse();
   }
 }

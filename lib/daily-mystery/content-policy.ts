@@ -112,22 +112,24 @@ export function isOfficialChampionBiographyContent(
 export function classifyDisallowedDailyMysterySource(
   item: Pick<MysteryContentItem, "target_type" | "source_type" | "source_url" | "locale">,
 ) {
+  const sourceUrl = typeof item.source_url === "string" ? item.source_url : "";
+
   if (item.target_type !== "champion") {
     return "non_champion";
   }
   if (!localesMatch(item.locale, "en_US")) {
     return "non_english";
   }
-  if (/ddragon\.leagueoflegends\.com/i.test(item.source_url) || item.source_type === "full_biography") {
+  if (/ddragon\.leagueoflegends\.com/i.test(sourceUrl) || item.source_type === "full_biography") {
     return "ddragon";
   }
-  if (/universe\.leagueoflegends\.com/i.test(item.source_url) || item.source_type === "official_page") {
+  if (/universe\.leagueoflegends\.com/i.test(sourceUrl) || item.source_type === "official_page") {
     return "universe";
   }
-  if (isDisallowedDailyMysterySourceUrl(item.source_url)) {
+  if (!sourceUrl || isDisallowedDailyMysterySourceUrl(sourceUrl)) {
     return "third_party";
   }
-  if (!isOfficialChampionBiographyUrl(item.source_url) || item.source_type !== "official_champion_biography") {
+  if (!isOfficialChampionBiographyUrl(sourceUrl) || item.source_type !== "official_champion_biography") {
     return "unsupported_source";
   }
   return null;

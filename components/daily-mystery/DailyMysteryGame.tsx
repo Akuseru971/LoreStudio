@@ -90,10 +90,32 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
             })
           : await fetch("/api/daily-mystery/today", { signal });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "The Chronicle is being prepared. Please return shortly.");
+      let data: {
+        status?: string;
+        code?: string;
+        message?: string;
+        error?: string;
+      };
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("The Chronicle is temporarily unavailable.");
       }
+
+      const message =
+        typeof data.message === "string"
+          ? data.message
+          : typeof data.error === "string"
+            ? data.error
+            : "The Chronicle is being prepared. Please return shortly.";
+
+      if (!response.ok || data.status === "error" || data.status === "empty") {
+        const failure = new Error(message) as Error & { responseStatus?: string; responseCode?: string };
+        failure.responseStatus = data.status;
+        failure.responseCode = data.code;
+        throw failure;
+      }
+
       return data as PuzzlePayload;
     },
     [archiveSlug, initialMode],
@@ -137,16 +159,26 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
             : loadError instanceof Error
               ? loadError.message
               : "unknown";
+        const responseStatus =
+          loadError instanceof Error
+            ? (loadError as Error & { responseStatus?: string }).responseStatus
+            : undefined;
+        const responseCode =
+          loadError instanceof Error ? (loadError as Error & { responseCode?: string }).responseCode : undefined;
         console.info("[DAILY_MYSTERY_CLIENT_LOAD_FAILED]", {
           elapsedMs: Math.round(performance.now() - startedAt),
           safeReason,
+          responseStatus: responseStatus ?? null,
+          responseCode: responseCode ?? null,
         });
         setError(
           safeReason === "timeout"
             ? "The Chronicle is taking longer than expected. Please try again."
             : safeReason,
         );
-        setLoadState("error");
+        setLoadState(
+          responseStatus === "empty" || responseCode === "NO_VALID_DAILY_MYSTERY" ? "empty" : "error",
+        );
       } finally {
         window.clearTimeout(timeoutId);
       }
@@ -186,16 +218,26 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
             : loadError instanceof Error
               ? loadError.message
               : "unknown";
+        const responseStatus =
+          loadError instanceof Error
+            ? (loadError as Error & { responseStatus?: string }).responseStatus
+            : undefined;
+        const responseCode =
+          loadError instanceof Error ? (loadError as Error & { responseCode?: string }).responseCode : undefined;
         console.info("[DAILY_MYSTERY_CLIENT_LOAD_FAILED]", {
           elapsedMs: Math.round(performance.now() - startedAt),
           safeReason,
+          responseStatus: responseStatus ?? null,
+          responseCode: responseCode ?? null,
         });
         setError(
           safeReason === "timeout"
             ? "The Chronicle is taking longer than expected. Please try again."
             : safeReason,
         );
-        setLoadState("error");
+        setLoadState(
+          responseStatus === "empty" || responseCode === "NO_VALID_DAILY_MYSTERY" ? "empty" : "error",
+        );
       } finally {
         window.clearTimeout(timeoutId);
       }
@@ -339,7 +381,7 @@ export default function DailyMysteryGame({ initialMode = "daily", archiveSlug }:
     );
   }
 
-  if (loadState === "error" || !puzzle) {
+  if (loadState === "error" || loadState === "empty" || !puzzle) {
     return (
       <div className="daily-mystery-shell daily-mystery-error">
         <p>{error || "The Chronicle is being prepared. Please return shortly."}</p>
